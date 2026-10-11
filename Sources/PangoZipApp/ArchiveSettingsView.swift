@@ -30,15 +30,11 @@ enum ArchivePreferences {
 }
 
 struct ArchiveSettingsView: View {
+  @ObservedObject var integration: FinderIntegrationModel
   @AppStorage("compressionFormat") private var format = "zip"
   @AppStorage("compressionLevel") private var level = 5
   @AppStorage("compressionSolid") private var solid = true
   @AppStorage("compressionThreads") private var threads = 0
-
-  private var uninstallerURL: URL {
-    Bundle.main.bundleURL.appendingPathComponent(
-      "Contents/SharedSupport/Uninstall PangoZip.command")
-  }
 
   var body: some View {
     Form {
@@ -66,20 +62,25 @@ struct ArchiveSettingsView: View {
         .font(.caption).foregroundStyle(.secondary)
       }
       Section("Finder") {
-        Button("Показать программу удаления…") {
-          NSWorkspace.shared.activateFileViewerSelecting([uninstallerURL])
-        }
-        .disabled(!FileManager.default.fileExists(atPath: uninstallerURL.path))
-        .help("Перед запуском программы удаления закройте PangoZip и дождитесь фоновых операций.")
-        Button("Настроить расширение Finder…") {
-          FIFinderSyncController.showExtensionManagementInterface()
+        Text(integration.statusText).font(.callout)
+        Button("Настроить расширение Finder…", action: integration.openExtensionSettings)
+        Button("Повторить подготовку меню") { Task { await integration.prepare() } }
+          .disabled(integration.state == .preparing)
+        Text(
+          "Расширение и фоновый помощник находятся внутри приложения. Отдельная установка не требуется."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+      }
+      Section("Удаление") {
+        Button("Показать PangoZip в Finder") {
+          NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         }
         Text(
-          "PangoZip нужно включить в расширениях Finder. Архивация и извлечение показывают только небольшое окно прогресса."
+          "Закройте PangoZip и дождитесь фоновых операций, затем переместите приложение в Корзину. Встроенные компоненты удаляются вместе с ним."
         )
         .font(.caption).foregroundStyle(.secondary)
       }
     }
-    .formStyle(.grouped).frame(width: 490, height: 480)
+    .formStyle(.grouped).frame(width: 520, height: 610)
   }
 }

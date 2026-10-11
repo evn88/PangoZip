@@ -7,6 +7,48 @@ public enum FinderInstallation {
       .deletingLastPathComponent()
   }
 
+  /// Разрешает установленное приложение на доступном для записи диске вне временных папок.
+  public static func isInstalledLocation(
+    _ applicationURL: URL,
+    applicationDirectories: [URL] = [
+      URL(fileURLWithPath: "/Applications", isDirectory: true),
+      (FileManager.default.homeDirectory(forUser: NSUserName())
+        ?? FileManager.default.homeDirectoryForCurrentUser).appendingPathComponent(
+          "Applications", isDirectory: true),
+    ]
+  ) -> Bool {
+    guard applicationURL.isFileURL else { return false }
+    let app = applicationURL.resolvingSymlinksInPath().standardizedFileURL
+    let roots = applicationDirectories.filter(\.isFileURL).map {
+      $0.resolvingSymlinksInPath().standardizedFileURL
+    }
+    let forbiddenNames = [".Trash", ".Trashes", "AppTranslocation"]
+    // Явное имя пользователя не подменяет домашнюю папку контейнером расширения.
+    let home =
+      FileManager.default.homeDirectory(forUser: NSUserName())
+      ?? FileManager.default.homeDirectoryForCurrentUser
+    let downloads = [home.appendingPathComponent("Downloads", isDirectory: true)]
+    guard app.pathExtension == "app",
+      !app.pathComponents.contains(where: forbiddenNames.contains),
+      !downloads.contains(where: { contains(app, in: $0.resolvingSymlinksInPath()) }),
+      roots.contains(where: { root in
+        guard contains(app, in: root) else { return false }
+        return !app.pathComponents.dropFirst(root.pathComponents.count).dropLast()
+          .contains(where: { $0.hasSuffix(".app") })
+      }),
+      let volume = try? app.resourceValues(forKeys: [.volumeIsReadOnlyKey, .isDirectoryKey]),
+      volume.isDirectory == true, volume.volumeIsReadOnly == false
+    else { return false }
+    return true
+  }
+
+  /// Проверяет принадлежность папке по компонентам пути, а не по строковому префиксу.
+  private static func contains(_ item: URL, in directory: URL) -> Bool {
+    let root = directory.standardizedFileURL.pathComponents
+    let path = item.standardizedFileURL.pathComponents
+    return path.count > root.count && path.starts(with: root)
+  }
+
   /// Проверяет приложение вне корзины и наличие исполняемых файлов перед показом команд Finder.
   public static func isAvailable(at applicationURL: URL) -> Bool {
     let app = applicationURL.resolvingSymlinksInPath().standardizedFileURL

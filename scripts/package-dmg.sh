@@ -55,7 +55,7 @@ mkdir -p build
 workspace="$(mktemp -d "$(pwd)/build/.PangoZip.dmg.XXXXXX")"
 # Удаляем только созданную этой командой временную папку, включая незавершённый образ.
 cleanup() {
-  local status=$?
+  local status="${1:-$?}"
   rm -rf "$workspace"
   exit "$status"
 }
@@ -65,14 +65,23 @@ trap 'exit 143' TERM
 payload="$workspace/payload"
 mkdir "$payload"
 ditto "$app" "$payload/PangoZip.app"
-cp scripts/install-app.sh "$payload/Install PangoZip.command"
-cp scripts/uninstall-app.sh "$payload/Uninstall PangoZip.command"
+ln -s /Applications "$payload/Applications"
 cp docs/installation.txt "$payload/Read me.txt"
-chmod +x "$payload/Install PangoZip.command" "$payload/Uninstall PangoZip.command"
 codesign --verify --deep --strict "$payload/PangoZip.app"
 output="$(pwd)/build/PangoZip-$version-$architecture.dmg"
 # Готовый файл заменяется только после проверки сжатого образа UDZO.
 hdiutil create -srcfolder "$payload" -fs HFS+ -format UDZO -imagekey zlib-level=9 -volname "PangoZip $version" "$workspace/PangoZip.dmg"
 hdiutil verify "$workspace/PangoZip.dmg"
+mountpoint="$workspace/mount"
+mkdir "$mountpoint"
+hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$workspace/PangoZip.dmg" >/dev/null
+mounted=true
+trap 'status=$?; if [[ "${mounted:-false}" == true ]]; then hdiutil detach "$mountpoint" >/dev/null || true; fi; cleanup "$status"' EXIT
+[[ -d "$mountpoint/PangoZip.app" ]] || { echo "Missing PangoZip.app in DMG" >&2; exit 1; }
+[[ -L "$mountpoint/Applications" && "$(readlink "$mountpoint/Applications")" == /Applications ]] || { echo "Invalid Applications link in DMG" >&2; exit 1; }
+[[ -f "$mountpoint/Read me.txt" ]] || { echo "Missing Read me.txt in DMG" >&2; exit 1; }
+[[ "$(find "$mountpoint" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" == 3 ]] || { echo "Unexpected DMG root contents" >&2; exit 1; }
+hdiutil detach "$mountpoint" >/dev/null
+mounted=false
 mv -f "$workspace/PangoZip.dmg" "$output"
 echo "Packaged: $output"

@@ -27,6 +27,9 @@ struct PangoZipApp: App {
           }
       } else {
         ArchiveBrowserView(model: model)
+          .safeAreaInset(edge: .top, spacing: 0) {
+            FinderIntegrationBanner(model: appDelegate.finderIntegration)
+          }
           .frame(minWidth: 1100, minHeight: 620)
           .background(WindowLifecycleBridge(prepareClose: { await model.requestTermination() }))
           .onAppear {
@@ -42,7 +45,9 @@ struct PangoZipApp: App {
     .windowResizability(isFinderWorker ? .contentSize : .contentMinSize)
     .restorationBehavior(isFinderWorker ? .disabled : .automatic)
     .commands { ArchiveCommands(model: model) }
-    Settings { ArchiveSettingsView() }
+    Settings {
+      if !isFinderWorker { ArchiveSettingsView(integration: appDelegate.finderIntegration) }
+    }
   }
 
   /// Освобождает ⌘W для закрытия архива, оставляя закрытие окна на ⌘⇧W.
@@ -59,6 +64,8 @@ struct PangoZipApp: App {
 @MainActor
 final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
   let services = FinderServices()
+  let finderIntegration = FinderIntegrationModel()
+  private var finderSetupTask: Task<Void, Never>?
   var prepareTermination: (() async -> Bool)?
   private var terminationPending = false
 
@@ -69,7 +76,13 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     } else {
       NSApp.servicesProvider = services
       NSUpdateDynamicServices()
+      finderSetupTask = Task { await finderIntegration.prepare() }
     }
+  }
+
+  /// Возвращение из системных настроек обновляет статус расширения без повторной регистрации.
+  func applicationDidBecomeActive(_ notification: Notification) {
+    if !ApplicationMode.isFinderWorker { finderIntegration.refreshEnabledState() }
   }
 
   /// Позволяет доставлять URL до готовности SwiftUI: сервис сохраняет их в очереди.
@@ -87,6 +100,8 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     if !terminationPending {
       terminationPending = true
       Task { @MainActor in
+        self.finderSetupTask?.cancel()
+        await self.finderSetupTask?.value
         let allowed = await prepareTermination()
         self.terminationPending = false
         NSApp.reply(toApplicationShouldTerminate: allowed)

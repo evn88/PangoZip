@@ -18,7 +18,8 @@ final class FinderSync: FIFinderSync {
 
   /// Создаёт меню из снимка выделения только при наличии основного приложения и помощника.
   override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-    guard FinderInstallation.isAvailable(at: applicationURL),
+    guard FinderInstallation.isInstalledLocation(applicationURL),
+      FinderInstallation.isAvailable(at: applicationURL),
       menuKind == .contextualMenuForItems || menuKind == .contextualMenuForSidebar
     else {
       return nil
@@ -60,7 +61,9 @@ final class FinderSync: FIFinderSync {
 
   /// Передаёт ограниченный запрос через отдельный pasteboard, не меняя общий буфер обмена.
   @objc private func deliver(_ sender: NSMenuItem) {
-    guard FinderInstallation.isAvailable(at: applicationURL) else {
+    guard FinderInstallation.isInstalledLocation(applicationURL),
+      FinderInstallation.isAvailable(at: applicationURL)
+    else {
       requests.removeAll()
       FIFinderSyncController.default().directoryURLs = []
       return
