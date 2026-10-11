@@ -71,6 +71,9 @@ struct ArchiveSettingsView: View {
         )
         .font(.caption).foregroundStyle(.secondary)
       }
+      if let supportURL = SupportConfiguration.pageURL {
+        DevelopmentSupportSection(pageURL: supportURL)
+      }
       Section("Удаление") {
         Button("Показать PangoZip в Finder") {
           NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
