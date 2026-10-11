@@ -60,6 +60,7 @@ final class ArchiveBrowserModel: ObservableObject {
   private var dragLeases: [UUID: Set<String>] = [:]
   private var promisePasswordReply: CheckedContinuation<String?, Never>?
 
+  /// Принимает отдельный сервис, чтобы сеанс и временные файлы принадлежали этой модели.
   init(service: ArchiveService = ArchiveService()) { self.service = service }
 
   var selectedPath: String? { selectedPaths.count == 1 ? selectedPaths.first : nil }
@@ -80,6 +81,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Удерживает панель до ответа и откладывает входящие запросы на время выбора.
   func chooseArchive() {
     guard canAct else { return }
     let panel = archivePanel()
@@ -97,6 +99,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// При занятости сохраняет запрос в очереди; смена архива требует решения о рабочих копиях.
   func open(_ url: URL, password suppliedPassword: String = "") {
     guard canAct else {
       incomingRequests.append(.open(url, suppliedPassword))
@@ -109,6 +112,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Открывает выбранный архив перед добавлением файлов; отмена не меняет текущий сеанс.
   func receiveFinderFiles(_ urls: [URL]) {
     guard !urls.isEmpty else { return }
     guard canAct else {
@@ -141,6 +145,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Для открытия нескольких архивов создаёт независимые экземпляры приложения.
   func receiveFinderRequest(_ request: FinderRequest) {
     guard canAct else {
       incomingRequests.append(.finder(request))
@@ -162,11 +167,13 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Добавляет объекты только в изменяемый сеанс после подтверждения возможной замены.
   func addDroppedFiles(_ urls: [URL], directory: String = "") {
     guard canModify, !urls.isEmpty, confirmAdding() else { return }
     start(.add(urls, directory))
   }
 
+  /// Фиксирует выделение до показа панели и извлекает без перезаписи существующих объектов.
   func extractSelected() {
     guard canAct, session != nil, !selectedPaths.isEmpty else { return }
     let paths = selectedPaths.sorted()
@@ -191,17 +198,20 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Копирует внутренние пути, а не адреса временных извлечённых файлов.
   func copySelectedPaths() {
     guard !selectedPaths.isEmpty else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(selectedPaths.sorted().joined(separator: "\n"), forType: .string)
   }
 
+  /// Удерживает сеанс от изменений, пока получатель перетаскивания не запросил файлы.
   func beginDragging(id: UUID, paths: [String]) {
     dragLeases[id] = Set(paths)
     updateExportState()
   }
 
+  /// Сохраняет успешное перетаскивание до запроса файлов или истечения ожидания.
   func endDragging(id: UUID, deposited: Bool) {
     if !deposited {
       dragLeases.removeValue(forKey: id)
@@ -216,6 +226,7 @@ final class ArchiveBrowserModel: ObservableObject {
     updateExportState()
   }
 
+  /// Выполняет обещания последовательно; завершает ответ AppKit при успехе, ошибке и отмене.
   func fulfillPromise(
     path: String, session snapshot: ArchiveSession, to destination: URL, dragID: UUID,
     completion: PromiseCompletion
@@ -262,15 +273,19 @@ final class ArchiveBrowserModel: ObservableObject {
     updateExportState()
   }
 
+  /// Разрешает новые действия только после освобождения всех задач и удержаний перетаскивания.
   private func updateExportState() {
+    let wasExporting = isExporting
     isExporting = !promiseTasks.isEmpty || !dragLeases.isEmpty
     if !isExporting {
       operationProgress = nil
       promiseTail = nil
       drainIncomingRequests()
+      if wasExporting { selectionChanged() }
     }
   }
 
+  /// Освобождает запрос пароля до ожидания отменённых задач, чтобы завершение не зависло.
   private func settleExports() async {
     for task in promiseTasks.values { task.cancel() }
     promisePasswordReply?.resume(returning: nil)
@@ -281,6 +296,7 @@ final class ArchiveBrowserModel: ObservableObject {
     updateExportState()
   }
 
+  /// Запоминает папку вставки до выбора файлов и повторно проверяет возможность записи.
   func chooseFilesToAdd() {
     guard canModify else { return }
     let panel = NSOpenPanel()
@@ -303,6 +319,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Не удаляет объекты с активными рабочими копиями, включая вложенные файлы.
   func deleteSelected() {
     guard canModify, !selectedPaths.isEmpty else { return }
     let alert = NSAlert()
@@ -323,28 +340,34 @@ final class ArchiveBrowserModel: ObservableObject {
     start(.delete(paths))
   }
 
+  /// Открывает только один обычный файл; временная копия живёт до закрытия сеанса.
   func openSelectedExternally() {
     guard canOpenSelection, let entry = selectedEntry else { return }
     start(.external(entry))
   }
 
+  /// Создаёт отдельную рабочую копию, которую пользователь затем явно сохраняет в архив.
   func editSelected() {
     guard canModify, canOpenSelection, let entry = selectedEntry else { return }
     start(.edit(entry))
   }
 
+  /// Записывает все зарегистрированные рабочие копии одной операцией сервиса.
   func saveWorkingCopies() {
     guard canModify, !activeEdits.isEmpty else { return }
     start(.save)
   }
 
+  /// Скрытие панели отменяет материализацию, а повторный показ использует текущее выделение.
   func togglePreview() {
     showsPreview.toggle()
     if showsPreview { selectionChanged() } else { cancelPreview() }
   }
 
+  /// Меняет токен даже при повторном запросе, чтобы SwiftUI снова перевёл фокус.
   func focusSearch() { searchFocusToken = UUID() }
 
+  /// Отменяет задачи и освобождает ожидание пароля; завершение выполняют сами задачи.
   func cancelCurrentOperation() {
     actionTask?.cancel()
     for task in promiseTasks.values { task.cancel() }
@@ -356,8 +379,10 @@ final class ArchiveBrowserModel: ObservableObject {
     cancelPreview()
   }
 
+  /// Использует общий путь отмены, чтобы также освободить предпросмотр и экспорт.
   func cancelLoading() { cancelCurrentOperation() }
 
+  /// Меняет поколение до отмены задачи, чтобы запоздалый результат не заменил предпросмотр.
   func cancelPreview() {
     previewGeneration += 1
     previewTask?.cancel()
@@ -367,15 +392,19 @@ final class ArchiveBrowserModel: ObservableObject {
     isMaterializing = false
   }
 
+  /// Освобождает ожидающее обещание файла и прекращает повтор ранее неудачной операции.
   func cancelPasswordPrompt() {
     promisePasswordReply?.resume(returning: nil)
     promisePasswordReply = nil
     isPasswordPromptPresented = false
     failedOperation = nil
+    errorMessage = nil
+    if session == nil { loadState = .idle }
     pendingFinderFiles = []
     drainIncomingRequests()
   }
 
+  /// Передаёт пароль ожидающему экспорту либо повторяет сохранённую операцию.
   func retryWithPassword() {
     if let reply = promisePasswordReply {
       promisePasswordReply = nil
@@ -393,6 +422,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Объединяет повторные команды закрытия в одну задачу с общим результатом.
   func closeArchive() {
     guard closingTask == nil else { return }
     closingTask = Task { [weak self] in
@@ -403,11 +433,13 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Учитывает уже начатое закрытие и позволяет пользователю отменить завершение приложения.
   func requestTermination() async -> Bool {
     if let closingTask, !(await closingTask.value) { return false }
     return await shutdown(terminate: true)
   }
 
+  /// Сохраняет тот же порядок очистки и подтверждений, что завершение приложения.
   func cleanup() async { _ = await requestTermination() }
 
   private var insertionDirectory: String {
@@ -416,6 +448,7 @@ final class ArchiveBrowserModel: ObservableObject {
     return path.split(separator: "/").dropLast().joined(separator: "/")
   }
 
+  /// Не ограничивает расширения: формат содержимого проверяет архивный сервис.
   private func archivePanel() -> NSOpenPanel {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = false
@@ -424,6 +457,7 @@ final class ArchiveBrowserModel: ObservableObject {
     return panel
   }
 
+  /// Требует явного согласия на замену совпадающих путей при добавлении.
   private func confirmAdding() -> Bool {
     let alert = NSAlert()
     alert.messageText = "Добавить файлы в архив?"
@@ -437,8 +471,10 @@ final class ArchiveBrowserModel: ObservableObject {
     { [weak self] value in await self?.receiveProgress(value) }
   }
 
+  /// Обновляет наблюдаемое состояние только на главном акторе.
   private func receiveProgress(_ value: ArchiveProgress) { operationProgress = value }
 
+  /// Сериализует пользовательские операции и после завершения продолжает очередь запросов.
   private func run(_ body: @escaping @MainActor () async -> Void) {
     guard !isBusy, !isClosing else { return }
     isBusy = true
@@ -453,6 +489,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Извлекает один запрос за раз; запущенное действие само продолжит обработку очереди.
   private func drainIncomingRequests() {
     guard canAct, !incomingRequests.isEmpty else { return }
     let request = incomingRequests.removeFirst()
@@ -463,11 +500,13 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Запускает операцию только когда панель, пароль и экспорт не удерживают сеанс.
   private func start(_ operation: Operation) {
     guard canAct else { return }
     run { await self.perform(operation) }
   }
 
+  /// Сохраняет остаток пакетной операции для повтора после запроса пароля.
   private func perform(_ operation: Operation) async {
     errorMessage = nil
     var retryOperation = operation
@@ -584,6 +623,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Удаляет устаревшие пути выделения после изменения содержимого архива.
   private func apply(_ refreshed: ArchiveSession) {
     session = refreshed
     let validPaths = Set(refreshed.entries.map(\.path)).union(allPaths(refreshed.roots))
@@ -591,6 +631,7 @@ final class ArchiveBrowserModel: ObservableObject {
     selectionChanged()
   }
 
+  /// Включает виртуальные папки, которых может не быть в списке записей архива.
   private func allPaths(_ nodes: [ArchiveNode]) -> Set<String> {
     nodes.reduce(into: Set<String>()) { result, node in
       result.insert(node.path)
@@ -598,16 +639,19 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Отменяет прежний предпросмотр до проверки нового выделения.
   private func selectionChanged() {
     cancelPreview()
-    guard showsPreview, !isBusy, !isClosing, !isPasswordPromptPresented, let entry = selectedEntry,
+    guard showsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
+      let entry = selectedEntry,
       !entry.isDirectory, !entry.isSymbolicLink
     else { return }
     startPreview(entry)
   }
 
+  /// Проверяет поколение и идентификатор сеанса перед публикацией извлечённого файла.
   private func startPreview(_ entry: ArchiveEntry) {
-    guard showsPreview, !isBusy, !isClosing, let current = session else { return }
+    guard showsPreview, !isBusy, !isExporting, !isClosing, let current = session else { return }
     cancelPreview()
     if failedOperation == nil {
       errorMessage = nil
@@ -640,6 +684,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Дожидается отменённых материализаций до изменения или удаления временных файлов.
   private func settlePreviews() async {
     cancelPreview()
     let tasks = retiredPreviewTasks
@@ -647,12 +692,14 @@ final class ArchiveBrowserModel: ObservableObject {
     for task in tasks { await task.value }
   }
 
+  /// Сохраняет ошибку запуска внешнего приложения в состоянии интерфейса.
   private func openInWorkspace(_ url: URL) {
     if !NSWorkspace.shared.open(url) {
       errorMessage = "Не удалось открыть файл во внешнем приложении."
     }
   }
 
+  /// Продолжает закрытие только после сохранения копий или явного отказа от сохранения.
   private func confirmWorkingCopies() async -> Bool {
     guard !activeEdits.isEmpty else { return true }
     let alert = NSAlert()
@@ -673,6 +720,7 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Не сбрасывает сеанс, если пользователь отменил закрытие или очистка завершилась ошибкой.
   private func closeCurrentSession() async -> Bool {
     await settlePreviews()
     guard !Task.isCancelled, await confirmWorkingCopies() else { return false }
@@ -696,6 +744,7 @@ final class ArchiveBrowserModel: ObservableObject {
     return true
   }
 
+  /// Сначала завершает экспорт и операции, затем спрашивает о рабочих копиях и удаляет сеанс.
   private func shutdown(terminate: Bool) async -> Bool {
     guard !isClosing else { return false }
     isClosing = true
@@ -739,11 +788,13 @@ final class ArchiveBrowserModel: ObservableObject {
 
 struct QuickLookPreview: NSViewRepresentable {
   let url: URL
+  /// Передаёт Quick Look только уже извлечённый локальный файл.
   func makeNSView(context: Context) -> QLPreviewView {
     let view = QLPreviewView(frame: .zero, style: .normal) ?? QLPreviewView()
     view.previewItem = url as NSURL
     return view
   }
+  /// Обновляет тот же Quick Look view при смене файла без создания второго экземпляра.
   func updateNSView(_ nsView: QLPreviewView, context: Context) {
     nsView.previewItem = url as NSURL
   }

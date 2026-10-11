@@ -9,7 +9,11 @@ fi
 scripts/build-icon.sh
 swift build -c "$configuration"
 bin_dir="$(swift build -c "$configuration" --show-bin-path)"
-app="build/PangoZip.app"
+# Новый комплект собирается отдельно, чтобы удалённые ресурсы не оставались от прошлой сборки.
+mkdir -p build
+build_staging="$(mktemp -d "$(pwd)/build/.PangoZip.build.XXXXXX")"
+trap 'rm -rf "$build_staging"' EXIT
+app="$build_staging/PangoZip.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin_dir/PangoZip" "$app/Contents/MacOS/PangoZip"
 cp Resources/Info.plist "$app/Contents/Info.plist"
@@ -18,7 +22,8 @@ cp Resources/Icons/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp -R Resources/Engine "$app/Contents/Resources/"
 chmod +x "$app/Contents/MacOS/PangoZip" "$app/Contents/Resources/Engine/7zz"
 extension="$app/Contents/PlugIns/PangoZipFinderSync.appex"
-mkdir -p "$extension/Contents/MacOS"
+mkdir -p "$extension/Contents/MacOS" "$extension/Contents/Resources"
+cp Resources/Icons/AppIcon.icns "$extension/Contents/Resources/AppIcon.icns"
 cp FinderExtension/Info.plist "$extension/Contents/Info.plist"
 xcrun swiftc -swift-version 6 -O -parse-as-library -application-extension   -target "$(uname -m)-apple-macos26.0" -module-name PangoZipFinderSync   -Xlinker -e -Xlinker _NSExtensionMain   Sources/PangoZipCore/FinderRequest.swift Sources/PangoZipCore/FinderInstallation.swift FinderExtension/FinderSync.swift   -o "$extension/Contents/MacOS/PangoZipFinderSync"
 signing_identity="${PANGOZIP_SIGNING_IDENTITY:--}"
@@ -39,4 +44,7 @@ codesign --force --sign "$signing_identity" "$app/Contents/Helpers/PangoZipUnins
 cp scripts/uninstall-app.sh "$app/Contents/SharedSupport/Uninstall PangoZip.command"
 chmod +x "$app/Contents/SharedSupport/Uninstall PangoZip.command"
 codesign --force --sign "$signing_identity" "$app"
-echo "Built: $(pwd)/$app"
+# Заменяем только готовую подписанную сборку; ошибка до этого шага сохраняет предыдущую.
+rm -rf build/PangoZip.app
+mv "$app" build/PangoZip.app
+echo "Built: $(pwd)/build/PangoZip.app"

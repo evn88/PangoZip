@@ -26,6 +26,7 @@ public struct FinderRequest: Codable, Sendable, Equatable {
   public static let boardPrefix = "app.pangozip.finder."
   public static let maximumBytes = 8 * 1024 * 1024
 
+  /// Принимает ограниченный список локальных URL и убирает повторы после нормализации.
   public init(action: FinderAction, urls: [URL]) throws {
     guard !urls.isEmpty, urls.count <= 10_000,
       urls.allSatisfy({
@@ -37,12 +38,14 @@ public struct FinderRequest: Codable, Sendable, Equatable {
     self.urls = urls.map(\.standardizedFileURL).filter { seen.insert($0).inserted }
   }
 
+  /// Ограничивает размер JSON и повторно проверяет URL, поскольку Codable обходит проверяющий init.
   public static func decode(_ data: Data) throws -> Self {
     guard data.count <= maximumBytes else { throw FinderRequestError.invalidSelection }
     let decoded = try JSONDecoder().decode(Self.self, from: data)
     return try Self(action: decoded.action, urls: decoded.urls)
   }
 
+  /// Принимает только адрес команды Finder с единственным UUID и возвращает имя pasteboard.
   public static func boardName(from url: URL) -> String? {
     guard ["pangozip", "pangozip-worker"].contains(url.scheme ?? ""), url.host == "finder",
       url.path.isEmpty,
@@ -63,6 +66,7 @@ public struct FinderSelection: Sendable {
   public let urls: [URL]
   public let archives: [URL]
 
+  /// Нормализует файловое выделение и отдельно определяет архивы для доступных действий.
   public init(urls: [URL]) {
     var seen: Set<URL> = []
     self.urls = urls.filter(\.isFileURL).map(\.standardizedFileURL).filter {
@@ -78,6 +82,7 @@ public struct FinderSelection: Sendable {
     ]
   }
 
+  /// Уточняет подпись команды по текущему выделению и предлагаемому имени результата.
   public func title(for action: FinderAction) -> String {
     switch action {
     case .open: return archives.count == 1 ? "Открыть архив" : "Открыть архивы"
@@ -91,6 +96,7 @@ public struct FinderSelection: Sendable {
     }
   }
 
+  /// Для операций чтения передаёт только архивы, для создания передаёт всё выделение.
   public func request(for action: FinderAction) throws -> FinderRequest {
     try FinderRequest(
       action: action,
@@ -98,6 +104,7 @@ public struct FinderSelection: Sendable {
     )
   }
 
+  /// Отклоняет папки и ссылки; расширение или UTType служат предварительным признаком архива.
   public static func isArchive(_ url: URL) -> Bool {
     guard url.isFileURL,
       let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
@@ -113,10 +120,14 @@ public struct FinderSelection: Sendable {
     return UTType(filenameExtension: ext)?.conforms(to: .archive) == true
   }
 
+  /// Убирает составное расширение сжатого TAR и выбирает имя будущей папки.
   public static func extractionName(for url: URL) -> String {
     let name = url.lastPathComponent
     for suffix in [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lzma"] {
-      if name.lowercased().hasSuffix(suffix) { return String(name.dropLast(suffix.count)) }
+      if name.lowercased().hasSuffix(suffix) {
+        let stem = String(name.dropLast(suffix.count))
+        return stem.isEmpty || stem == "." || stem == ".." ? "Archive" : stem
+      }
     }
     let stem = url.deletingPathExtension().lastPathComponent
     return stem.isEmpty || stem == "." || stem == ".." ? "Archive" : stem
@@ -141,6 +152,7 @@ public struct FinderSelection: Sendable {
     }
     let selectedNames = Set(urls.map { $0.lastPathComponent.lowercased() })
     let extensions = ["zip", "7z", "tar", "wim"]
+    /// Проверяет, совпадёт ли имя результата с одним из выбранных архивов без учёта регистра.
     func conflicts(_ name: String) -> Bool {
       extensions.contains { selectedNames.contains((name + "." + $0).lowercased()) }
     }

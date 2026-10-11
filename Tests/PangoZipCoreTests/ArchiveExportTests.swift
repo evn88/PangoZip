@@ -7,6 +7,7 @@ final class ArchiveExportTests: XCTestCase, @unchecked Sendable {
     .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
       "Resources/Engine/7zz")
 
+  /// Проверяет устранение повторного экспорта потомков и сохранение структуры каталогов.
   func testExportSelectionCollapsesDescendantsAndKeepsFolderStructure() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -33,6 +34,7 @@ final class ArchiveExportTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет точный путь назначения и защиту существующего файла от перезаписи.
   func testPromiseUsesExactDestinationAndNeverOverwritesExistingFile() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -54,9 +56,10 @@ final class ArchiveExportTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertFalse(
       try FileManager.default.contentsOfDirectory(atPath: target.deletingLastPathComponent().path)
-        .contains { $0.hasPrefix(".pangozip-") })
+        .contains { $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-") })
   }
 
+  /// Проверяет разрешение совпадающих имён и экспорт только выбранных путей.
   func testExportSelectionResolvesBasenameCollisionsAndDoesNotExportUnselectedFiles() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -75,6 +78,7 @@ final class ArchiveExportTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет, что отмена и ошибки лимитов не оставляют частичный результат.
   func testCancelledExpiredAndOversizedExportsLeaveNoPartialFile() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -103,6 +107,7 @@ final class ArchiveExportTests: XCTestCase, @unchecked Sendable {
         atPath: root.appendingPathComponent("output").path), [])
   }
 
+  /// Создаёт архив с вложенными путями для проверки выборочного экспорта.
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "pangozip-export-" + UUID().uuidString)

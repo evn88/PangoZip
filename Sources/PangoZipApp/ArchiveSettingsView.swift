@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor
 enum ArchivePreferences {
+  /// Переносит только отсутствующие параметры и отмечает миграцию в общем домене настроек.
   static func migrateLegacySettings() {
     guard let defaults = UserDefaults(suiteName: "app.pangozip.desktop"),
       !defaults.bool(forKey: "legacySettingsMigrated")

@@ -3,6 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class FinderInstallationTests: XCTestCase {
+  /// Проверяет отключение команды Finder при отсутствии приложения или рабочего процесса.
   func testMenuIsUnavailableAfterRemovalOrWhenWorkerIsMissing() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -14,6 +15,7 @@ final class FinderInstallationTests: XCTestCase {
     XCTAssertFalse(FinderInstallation.isAvailable(at: app))
   }
 
+  /// Проверяет запрет команды Finder для объектов в Корзине и ссылок на неё.
   func testMenuIsUnavailableInTrashIncludingSymlinkToTrash() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -26,6 +28,7 @@ final class FinderInstallationTests: XCTestCase {
     }
   }
 
+  /// Проверяет распознавание только нужного приложения и расширения внутри него.
   func testMenuRejectsUnrelatedBundleAndResolvesContainingApplication() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -35,6 +38,7 @@ final class FinderInstallationTests: XCTestCase {
     XCTAssertEqual(FinderInstallation.applicationURL(for: extensionURL).path, app.path)
   }
 
+  /// Создаёт минимальный bundle для проверки поиска и идентификации приложения.
   private func makeApp(in root: URL, identifier: String = "app.pangozip.desktop") throws -> URL {
     let manager = FileManager.default
     let app = root.appendingPathComponent("PangoZip.app")

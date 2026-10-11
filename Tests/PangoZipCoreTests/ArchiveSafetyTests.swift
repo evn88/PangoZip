@@ -3,6 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class ArchiveSafetyTests: XCTestCase {
+  /// Проверяет отказ для путей, которые могут вывести распаковку за безопасный каталог.
   func testRejectsTraversalAbsolutePathsAndAmbiguousNames() {
     for path in [
       "../escape", "/tmp/escape", "C:/escape", "safe/../escape", "a\\b", "a//b", "./file",
@@ -16,6 +17,7 @@ final class ArchiveSafetyTests: XCTestCase {
     XCTAssertThrowsError(try ArchiveListing.parse("Path = line\nbreak.txt\nSize = 1\n\n"))
   }
 
+  /// Проверяет, что пустые поля ссылки не превращают обычный TAR-файл в ссылку.
   func testTarRegularFileWithEmptyLinkMetadataIsPreviewable() throws {
     let entries = try ArchiveListing.parse(
       "Path = readme.txt\nFolder = -\nSize = 5\nMode = -rw-r--r--\nSymbolic Link = \nHard Link = \n\n"
@@ -23,6 +25,7 @@ final class ArchiveSafetyTests: XCTestCase {
     XCTAssertFalse(try XCTUnwrap(entries.first).isSymbolicLink)
   }
 
+  /// Проверяет распознавание символических ссылок без перехода по ним.
   func testRecognizesSymbolicLinksWithoutFollowingThem() throws {
     let entries = try ArchiveListing.parse(
       "Path = link\nSize = 6\nAttributes = A lrwxrwxrwx\nSymbolic Link = target\n\n")

@@ -9,6 +9,7 @@ struct FileFingerprint: Equatable, Sendable {
   let changedSeconds: Int
   let changedNanoseconds: Int
 
+  /// Снимает метаданные файла, включая inode и ctime, для обнаружения замены или правки.
   init(_ url: URL) throws {
     var status = stat()
     guard lstat(url.path, &status) == 0 else { throw CocoaError(.fileReadUnknown) }
@@ -23,6 +24,7 @@ struct FileFingerprint: Equatable, Sendable {
 }
 
 enum StagedFiles {
+  /// Копирует вне исполнителя actor; отмена передаётся копированию и ожидает его завершения.
   static func copy(_ source: URL, to destination: URL) async throws {
     let task = Task.detached(priority: .userInitiated) { try copyBlocking(source, to: destination) }
     try await withTaskCancellationHandler {
@@ -32,6 +34,7 @@ enum StagedFiles {
     }
   }
 
+  /// Не следует исходным ссылкам; проверяет стабильность обычных файлов и сохраняет их атрибуты.
   private static func copyBlocking(_ source: URL, to destination: URL) throws {
     try Task.checkCancellation()
     let manager = FileManager.default

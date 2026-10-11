@@ -7,6 +7,7 @@ final class TemporaryWorkspace {
   private let base: URL
   private var lockFD: Int32 = -1
 
+  /// Выбирает уникальный корень; создание папок и блокировки откладывается до первой операции.
   init(
     base: URL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "app.zipevra.workspaces")
@@ -15,10 +16,12 @@ final class TemporaryWorkspace {
     root = base.appendingPathComponent("workspace-" + UUID().uuidString)
   }
 
+  /// Освобождает блокировку владельца, оставляя данные для восстановления при следующем запуске.
   deinit {
     if lockFD >= 0 { Darwin.close(lockFD) }
   }
 
+  /// Удаляет доступные осиротевшие рабочие папки и удерживает блокировку текущего владельца.
   func ensure() throws {
     guard lockFD < 0 else { return }
     let manager = FileManager.default
@@ -47,6 +50,7 @@ final class TemporaryWorkspace {
     }
   }
 
+  /// Создаёт приватную папку сеанса внутри принадлежащей этому сервису рабочей области.
   func sessionDirectory(_ id: UUID) throws -> URL {
     try ensure()
     let directory = root.appendingPathComponent(id.uuidString)
@@ -55,6 +59,7 @@ final class TemporaryWorkspace {
     return directory
   }
 
+  /// Удаляет данные одного сеанса; повторный вызов после удаления безопасен.
   func removeSession(_ id: UUID) throws {
     let url = root.appendingPathComponent(id.uuidString)
     if FileManager.default.fileExists(atPath: url.path) {
@@ -62,6 +67,7 @@ final class TemporaryWorkspace {
     }
   }
 
+  /// Создаёт приватную папку рядом с архивом для замены на том же томе и записывает журнал.
   func transactionDirectory(nextTo archive: URL) throws -> URL {
     try ensure()
     let id = UUID().uuidString
@@ -78,6 +84,7 @@ final class TemporaryWorkspace {
     return directory
   }
 
+  /// Удаляет рабочие данные до журнала, чтобы не потерять возможность повторной очистки.
   func removeTransaction(_ directory: URL) throws {
     if FileManager.default.fileExists(atPath: directory.path) {
       try FileManager.default.removeItem(at: directory)
@@ -89,6 +96,7 @@ final class TemporaryWorkspace {
     }
   }
 
+  /// Удаляет папки из согласованных журналов; ошибка удаления сохраняет область для повторной попытки.
   private static func recoverTransactions(in root: URL) -> Bool {
     let manager = FileManager.default
     let journals =
@@ -112,6 +120,7 @@ final class TemporaryWorkspace {
     return success
   }
 
+  /// Очищает известные транзакции и освобождает блокировку; вызывающий отвечает за текущие операции.
   func cleanup() {
     if Self.recoverTransactions(in: root) { try? FileManager.default.removeItem(at: root) }
     if lockFD >= 0 {

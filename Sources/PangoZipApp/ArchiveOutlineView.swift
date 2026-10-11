@@ -10,10 +10,13 @@ struct ArchiveOutlineView: NSViewRepresentable {
     get { model.selectedPaths }
     nonmutating set { model.selectedPaths = newValue }
   }
+  /// Передаёт действие модели, которая проверяет тип выделенной записи и доступность сеанса.
   func openSelection() { model.openSelectedExternally() }
 
+  /// Хранит идентичность узлов и состояние AppKit между обновлениями SwiftUI.
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+  /// Создаёт таблицу с отдельными правилами входящего и исходящего перетаскивания.
   func makeNSView(context: Context) -> NSScrollView {
     let outline = InteractiveOutlineView()
     outline.style = .inset
@@ -55,6 +58,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     return scroll
   }
 
+  /// Синхронизирует существующую таблицу через координатор, сохраняя её состояние.
   func updateNSView(_ nsView: NSScrollView, context: Context) { context.coordinator.update(self) }
 
   @MainActor
@@ -62,6 +66,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private final class Item {
       let node: ArchiveNode
       let children: [Item]
+      /// Создаёт устойчивые объекты для AppKit из неизменяемого дерева архива.
       init(_ node: ArchiveNode) {
         self.node = node
         children = (node.children ?? []).map(Item.init)
@@ -85,8 +90,10 @@ struct ArchiveOutlineView: NSViewRepresentable {
       return formatter
     }()
 
+    /// Сохраняет представление, которое будет заменяться при обновлениях SwiftUI.
     init(_ parent: ArchiveOutlineView) { self.parent = parent }
 
+    /// Восстанавливает раскрытие и выделение без обратной записи промежуточных событий AppKit.
     func update(_ newParent: ArchiveOutlineView) {
       parent = newParent
       guard let outline else { return }
@@ -98,6 +105,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         previousRoots = parent.roots
         items = parent.roots.map(Item.init)
         byPath.removeAll()
+        /// Индексирует также скрытые дочерние узлы для восстановления выделения по пути.
         func index(_ items: [Item]) {
           for item in items {
             byPath[item.node.path] = item
@@ -106,6 +114,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         }
         index(items)
         outline.reloadData()
+        /// Раскрывает только ранее сохранённые пути и затем обходит их дочерние узлы.
         func restore(_ items: [Item]) {
           for item in items where expandedPaths.contains(item.node.path) {
             outline.expandItem(item)
@@ -125,15 +134,19 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
     }
 
+    /// Для корня использует общее дерево, для строки — её непосредственных потомков.
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
       (item as? Item)?.children.count ?? items.count
     }
+    /// Возвращает объект из того же дерева, по которому AppKit запросил число строк.
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
       ((item as? Item)?.children ?? items)[index]
     }
+    /// Виртуальная папка раскрывается только при наличии видимых дочерних записей.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
       !(item as! Item).children.isEmpty
     }
+    /// Не переносит в модель промежуточное выделение при программном обновлении таблицы.
     func outlineViewSelectionDidChange(_ notification: Notification) {
       guard !updating, let outline else { return }
       parent.selectedPaths = Set(
@@ -141,14 +154,17 @@ struct ArchiveOutlineView: NSViewRepresentable {
           (outline.item(atRow: $0) as? Item)?.node.path
         })
     }
+    /// Сохраняет путь вместо объекта строки, чтобы пережить замену дерева.
     func outlineViewItemDidExpand(_ notification: Notification) {
       guard !updating, let item = notification.userInfo?["NSObject"] as? Item else { return }
       expandedPaths.insert(item.node.path)
     }
+    /// Удаляет только путь свёрнутой папки, сохраняя раскрытие вложенных папок на будущее.
     func outlineViewItemDidCollapse(_ notification: Notification) {
       guard !updating, let item = notification.userInfo?["NSObject"] as? Item else { return }
       expandedPaths.remove(item.node.path)
     }
+    /// Для папки меняет раскрытие, для файла использует текущее выделение модели.
     @objc func doubleClick(_ sender: NSOutlineView) {
       guard sender.clickedRow >= 0, let item = sender.item(atRow: sender.clickedRow) as? Item else {
         return
@@ -163,6 +179,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         parent.openSelection()
       }
     }
+    /// Повторно использует ячейки и подставляет прочерк для отсутствующих метаданных.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any)
       -> NSView?
     {
@@ -200,6 +217,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
       return cell
     }
+    /// Правый клик согласует выделение с меню до проверки доступности команд.
     func contextMenu(row: Int) -> NSMenu? {
       guard let outline else { return nil }
       if row >= 0 && !outline.selectedRowIndexes.contains(row) {
@@ -210,6 +228,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       let model = parent.model
       let menu = NSMenu()
       menu.autoenablesItems = false
+      /// Фиксирует доступность команды при построении меню и направляет её координатору.
       func add(
         _ title: String, _ action: Selector, enabled: Bool, key: String = "",
         modifiers: NSEvent.ModifierFlags = .command
@@ -251,13 +270,21 @@ struct ArchiveOutlineView: NSViewRepresentable {
       return menu
     }
 
+    /// Модель повторно проверяет доступность файла при выполнении команды меню.
     @objc private func openFile() { parent.model.openSelectedExternally() }
+    /// Оставляет проверку изменяемости архива модели, даже если меню уже открыто.
     @objc private func editFile() { parent.model.editSelected() }
+    /// Передаёт выделение модели, которая зафиксирует пути до показа панели назначения.
     @objc private func extractFiles() { parent.model.extractSelected() }
+    /// Копирует внутренние пути без предварительного извлечения объектов.
     @objc private func copyPaths() { parent.model.copySelectedPaths() }
+    /// Использует текущую папку выделения, которую модель зафиксирует перед выбором файлов.
     @objc private func addFiles() { parent.model.chooseFilesToAdd() }
+    /// Сохранение рабочих копий требует отдельной команды пользователя во внешнем редакторе.
     @objc private func saveFiles() { parent.model.saveWorkingCopies() }
+    /// Модель проверяет рабочие копии до удаления выделенных путей.
     @objc private func deleteFiles() { parent.model.deleteSelected() }
+    /// Находит папку по пути, чтобы не использовать объект прежнего дерева.
     @objc private func toggleFolder() {
       guard let outline, let path = parent.model.selectedPath, let item = byPath[path] else {
         return
@@ -269,6 +296,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
     }
 
+    /// Обещает только верхние пути выделения, исключая повторное извлечение вложенных объектов.
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any)
       -> NSPasteboardWriting?
     {
@@ -290,6 +318,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         isDirectory: item.node.entry?.isDirectory == true || item.node.entry == nil)
     }
 
+    /// Удерживает сеанс после начала перетаскивания, когда AppKit уже собрал обещания файлов.
     func outlineView(
       _ outlineView: NSOutlineView, draggingSession session: NSDraggingSession,
       willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]
@@ -299,6 +328,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         id: id, paths: draggedItems.compactMap { ($0 as? Item)?.node.path })
     }
 
+    /// Передаёт результат модели и сбрасывает идентификатор для следующего перетаскивания.
     func outlineView(
       _ outlineView: NSOutlineView, draggingSession session: NSDraggingSession,
       endedAt screenPoint: NSPoint, operation: NSDragOperation
@@ -309,6 +339,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       dragSelection.removeAll()
     }
 
+    /// Разрешает локальные файлы из другого источника и направляет вставку в ближайшую папку.
     func outlineView(
       _ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
       proposedChildIndex index: Int
@@ -326,6 +357,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       return .copy
     }
 
+    /// Откладывает подтверждение добавления до выхода из обратного вызова AppKit.
     func outlineView(
       _ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?,
       childIndex index: Int
@@ -341,6 +373,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       return true
     }
 
+    /// При попадании на файл выбирает его родителя; отсутствие папки означает корень архива.
     private func dropFolder(_ item: Any?) -> Item? {
       guard let item = item as? Item else { return nil }
       if item.node.entry?.isDirectory == true || item.node.entry == nil { return item }
@@ -348,6 +381,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       return byPath[parentPath]
     }
 
+    /// Оставляет текст штатному NSTextField, чтобы сохранить выделение и доступность AppKit.
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
       let cell = NSTableCellView()
       cell.identifier = id
@@ -387,6 +421,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
 @MainActor
 final class InteractiveOutlineView: NSOutlineView {
   var makeContextMenu: ((Int) -> NSMenu?)?
+  /// Строит меню для строки под курсором, включая свободное пространство таблицы.
   override func menu(for event: NSEvent) -> NSMenu? {
     makeContextMenu?(row(at: convert(event.locationInWindow, from: nil)))
   }

@@ -5,6 +5,7 @@ struct EngineProcess: Sendable {
   let executableURL: URL
   let timeout: TimeInterval
 
+  /// Передаёт прогресс асинхронно; отмена дожидается завершения процесса перед возвратом ошибки.
   func run(
     arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL? = nil,
     progress: (@Sendable (Double) async -> Void)? = nil
@@ -35,6 +36,7 @@ struct EngineProcess: Sendable {
     }
   }
 
+  /// Запускает движок без оболочки и ограничивает время, stdout и stderr на одном потоке.
   private func runBlocking(
     arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL?,
     progress: (@Sendable (Double) -> Void)?
@@ -111,11 +113,13 @@ struct EngineProcess: Sendable {
     if let progress { progress(1) }
   }
 
+  /// Читает размер файла для контроля объёма вывода; отсутствующий размер считает нулевым.
   private func fileSize(_ url: URL) throws -> UInt64 {
     (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value
       ?? 0
   }
 
+  /// Даёт процессу завершиться после SIGTERM, затем принудительно останавливает и ожидает выход.
   private func stop(_ process: Process) {
     guard process.isRunning else { return }
     process.terminate()

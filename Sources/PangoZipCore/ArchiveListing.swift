@@ -1,6 +1,7 @@
 import Foundation
 
 public enum ArchiveListing {
+  /// Разбирает записи технического списка 7zz и отклоняет неоднозначные поля, пути и дубликаты.
   public static func parse(_ output: String) throws -> [ArchiveEntry] {
     var entries: [ArchiveEntry] = []
     var fields: [String: String] = [:]
@@ -10,6 +11,7 @@ public enum ArchiveListing {
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
     formatter.timeZone = .current
 
+    /// Завершает накопленную запись только после проверки обязательных полей и безопасного пути.
     func appendEntry() throws {
       guard !fields.isEmpty else { return }
       guard let rawPath = fields["Path"], let rawSize = fields["Size"],
@@ -56,16 +58,19 @@ public enum ArchiveListing {
     return entries
   }
 
+  /// Отсутствующее и пустое поле означают неизвестные метаданные.
   private static func nonempty(_ text: String?) -> String? {
     guard let text, !text.isEmpty else { return nil }
     return text
   }
 
+  /// Читает секунды в текущем часовом поясе, отбрасывая дополнительную точность движка.
   private static func date(_ text: String?, formatter: DateFormatter) -> Date? {
     guard let text, text.count >= 19 else { return nil }
     return formatter.date(from: String(text.prefix(19)))
   }
 
+  /// Разрешает только относительный путь без пустых компонентов, переходов и управляющих символов.
   public static func validatePath(_ path: String) throws {
     let components = path.split(separator: "/", omittingEmptySubsequences: false)
     guard !path.isEmpty, !path.contains("\\"), !path.contains(":"), components.count <= 128,
@@ -76,6 +81,7 @@ public enum ArchiveListing {
     }
   }
 
+  /// Дополняет список отсутствующими папками и отклоняет совмещение файла с папкой.
   public static func tree(from entries: [ArchiveEntry]) throws -> [ArchiveNode] {
     var records: [String: ArchiveEntry] = [:]
     var children: [String: Set<String>] = [:]
@@ -93,6 +99,7 @@ public enum ArchiveListing {
         parent = path
       }
     }
+    /// Собирает потомков рекурсивно, располагая папки перед файлами для отображения в интерфейсе.
     func nodes(under parent: String) -> [ArchiveNode] {
       (children[parent] ?? []).compactMap { path -> ArchiveNode? in
         guard let entry = records[path] else { return nil }

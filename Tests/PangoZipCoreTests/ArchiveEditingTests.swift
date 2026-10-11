@@ -7,6 +7,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
       "Resources/Engine/7zz")
 
+  /// Проверяет сохранение изменений и удаление только выбранного каталога.
   func testAddsNestedFileDeletesFolderAndSavesEditedContents() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -39,10 +40,11 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertEqual(
       try FileManager.default.contentsOfDirectory(atPath: root.path).filter {
-        $0.hasPrefix(".pangozip-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       }, [])
   }
 
+  /// Проверяет очистку временных копий при закрытии архива.
   func testClosingArchiveRemovesPreviewAndEditingCopies() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -59,6 +61,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет изменение поддерживаемых форматов с сохранением остальных записей.
   func testMutates7zAndTarWithoutLosingUnrelatedFiles() async throws {
     for format in ["7z", "tar"] {
       let root = try fixture()
@@ -84,6 +87,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     }
   }
 
+  /// Проверяет сохранение шифрования при добавлении, сохранении и удалении.
   func testEncryptedZipAnd7zKeepEncryptionAcrossAddSaveAndDelete() async throws {
     for format in ["zip", "7z"] {
       let root = try fixture()
@@ -120,6 +124,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     }
   }
 
+  /// Проверяет атомарность изменений при ошибке, отмене и конфликте исходного файла.
   func testFailureCancellationAndConflictDoNotChangeOriginalArchive() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -152,10 +157,11 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertTrue(
       try FileManager.default.contentsOfDirectory(atPath: root.path).filter {
-        $0.hasPrefix(".pangozip-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       }.isEmpty)
   }
 
+  /// Проверяет режим чтения неподдерживаемого формата и буквальное совпадение имени.
   func testUnsupportedFormatIsReadOnlyAndLiteralWildcardDeleteIsExact() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -177,6 +183,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет изоляцию временных данных сессий и защиту активного редактирования.
   func testClosingOneSessionDoesNotRemoveAnotherAndActiveEditsPreventDeletion() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -196,6 +203,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     XCTAssertFalse(FileManager.default.fileExists(atPath: secondFile.path))
   }
 
+  /// Проверяет наследование политики шифрования пустого архива.
   func testEmptyEncryptedZipKeepsItsEncryptionPolicyWhenNewFilesAreAdded() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -216,6 +224,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет ожидаемый отказ операции редактирования архива.
   private func expect(_ expected: ArchiveError, operation: () async throws -> Void) async {
     do {
       try await operation()
@@ -223,6 +232,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     } catch { XCTAssertEqual(error as? ArchiveError, expected) }
   }
 
+  /// Создаёт временные исходники для транзакционных сценариев редактирования.
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(
@@ -232,6 +242,7 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
     return root
   }
 
+  /// Запускает 7zz для подготовки фикстуры и проверяет код завершения.
   private func run(_ arguments: [String], in directory: URL) throws {
     let process = Process()
     process.executableURL = engine

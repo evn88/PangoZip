@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 
+/// Выполняет системную регистрацию без shell и отклоняет обязательные неуспешные команды.
 func run(_ executable: String, _ arguments: [String], required: Bool = true) throws {
   let process = Process()
   process.executableURL = URL(fileURLWithPath: executable)
@@ -14,6 +15,7 @@ func run(_ executable: String, _ arguments: [String], required: Bool = true) thr
   }
 }
 
+/// Завершает удаление до изменения приложения, оставляя диагностическое сообщение в stderr.
 func refuse(_ message: String) -> Never {
   FileHandle.standardError.write(Data((message + "\n").utf8))
   exit(1)

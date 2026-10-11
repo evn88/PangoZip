@@ -1,11 +1,13 @@
 import Foundation
 
 public enum FinderInstallation {
+  /// Находит родительское приложение при стандартном размещении расширения в Contents/PlugIns.
   public static func applicationURL(for extensionURL: URL) -> URL {
     extensionURL.deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent()
   }
 
+  /// Проверяет приложение вне корзины и наличие исполняемых файлов перед показом команд Finder.
   public static func isAvailable(at applicationURL: URL) -> Bool {
     let app = applicationURL.resolvingSymlinksInPath().standardizedFileURL
     // Sandbox разрешает расширению читать метаданные родительского комплекта,
@@ -24,6 +26,7 @@ public enum FinderInstallation {
           "Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip"))
   }
 
+  /// Читает идентификатор непосредственно из Info.plist; недоступный или неверный файл даёт nil.
   private static func identifier(at app: URL) -> String? {
     guard let data = try? Data(contentsOf: app.appendingPathComponent("Contents/Info.plist")),
       let info = try? PropertyListSerialization.propertyList(from: data, format: nil)
@@ -32,6 +35,7 @@ public enum FinderInstallation {
     return info["CFBundleIdentifier"] as? String
   }
 
+  /// Требует обычный файл с правом исполнения; сам запуск выполняет NSWorkspace.
   private static func executableExists(at url: URL) -> Bool {
     // Проверяем наличие исполняемого файла по метаданным; помощник запускается через NSWorkspace.
     guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),

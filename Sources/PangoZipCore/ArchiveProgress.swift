@@ -10,6 +10,7 @@ public struct ArchiveProgress: Sendable, Equatable {
   public let phase: Phase
   public let fraction: Double?
 
+  /// Ограничивает известную долю диапазоном 0…1; нечисловое значение означает неизвестный прогресс.
   public init(phase: Phase, fraction: Double? = nil) {
     self.phase = phase
     self.fraction = fraction.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil }
@@ -22,6 +23,7 @@ struct EngineProgressParser {
   private var ignoresRecord = false
   private var lastPercent = -1
 
+  /// Сохраняет незавершённые проценты между чтениями и пропускает повторные или убывающие значения.
   mutating func consume(_ data: Data) -> [Double] {
     var values: [Double] = []
     for byte in data {
@@ -48,6 +50,7 @@ struct EngineProgressParser {
   }
 }
 
+/// Переводит долю одной команды в диапазон всей операции; без обработчика отключает передачу.
 func engineProgress(
   _ handler: ArchiveProgressHandler?, phase: ArchiveProgress.Phase, from start: Double,
   to end: Double

@@ -3,6 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class ArchiveListingTests: XCTestCase {
+  /// Проверяет разбор Unicode-имён и восстановление каталогов, отсутствующих в листинге.
   func testReadsUnicodeNamesAndImplicitFoldersFromTechnicalListing() throws {
     let entries = try ArchiveListing.parse(
       """
@@ -21,6 +22,7 @@ final class ArchiveListingTests: XCTestCase {
     XCTAssertEqual(entries.first?.size, 26)
     XCTAssertTrue(entries.last?.isDirectory == true)
   }
+  /// Проверяет сохранение имеющихся метаданных и отсутствие выдуманных значений.
   func testArchiveMetadataIsReadWithoutInventingMissingValues() throws {
     let entry = try XCTUnwrap(
       ArchiveListing.parse(

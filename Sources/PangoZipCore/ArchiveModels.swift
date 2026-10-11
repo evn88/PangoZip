@@ -15,6 +15,7 @@ public struct ArchiveEntry: Identifiable, Hashable, Sendable {
   public let checksum: String?
   public let method: String?
 
+  /// Сохраняет метаданные записи; безопасность пути проверяет парсер перед использованием.
   public init(
     path: String, size: UInt64 = 0, isDirectory: Bool = false, isSymbolicLink: Bool = false,
     createdAt: Date? = nil, modifiedAt: Date? = nil, permissions: String? = nil,
@@ -43,6 +44,7 @@ public struct ArchiveNode: Identifiable, Hashable, Sendable {
   public let entry: ArchiveEntry?
   public let children: [ArchiveNode]?
 
+  /// Допускает синтетическую папку без исходной записи; nil children обозначает файл.
   public init(path: String, name: String, entry: ArchiveEntry?, children: [ArchiveNode]?) {
     self.path = path
     self.name = name
@@ -59,6 +61,7 @@ public struct ArchiveSession: Sendable {
   public let format: String
   public let canModify: Bool
 
+  /// Создаёт снимок сеанса; право выполнять операции подтверждает состояние ArchiveService.
   public init(
     id: UUID = UUID(), url: URL, entries: [ArchiveEntry], roots: [ArchiveNode],
     format: String = "unknown", canModify: Bool = false
@@ -78,6 +81,7 @@ public struct ArchiveEdit: Identifiable, Hashable, Sendable {
   public let entry: ArchiveEntry
   public let fileURL: URL
 
+  /// Связывает рабочую копию с записью и сеансом; сервис проверяет её перед сохранением.
   public init(id: UUID = UUID(), sessionID: UUID, entry: ArchiveEntry, fileURL: URL) {
     self.id = id
     self.sessionID = sessionID

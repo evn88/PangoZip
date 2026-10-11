@@ -242,6 +242,7 @@ struct ArchiveBrowserView: View {
     .padding(24).frame(width: 400)
   }
 
+  /// Принимает один архив только без открытого сеанса; загрузка URL завершается асинхронно.
   private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
     guard model.canAct, model.session == nil, providers.count == 1, let provider = providers.first
     else { return false }

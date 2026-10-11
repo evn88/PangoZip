@@ -9,6 +9,7 @@ struct PangoZipApp: App {
   @StateObject private var model = ArchiveBrowserModel()
   @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
 
+  /// Переносит прежние настройки до создания интерфейса и запуска операций Finder.
   init() {
     ArchivePreferences.migrateLegacySettings()
   }
@@ -44,6 +45,7 @@ struct PangoZipApp: App {
     Settings { ArchiveSettingsView() }
   }
 
+  /// Освобождает ⌘W для закрытия архива, оставляя закрытие окна на ⌘⇧W.
   private static func adjustCloseShortcut(_ menu: NSMenu?) {
     for item in menu?.items ?? [] {
       if item.action == #selector(NSWindow.performClose(_:)), item.keyEquivalent == "w" {
@@ -60,6 +62,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
   var prepareTermination: (() async -> Bool)?
   private var terminationPending = false
 
+  /// Регистрирует Services только у основного приложения, чтобы worker не перехватывал команды.
   func applicationDidFinishLaunching(_ notification: Notification) {
     if ApplicationMode.isFinderWorker {
       NSApp.setActivationPolicy(.accessory)
@@ -69,12 +72,15 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// Позволяет доставлять URL до готовности SwiftUI: сервис сохраняет их в очереди.
   func application(_ application: NSApplication, open urls: [URL]) {
     services.deliverOpenURLs(urls)
   }
 
+  /// Завершает приложение после последнего окна, чтобы освободить временные файлы сеанса.
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+  /// Откладывает системное завершение до асинхронной очистки и ответа о рабочих копиях.
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     if ApplicationMode.isFinderWorker && ApplicationMode.workerFinished { return .terminateNow }
     guard let prepareTermination else { return .terminateNow }
@@ -93,18 +99,21 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
 struct WindowLifecycleBridge: NSViewRepresentable {
   let prepareClose: @MainActor () async -> Bool
 
+  /// Создаёт невидимый мост, который подключит перехват закрытия к настоящему окну.
   func makeNSView(context: Context) -> HostView {
     let view = HostView()
     view.prepareClose = prepareClose
     return view
   }
 
+  /// Передаёт актуальную функцию очистки уже установленному мосту окна.
   func updateNSView(_ nsView: HostView, context: Context) { nsView.prepareClose = prepareClose }
 
   @MainActor
   final class HostView: NSView {
     var prepareClose: (@MainActor () async -> Bool)?
     private var proxy: CloseDelegate?
+    /// Устанавливает делегата один раз и сохраняет прежний делегат для событий SwiftUI.
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       guard let window, proxy == nil else { return }
@@ -133,11 +142,13 @@ struct WindowLifecycleBridge: NSViewRepresentable {
     private var pending = false
     private var allowed = false
 
+    /// Удерживает прежний делегат и асинхронную проверку закрытия до уничтожения окна.
     init(previous: NSWindowDelegate?, prepare: @escaping @MainActor () async -> Bool) {
       self.previous = previous
       self.prepare = prepare
     }
 
+    /// Отклоняет первое закрытие; повторяет его только после успешной асинхронной подготовки.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
       if allowed { return true }
       guard !pending else { return false }
@@ -150,12 +161,14 @@ struct WindowLifecycleBridge: NSViewRepresentable {
       return false
     }
 
+    /// Сохраняет объявленные прежним делегатом необязательные методы протокола Objective-C.
     override nonisolated func responds(to selector: Selector!) -> Bool {
       MainActor.assumeIsolated {
         super.responds(to: selector) || previous?.responds(to: selector) == true
       }
     }
 
+    /// Передаёт неперехваченные события прежнему делегату SwiftUI.
     override nonisolated func forwardingTarget(for selector: Selector!) -> Any? {
       previous
     }

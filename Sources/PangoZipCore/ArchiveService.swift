@@ -10,6 +10,7 @@ public actor ArchiveService {
   private struct EncryptionPolicy: Sendable {
     let enabled: Bool
     let zipMethod: String
+    /// Сохраняет признак шифрования и метод ZIP, чтобы изменение не ослабляло защиту архива.
     init(format: String, entries: [ArchiveEntry], password: String) {
       enabled = entries.contains(where: \.isEncrypted) || (format == "7z" && !password.isEmpty)
       let methods = entries.filter(\.isEncrypted).compactMap(\.method).joined(separator: " ")
@@ -45,6 +46,7 @@ public actor ArchiveService {
   private let timeout: TimeInterval
   private var generation = 0
 
+  /// Задаёт движок и пределы предпросмотра; рабочая область создаётся при первой операции.
   public init(
     executableURL: URL? = nil, previewLimit: UInt64 = 200 * 1024 * 1024, timeout: TimeInterval = 120
   ) {
@@ -53,6 +55,7 @@ public actor ArchiveService {
     self.timeout = timeout
   }
 
+  /// Создаёт сеанс только для обычного файла, неизменившегося за время чтения списка.
   public func open(_ url: URL, password: String = "") async throws -> ArchiveSession {
     guard url.isFileURL else { throw ArchiveError.invalidArchive }
     let fingerprint = try FileFingerprint(url)
@@ -78,6 +81,7 @@ public actor ArchiveService {
     }
   }
 
+  /// Извлекает только выбранный обычный файл в приватную папку, проверяя размер и quarantine.
   public func materialize(_ entry: ArchiveEntry, in session: ArchiveSession, password: String = "")
     async throws -> URL
   {
@@ -119,6 +123,7 @@ public actor ArchiveService {
     }
   }
 
+  /// Возвращает существующую правку или создаёт отдельную рабочую копию для внешнего редактора.
   public func beginEditing(_ entry: ArchiveEntry, in session: ArchiveSession, password: String = "")
     async throws -> ArchiveEdit
   {
@@ -135,6 +140,8 @@ public actor ArchiveService {
     do {
       try await StagedFiles.copy(source, to: destination)
       let latest = try checkedState(session)
+      // mutate сохраняет снимок состояния; новую правку нельзя регистрировать до его завершения.
+      guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
       guard latest.entries[entry.path] == entry else { throw ArchiveError.archiveChanged }
       if let existing = latest.edits.values.first(where: { $0.entry.path == entry.path }) {
         try? FileManager.default.removeItem(at: directory)
@@ -149,36 +156,42 @@ public actor ArchiveService {
     }
   }
 
+  /// Добавляет подготовленные копии в выбранную папку через проверяемую транзакцию.
   public func add(
     _ urls: [URL], to session: ArchiveSession, directory: String = "", password: String = ""
   ) async throws -> ArchiveSession {
     try await mutate(.add(urls, directory), session: session, password: password)
   }
 
+  /// Удаляет выбранные записи вместе с потомками; затронутые активные правки блокируют операцию.
   public func delete(_ paths: [String], from session: ArchiveSession, password: String = "")
     async throws -> ArchiveSession
   {
     try await mutate(.delete(paths), session: session, password: password)
   }
 
+  /// Сохраняет только зарегистрированные рабочие копии, которые не изменились за время транзакции.
   public func save(_ edits: [ArchiveEdit], in session: ArchiveSession, password: String = "")
     async throws -> ArchiveSession
   {
     try await mutate(.save(edits), session: session, password: password)
   }
 
+  /// Удаляет данные сеанса, если для него не зарегистрирована блокирующая операция.
   public func close(_ session: ArchiveSession) throws {
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
     try workspace.removeSession(session.id)
     sessions.removeValue(forKey: session.id)
   }
 
+  /// Завершает все сеансы и меняет поколение, чтобы незавершённое открытие не восстановило их.
   public func cleanup() {
     generation += 1
     sessions.removeAll()
     workspace.cleanup()
   }
 
+  /// Меняет копию на том же томе и проверяет результат перед согласованной заменой оригинала.
   private func mutate(_ mutation: Mutation, session: ArchiveSession, password: String) async throws
     -> ArchiveSession
   {
@@ -340,6 +353,7 @@ public actor ArchiveService {
     return try snapshot(id: session.id, state: updated)
   }
 
+  /// Проверяет целостность движком и удаляет временный журнал независимо от результата.
   private func verify(
     _ url: URL, passwordArguments: [String], in directory: URL,
     progress: (@Sendable (Double) async -> Void)? = nil
@@ -352,6 +366,7 @@ public actor ArchiveService {
       limit: 32 * 1024 * 1024, progress: progress)
   }
 
+  /// Отделяет заголовок 7zz от записей и разрешает изменение только поддерживаемых простых архивов.
   private func readArchive(_ url: URL, password: String, in directory: URL) async throws
     -> Descriptor
   {
@@ -381,6 +396,7 @@ public actor ArchiveService {
       entries: entries)
   }
 
+  /// Строит независимый снимок интерфейса из текущего списка записей.
   private func snapshot(id: UUID, state: SessionState) throws -> ArchiveSession {
     ArchiveSession(
       id: id, url: state.url, entries: state.descriptor.entries,
@@ -388,6 +404,7 @@ public actor ArchiveService {
       format: state.descriptor.format, canModify: state.descriptor.canModify)
   }
 
+  /// Подтверждает принадлежность сеанса и неизменность исходного файла перед продолжением операции.
   private func checkedState(_ session: ArchiveSession) throws -> SessionState {
     guard let state = sessions[session.id], state.url == session.url else {
       throw ArchiveError.sessionExpired
@@ -398,6 +415,7 @@ public actor ArchiveService {
     return state
   }
 
+  /// Проверяет доступность движка перед каждым запуском, сохраняя заданный предел времени.
   private func runner() throws -> EngineProcess {
     guard let executableURL, FileManager.default.isExecutableFile(atPath: executableURL.path) else {
       throw ArchiveError.engineUnavailable
@@ -405,6 +423,7 @@ public actor ArchiveService {
     return EngineProcess(executableURL: executableURL, timeout: timeout)
   }
 
+  /// Переводит обычные Unix-права из текстового режима, не восстанавливая специальные биты.
   private static func permissions(from mode: String) -> Int? {
     guard mode.count >= 10 else { return nil }
     var value = 0
@@ -417,6 +436,7 @@ public actor ArchiveService {
     return value
   }
 
+  /// Предпочитает движок комплекта приложения, затем ищет локальную разработческую установку.
   private static func resolveEngine() -> URL? {
     let candidates = [
       Bundle.main.resourceURL?.appendingPathComponent("Engine/7zz"),
@@ -431,6 +451,7 @@ public actor ArchiveService {
 }
 
 extension ArchiveService {
+  /// Копирует выбранные объекты, проверяет созданный архив и публикует его под свободным именем.
   public func createArchive(
     from urls: [URL], proposedURL: URL, format: String, options: CompressionOptions? = nil,
     password: String = "", progress: ArchiveProgressHandler? = nil
@@ -500,6 +521,7 @@ extension ArchiveService {
     return result
   }
 
+  /// Проверяет пути, ссылки и суммарный размер; готовые объекты публикует без перезаписи.
   public func extractArchive(
     _ url: URL, password: String = "", maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
     directory: URL? = nil, createsSubfolder: Bool = true, progress: ArchiveProgressHandler? = nil
@@ -615,6 +637,7 @@ extension ArchiveService {
     return parent
   }
 
+  /// Создаёт временный сеанс для проверки целостности и подтверждает неизменность архива после неё.
   public func testArchive(_ url: URL, password: String = "") async throws {
     let session = try await open(url, password: password)
     defer {
@@ -626,6 +649,7 @@ extension ArchiveService {
     _ = try checkedState(session)
   }
 
+  /// Извлекает ровно одну запись через stdout и требует совпадения фактического и заявленного размера.
   private func extractFile(
     _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String,
     progress: (@Sendable (Double) async -> Void)? = nil
@@ -644,6 +668,7 @@ extension ArchiveService {
 }
 
 extension ArchiveService {
+  /// Исключает вложенные выбранные пути и последовательно экспортирует корни под свободными именами.
   public func exportSelection(
     _ paths: [String], from session: ArchiveSession, to directory: URL, password: String = ""
   ) async throws -> [URL] {
@@ -658,6 +683,7 @@ extension ArchiveService {
     return results
   }
 
+  /// Готовит выбранную запись или дерево рядом с целью и публикует после проверки исходного архива.
   public func exportItem(
     _ path: String, from session: ArchiveSession, to destination: URL, password: String = "",
     chooseUniqueName: Bool = false, maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,

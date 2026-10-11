@@ -5,15 +5,18 @@ import OSLog
 @objc(FinderSync)
 final class FinderSync: FIFinderSync {
   private let applicationURL = FinderInstallation.applicationURL(for: Bundle.main.bundleURL)
+  private lazy var menuIcon = Self.loadMenuIcon()
   private var requests: [Int: FinderRequest] = [:]
   private var nextTag = 1
   private let logger = Logger(subsystem: "app.pangozip.desktop.finder", category: "requests")
+  /// Наблюдает локальные тома для контекстного меню без обхода файлов и установки значков.
   override init() {
     super.init()
     // Меню для локальных томов; значки и обход файловой системы не нужны.
     FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/")]
   }
 
+  /// Создаёт меню из снимка выделения только при наличии основного приложения и помощника.
   override func menu(for menuKind: FIMenuKind) -> NSMenu? {
     guard FinderInstallation.isAvailable(at: applicationURL),
       menuKind == .contextualMenuForItems || menuKind == .contextualMenuForSidebar
@@ -24,7 +27,7 @@ final class FinderSync: FIFinderSync {
     guard !selection.actions.isEmpty else { return nil }
     let menu = NSMenu()
     let root = NSMenuItem(title: "PangoZip", action: nil, keyEquivalent: "")
-    root.image = NSImage(systemSymbolName: "archivebox", accessibilityDescription: nil)
+    root.image = menuIcon
     let submenu = NSMenu(title: "PangoZip")
     for action in selection.actions {
       if action == .create && !selection.archives.isEmpty { submenu.addItem(.separator()) }
@@ -45,6 +48,17 @@ final class FinderSync: FIFinderSync {
     return menu
   }
 
+  /// Загружает цветную иконку из собственного комплекта, доступного песочнице расширения.
+  private static func loadMenuIcon() -> NSImage? {
+    guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+      let image = NSImage(contentsOf: url)
+    else { return NSImage(systemSymbolName: "archivebox", accessibilityDescription: "PangoZip") }
+    image.size = NSSize(width: 16, height: 16)
+    image.isTemplate = false
+    return image
+  }
+
+  /// Передаёт ограниченный запрос через отдельный pasteboard, не меняя общий буфер обмена.
   @objc private func deliver(_ sender: NSMenuItem) {
     guard FinderInstallation.isAvailable(at: applicationURL) else {
       requests.removeAll()

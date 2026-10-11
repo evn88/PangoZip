@@ -9,6 +9,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
       .deletingLastPathComponent().appendingPathComponent("Resources/Engine/7zz")
   }
 
+  /// Проверяет извлечение одного буквального имени и повторное использование кэша.
   func testOpensRealZipAndExtractsOnlyLiteralSelectedFilename() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -27,6 +28,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
   }
 
+  /// Проверяет чтение заголовков 7z и запрос пароля для защищённого содержимого.
   func testReadsEncrypted7zHeadersAndRequestsPassword() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -41,6 +43,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет запрос пароля до извлечения защищённого файла.
   func testZipPasswordIsRequestedWhenOpeningEncryptedFile() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -55,6 +58,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет, что пустой архив создаёт пустое дерево записей.
   func testEmptyZipProducesEmptyTree() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -67,6 +71,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет отклонение кэшированного файла после изменения исходного архива.
   func testRejectsChangedArchiveBeforeUsingCachedFile() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -84,6 +89,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет лимит предпросмотра и отказ закрытой сессии.
   func testRejectsOversizePreviewAndExpiredSession() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -97,6 +103,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await expect(.sessionExpired) { _ = try await service.materialize(entry, in: session) }
   }
 
+  /// Проверяет предпросмотр обычных TAR-файлов без извлечения ссылок.
   func testTarFilesCanBePreviewedAndLinksCannot() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -115,6 +122,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет различимые ошибки повреждённого архива и отсутствующего движка.
   func testInvalidArchiveAndMissingEngineHaveClearErrors() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -126,6 +134,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await expect(.engineUnavailable) { _ = try await missing.open(invalid) }
   }
 
+  /// Проверяет совместимость предпросмотра с ZIP, созданным стандартной библиотекой Python.
   func testPythonStyleZipFileIsPreviewable() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -144,6 +153,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет перенос атрибута карантина с архива на файл предпросмотра.
   func testPreservesArchiveQuarantineOnPreviewFile() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
@@ -164,6 +174,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет, что операция возвращает ожидаемую ошибку архива.
   private func expect(_ expected: ArchiveError, operation: () async throws -> Void) async {
     do {
       try await operation()
@@ -173,6 +184,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     }
   }
 
+  /// Создаёт временные тестовые данные, не затрагивая пользовательские файлы.
   private func makeFixture() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(
@@ -183,6 +195,7 @@ final class ArchiveServiceTests: XCTestCase, @unchecked Sendable {
     return url
   }
 
+  /// Запускает 7zz для подготовки архива и проверяет успешный выход.
   private func runEngine(_ arguments: [String], in directory: URL) throws {
     let process = Process()
     process.executableURL = engine

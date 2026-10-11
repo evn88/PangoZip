@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 
 enum ArchiveOutput {
+  /// Публикует готовый объект через согласованное переименование и никогда не заменяет существующий.
   static func publishExact(_ source: URL, to destination: URL) throws {
     try Task.checkCancellation()
     var coordinationError: NSError?
@@ -18,6 +19,7 @@ enum ArchiveOutput {
   }
 
   // RENAME_EXCL не позволяет перезаписать объект, появившийся после проверки имени.
+  /// Подбирает свободное имя атомарным переименованием; источник должен находиться на том же томе.
   static func publish(_ source: URL, proposed: URL, isDirectory: Bool) throws -> URL {
     let parent = proposed.deletingLastPathComponent()
     let ext = isDirectory ? "" : proposed.pathExtension

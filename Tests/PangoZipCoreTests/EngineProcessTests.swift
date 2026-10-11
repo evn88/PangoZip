@@ -3,6 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class EngineProcessTests: XCTestCase, @unchecked Sendable {
+  /// Проверяет остановку процесса движка после отмены задачи.
   func testCancellationStopsRunningEnginePromptly() async throws {
     let directory = try makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -23,6 +24,7 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     }
   }
 
+  /// Проверяет завершение процесса, превысившего заданный таймаут.
   func testTimeoutStopsRunningEngine() async throws {
     let directory = try makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -35,6 +37,7 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     } catch { XCTAssertEqual(error as? ArchiveError, .timedOut) }
   }
 
+  /// Проверяет лимит вывода даже для процесса, завершившегося сразу.
   func testChecksOutputLimitEvenWhenEngineExitsImmediately() async throws {
     let directory = try makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -47,6 +50,7 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     } catch { XCTAssertEqual(error as? ArchiveError, .outputLimit) }
   }
 
+  /// Проверяет раздельную передачу прогресса и двоичного вывода процесса.
   func testStreamsProgressBeforeProcessExitsWithoutMixingItIntoBinaryOutput() async throws {
     let directory = try makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -78,6 +82,7 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
       FileManager.default.fileExists(atPath: output.appendingPathExtension("stderr").path))
   }
 
+  /// Проверяет, что ошибка процесса не выдаётся за успешное завершение.
   func testFailureDoesNotReportCompletion() async throws {
     let directory = try makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -93,12 +98,14 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(values, [0.35])
   }
 
+  /// Выделяет временный каталог для изолированного процесса движка.
   private func makeDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
   }
 
+  /// Создаёт исполняемый скрипт, имитирующий заданный сценарий процесса.
   private func makeScript(_ body: String, in directory: URL) throws -> URL {
     let url = directory.appendingPathComponent("fake-engine")
     try Data(("#!/bin/sh\n" + body + "\n").utf8).write(to: url)
@@ -109,5 +116,6 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
 
 private actor EngineSamples {
   private(set) var values: [Double] = []
+  /// Сохраняет событие прогресса для проверки последовательности вызовов.
   func record(_ value: Double) { values.append(value) }
 }

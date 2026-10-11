@@ -3,6 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class TemporaryWorkspaceTests: XCTestCase {
+  /// Проверяет удаление осиротевших рабочих данных без затрагивания активной сессии.
   func testRecoveryRemovesOrphanedSessionAndTransactionButPreservesActiveWorkspace() throws {
     let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: base) }

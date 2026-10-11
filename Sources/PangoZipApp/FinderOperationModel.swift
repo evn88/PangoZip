@@ -38,8 +38,10 @@ final class FinderOperationModel: ObservableObject {
     { [weak self] value in await self?.receiveProgress(value) }
   }
 
+  /// Публикует прогресс на главном акторе, где SwiftUI наблюдает модель.
   private func receiveProgress(_ value: ArchiveProgress) { progress = value }
 
+  /// Принимает один запрос на процесс worker и очищает сервис перед автоматическим завершением.
   func start(_ request: FinderRequest) {
     guard !started else { return }
     started = true
@@ -68,6 +70,7 @@ final class FinderOperationModel: ObservableObject {
     }
   }
 
+  /// Возобновляет единственный ожидающий запрос пароля и сразу очищает поле ввода.
   func submitPassword() {
     let reply = passwordReply
     passwordReply = nil
@@ -76,11 +79,13 @@ final class FinderOperationModel: ObservableObject {
     password = ""
   }
 
+  /// Без активной задачи закрывает окно ошибки; иначе завершение выполнит отменяемая задача.
   func cancel() {
     cancelTask()
     if task == nil { NSApp.terminate(nil) }
   }
 
+  /// Освобождает панель и ожидание пароля, чтобы отменённая задача могла завершиться.
   private func cancelTask() {
     task?.cancel()
     panel?.cancel(nil)
@@ -90,6 +95,7 @@ final class FinderOperationModel: ObservableObject {
     reply?.resume(returning: nil)
   }
 
+  /// Дожидается задачи до удаления временных файлов и разрешения системного завершения.
   func prepareTermination() async -> Bool {
     cancelTask()
     await task?.value
@@ -97,6 +103,7 @@ final class FinderOperationModel: ObservableObject {
     return true
   }
 
+  /// Проверяет отмену до и после ожидания ввода, не сохраняя пароль между архивами.
   private func askPassword(for url: URL) async throws -> String {
     try Task.checkCancellation()
     progress = nil
@@ -110,6 +117,7 @@ final class FinderOperationModel: ObservableObject {
     return answer
   }
 
+  /// Не меняет панель выбора папки; у панели создания согласует расширение с форматом.
   private func updateCreationFormat() {
     guard let panel, !(panel is NSOpenPanel) else { return }
     panel.allowedContentTypes = [UTType(filenameExtension: creationFormat) ?? .data]
@@ -119,6 +127,7 @@ final class FinderOperationModel: ObservableObject {
     }
   }
 
+  /// Разделяет создание и извлечение; пароль повторно запрашивается для каждого архива.
   private func execute(_ request: FinderRequest) async throws {
     switch request.action {
     case .create, .add:
@@ -254,7 +263,9 @@ struct FinderOperationView: View {
 @MainActor
 private final class NewArchiveSaveDelegate: NSObject, NSOpenSavePanelDelegate {
   let passwordsMatch: () -> Bool
+  /// Принимает проверку актуальных полей, чтобы панель учитывала последующие изменения пароля.
   init(passwordsMatch: @escaping () -> Bool) { self.passwordsMatch = passwordsMatch }
+  /// Не разрешает существующий путь и несовпадающие пароли до закрытия панели создания.
   func panel(_ sender: Any, validate url: URL) throws {
     let message: String?
     if !passwordsMatch() {

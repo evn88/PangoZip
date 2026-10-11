@@ -48,6 +48,7 @@ staging="$transaction/PangoZip.app"
 backup="$transaction/previous.bundle"
 committed=false
 installed_new=false
+# Подтверждает регистрацию именно этой версии и повторяет запрос при задержке PlugInKit.
 register() {
   "$lsregister" -f "$destination"
   "$lsregister" -f "$destination/Contents/Helpers/PangoZipWorker.app"
@@ -67,6 +68,7 @@ register() {
   echo "Не удалось подтвердить регистрацию расширения Finder. Повторите установку." >&2
   return 1
 }
+# При ошибке восстанавливает предыдущий комплект, затем удаляет только свою временную папку.
 cleanup() {
   status=$?
   if [[ "$committed" != true && -d "$backup" ]]; then

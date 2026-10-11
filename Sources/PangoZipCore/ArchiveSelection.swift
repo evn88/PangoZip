@@ -1,6 +1,7 @@
 import Foundation
 
 public enum ArchiveSelection {
+  /// Проверяет существование выбранных путей и исключает потомков уже выбранных папок.
   public static func topLevelPaths(_ paths: [String], entries: [ArchiveEntry]) throws -> [String] {
     guard !paths.isEmpty else { throw ArchiveError.invalidOperation }
     let unique = Set(paths)
@@ -20,6 +21,7 @@ public enum ArchiveSelection {
     }.sorted()
   }
 
+  /// Возвращает запись и её потомков, включая содержимое синтетической папки.
   public static func entries(for path: String, in entries: [ArchiveEntry]) throws -> [ArchiveEntry]
   {
     try ArchiveListing.validatePath(path)

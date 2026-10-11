@@ -7,6 +7,7 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
       "Resources/Engine/7zz")
 
+  /// Проверяет доступность команд Finder для разных типов и сочетаний выбора.
   func testMenuDistinguishesFoldersArchivesAndMixedMultipleSelection() throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -37,6 +38,7 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
       FinderSelection.extractionName(for: root.appendingPathComponent("Photos.tar.gz")), "Photos")
   }
 
+  /// Проверяет обратимость кодирования запроса и отказ небезопасных данных.
   func testRequestRoundTripRejectsRemotePathsAndMalformedTokens() throws {
     let request = try FinderRequest(action: .add, urls: [URL(fileURLWithPath: "/tmp/фото #1.txt")])
     XCTAssertEqual(try FinderRequest.decode(JSONEncoder().encode(request)), request)
@@ -50,6 +52,7 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
       FinderRequest.boardName(from: URL(string: "pangozip://finder?request=" + UUID().uuidString)!))
   }
 
+  /// Проверяет сохранение имён при пакетной обработке и защиту существующих результатов.
   func testCreateAndExtractMultipleFilesPreservesNamesAndNeverOverwritesExistingOutputs()
     async throws
   {
@@ -88,10 +91,11 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertFalse(
       try FileManager.default.contentsOfDirectory(atPath: root.path).contains {
-        $0.hasPrefix(".pangozip-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       })
   }
 
+  /// Проверяет распаковку TAR и повтор запроса пароля для зашифрованного архива.
   func testExtractsCompressedTarAndEncryptedArchiveWithPasswordRetry() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -117,10 +121,11 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertFalse(
       try FileManager.default.contentsOfDirectory(atPath: root.path).contains {
-        $0.hasPrefix(".pangozip-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       })
   }
 
+  /// Проверяет, что опасные ссылки и прерывания не оставляют частичную распаковку.
   func testExtractionLimitLinksAndCancellationLeaveNoPartialResults() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -150,10 +155,11 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertFalse(
       try FileManager.default.contentsOfDirectory(atPath: root.path).contains {
-        $0.hasPrefix(".pangozip-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       })
   }
 
+  /// Проверяет передачу движку только допустимых параметров сжатия.
   func testCompressionSettingsAreValidatedAndSentToEngine() {
     let zip = CompressionOptions(format: "zip", level: 0, solid: true, threads: 2)
     XCTAssertEqual(zip.arguments, ["-mx=0", "-mmt=2"])
@@ -165,6 +171,7 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
       CompressionOptions(format: "zip", level: 9, threads: 0))
   }
 
+  /// Проверяет распаковку в выбранное место без лишнего каталога и перезаписи.
   func testExtractHereAndChosenFolderDoNotCreateWrapperOrOverwriteExistingFiles() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -190,10 +197,11 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
     XCTAssertFalse(
       try FileManager.default.contentsOfDirectory(atPath: root.path).contains {
-        $0.hasPrefix(".pangozip-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       })
   }
 
+  /// Проверяет шифрование архива и проверку содержимого без распаковки.
   func testCreatesPasswordProtectedArchivesAndTestsThemWithoutExtracting() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -222,6 +230,7 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Готовит файлы и архивы во временном каталоге для команд Finder.
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "pangozip-finder-" + UUID().uuidString)
@@ -232,6 +241,7 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     return root
   }
 
+  /// Запускает 7zz при подготовке фикстуры и сообщает об ошибке создания.
   private func run(_ arguments: [String], in root: URL) throws {
     let process = Process()
     process.executableURL = engine

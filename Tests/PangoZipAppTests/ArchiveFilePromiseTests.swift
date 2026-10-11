@@ -6,6 +6,7 @@ import XCTest
 
 final class ArchiveFilePromiseTests: XCTestCase, @unchecked Sendable {
   @MainActor
+  /// Проверяет, что последовательный экспорт сохраняет блокировку архива до завершения всех обещаний.
   func testMultiplePromisesExportSequentiallyAndReleaseDragLease() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -48,6 +49,7 @@ final class ArchiveFilePromiseTests: XCTestCase, @unchecked Sendable {
   }
 
   @MainActor
+  /// Проверяет освобождение блокировки после отмены и отказ просроченной сессии.
   func testCancelledDragUnlocksArchiveAndClosedSessionRejectsLatePromise() async throws {
     let root = try fixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -76,6 +78,7 @@ final class ArchiveFilePromiseTests: XCTestCase, @unchecked Sendable {
     XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
   }
 
+  /// Передаёт запрос promise делегату и проверяет согласованность его имени.
   @MainActor
   private func fulfill(
     path: String, isDirectory: Bool, model: ArchiveBrowserModel, session: ArchiveSession,
@@ -91,6 +94,7 @@ final class ArchiveFilePromiseTests: XCTestCase, @unchecked Sendable {
     }
   }
 
+  /// Создаёт отдельные входные и выходные файлы для сценариев File Promise.
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(
       "pangozip-promises-" + UUID().uuidString)

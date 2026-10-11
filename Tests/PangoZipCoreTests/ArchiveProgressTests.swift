@@ -3,6 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
+  /// Проверяет разбор разорванного прогресса и перерисовки терминала без ложных процентов из имён.
   func testParserHandlesSplitPercentAndTerminalRedrawWithoutReadingFilenamesAsProgress() {
     var parser = EngineProgressParser()
     XCTAssertEqual(parser.consume(Data("  1".utf8)), [])
@@ -12,6 +13,7 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(parser.consume(Data("\r 100%".utf8)), [])
   }
 
+  /// Проверяет монотонность прогресса и целостность двоичных данных в реальных операциях.
   func testRealEngineCreationExtractionAndFolderExportHaveMonotonicProgressAndKeepBinaryData()
     async throws
   {
@@ -52,6 +54,7 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Проверяет границы, порядок и успешное завершение последовательности прогресса.
   private func assertValid(
     _ values: [ArchiveProgress], file: StaticString = #filePath, line: UInt = #line
   ) {
@@ -66,5 +69,6 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
 
 private actor ProgressSamples {
   private(set) var values: [ArchiveProgress] = []
+  /// Сохраняет событие прогресса для проверки последовательности вызовов.
   func record(_ value: ArchiveProgress) { values.append(value) }
 }

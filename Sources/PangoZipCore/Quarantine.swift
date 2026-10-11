@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 
 enum Quarantine {
+  /// Переносит quarantine без перехода по ссылкам; отсутствие атрибута у источника допустимо.
   static func copy(from source: URL, to destination: URL) throws {
     let name = "com.apple.quarantine"
     let count = getxattr(source.path, name, nil, 0, 0, XATTR_NOFOLLOW)
