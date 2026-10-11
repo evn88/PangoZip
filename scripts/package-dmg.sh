@@ -47,7 +47,7 @@ for bundle in "$app" "$app/Contents/Helpers/PangoZipWorker.app"; do
   [[ ${#sources[@]} -gt 0 ]] || { echo "Missing 7-Zip source archive" >&2; exit 1; }
   for source in "${sources[@]}"; do [[ -s "$source" ]] || exit 1; done
   for cpu in $(lipo -archs "$app/Contents/MacOS/PangoZip"); do
-    lipo -verify_arch "$cpu" "$bundle/Contents/Resources/Engine/7zz"
+    lipo "$bundle/Contents/Resources/Engine/7zz" -verify_arch "$cpu"
   done
 done
 
