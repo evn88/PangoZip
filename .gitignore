@@ -3,3 +3,10 @@ build/
 .swiftpm/
 .DS_Store
 HANDOFF-*.md
+
+# Материалы подписи и локальные секреты не должны попадать в репозиторий.
+*.p12
+*.p8
+*.keychain-db
+.env
+.env.*

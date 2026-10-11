@@ -2,6 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+source scripts/lib/signing.sh
+configure_signing
+
 skip_build=false
 if [[ "${1:-}" == --skip-build ]]; then skip_build=true; shift; fi
 if [[ $# -ne 0 ]]; then
@@ -9,7 +12,7 @@ if [[ $# -ne 0 ]]; then
   exit 2
 fi
 if [[ "$skip_build" != true ]]; then ./scripts/build-app.sh release; fi
-app="$(pwd)/build/PangoZip.app"
+app="${PANGOZIP_APP_PATH:-$(pwd)/build/PangoZip.app}"
 [[ -d "$app" ]] || { echo "Built app not found: $app" >&2; exit 1; }
 codesign --verify --deep --strict "$app"
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
@@ -66,11 +69,26 @@ payload="$workspace/payload"
 mkdir "$payload"
 ditto "$app" "$payload/PangoZip.app"
 ln -s /Applications "$payload/Applications"
-cp docs/installation.txt "$payload/Read me.txt"
+if [[ "$signing_identity" == - ]]; then
+  cp docs/installation.txt "$payload/Read me.txt"
+else
+  verify_distribution_app "$app"
+  # Нотариализация выполняется после упаковки; не обещаем её в ещё не принятом образе.
+  sed -e 's/Текущая сборка подписана ad hoc, без сертификата Developer ID и нотариализации Apple, поэтому предупреждение Gatekeeper может появиться./Сборка подписана сертификатом Developer ID Application. Статус нотариализации указан в описании релиза./' \
+      -e 's/Текущая сборка подписана ad hoc, без сертификата Developer ID и нотариализации Apple. Это не подтверждённая Apple подпись разработчика; macOS может заблокировать открытие загруженного приложения./Сборка подписана сертификатом Developer ID Application. До публикации релиз должен пройти нотариализацию Apple./' \
+      docs/installation.txt > "$payload/Read me.txt"
+fi
 codesign --verify --deep --strict "$payload/PangoZip.app"
-output="$(pwd)/build/PangoZip-$version-$architecture.dmg"
+output_directory="${PANGOZIP_DMG_DIRECTORY:-$(pwd)/build}"
+mkdir -p "$output_directory"
+output_directory="$(cd "$output_directory" && pwd)"
+output="$output_directory/PangoZip-$version-$architecture.dmg"
 # Готовый файл заменяется только после проверки сжатого образа UDZO.
 hdiutil create -srcfolder "$payload" -fs HFS+ -format UDZO -imagekey zlib-level=9 -volname "PangoZip $version" "$workspace/PangoZip.dmg"
+if [[ "$signing_identity" != - ]]; then
+  codesign --force --sign "$signing_identity" --timestamp "$workspace/PangoZip.dmg"
+  codesign --verify --strict "$workspace/PangoZip.dmg"
+fi
 hdiutil verify "$workspace/PangoZip.dmg"
 mountpoint="$workspace/mount"
 mkdir "$mountpoint"
