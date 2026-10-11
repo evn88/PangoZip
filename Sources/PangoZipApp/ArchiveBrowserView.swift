@@ -195,13 +195,20 @@ struct ArchiveBrowserView: View {
   private var statusBar: some View {
     HStack(spacing: 14) {
       if model.isBusy || model.isExporting || model.isClosing {
-        if let progress = model.operationProgress {
-          OperationProgressView(progress: progress).frame(width: 220)
-        } else {
-          ProgressView().controlSize(.small)
+        VStack(alignment: .leading, spacing: 10) {
+          HStack {
+            if model.operationProgress == nil { ProgressView().controlSize(.small) }
+            Text(
+              model.isClosing ? "Закрываем архив…" : model.operationMessage ?? "Выполняем операцию…"
+            )
+            .lineLimit(1)
+            Spacer()
+            Button("Отмена", action: model.cancelCurrentOperation).disabled(model.isClosing)
+          }
+          if let progress = model.operationProgress {
+            OperationProgressView(progress: progress).frame(maxWidth: 620, alignment: .leading)
+          }
         }
-        Text(model.isClosing ? "Закрываем архив…" : model.operationMessage ?? "Выполняем операцию…")
-        Button("Отмена", action: model.cancelCurrentOperation).disabled(model.isClosing)
       } else if let message = model.errorMessage {
         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
         Text(message).textSelection(.enabled)

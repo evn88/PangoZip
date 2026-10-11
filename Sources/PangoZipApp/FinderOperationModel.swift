@@ -256,7 +256,7 @@ struct FinderOperationView: View {
         }
       }
     }
-    .padding(22).frame(width: 410)
+    .padding(22).frame(width: 520)
   }
 }
 

@@ -28,3 +28,5 @@ jobs:
       run: scripts/build-app.sh
     - name: Verify application signature
       run: codesign --verify --deep --strict build/PangoZip.app
+    - name: Build and verify DMG
+      run: scripts/package-dmg.sh --skip-build

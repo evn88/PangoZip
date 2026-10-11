@@ -456,7 +456,8 @@ extension ArchiveService {
     from urls: [URL], proposedURL: URL, format: String, options: CompressionOptions? = nil,
     password: String = "", progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
-    await progress?(ArchiveProgress(phase: .preparing))
+    let reporter = ArchiveProgressReporter(progress)
+    await reporter.report(phase: .preparing)
     guard ["zip", "7z"].contains(format), !urls.isEmpty, proposedURL.isFileURL else {
       throw ArchiveError.invalidOperation
     }
@@ -488,13 +489,17 @@ extension ArchiveService {
       names.append(url.lastPathComponent)
     }
     guard !names.isEmpty else { throw ArchiveError.invalidOperation }
+    let workload = progress == nil ? nil : try await ArchiveWorkload.measure(inputs)
+    let bytes = workload?.bytes ?? 0
+    let files = workload?.files ?? 0
     let list = transaction.appendingPathComponent("items.list")
     try Data((names.joined(separator: "\n") + "\n").utf8).write(to: list)
     let working = transaction.appendingPathComponent("working." + format)
     let settings = CompressionOptions(
       format: format, level: compression.level, solid: compression.solid,
       threads: compression.threads)
-    await progress?(ArchiveProgress(phase: .compressing, fraction: 0))
+    await reporter.report(
+      phase: .compressing, fraction: 0, processedBytes: 0, totalBytes: bytes, totalFiles: files)
     try await runner().run(
       arguments: [
         "a", "-t" + format, "-spd", "-ssc", "-snl", "-scsUTF-8",
@@ -505,19 +510,29 @@ extension ArchiveService {
         + ["--", working.path],
       outputURL: transaction.appendingPathComponent("create.log"), limit: 32 * 1024 * 1024,
       workingDirectory: inputs,
-      progress: engineProgress(progress, phase: .compressing, from: 0, to: 0.9))
-    await progress?(ArchiveProgress(phase: .verifying, fraction: 0.9))
+      progress: reporter.engine(
+        phase: .compressing, from: 0, to: 0.9, totalBytes: bytes, totalFiles: files,
+        outputURL: working))
+    await reporter.report(
+      phase: .verifying, fraction: 0.9, processedBytes: 0, totalBytes: bytes,
+      totalFiles: files, outputURL: working)
     try await verify(
       working, passwordArguments: password.isEmpty ? [] : ["-p" + password], in: transaction,
-      progress: engineProgress(progress, phase: .verifying, from: 0.9, to: 0.99))
+      progress: reporter.engine(
+        phase: .verifying, from: 0.9, to: 0.99, totalBytes: bytes, totalFiles: files,
+        outputURL: working))
     _ = try await readArchive(working, password: password, in: transaction)
     try Task.checkCancellation()
     guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
-    await progress?(ArchiveProgress(phase: .finalizing, fraction: 0.99))
+    await reporter.report(
+      phase: .finalizing, fraction: 0.99, processedBytes: bytes, totalBytes: bytes,
+      completedFiles: files, totalFiles: files, outputURL: working)
     try Task.checkCancellation()
     guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
     let result = try ArchiveOutput.publish(working, proposed: proposedURL, isDirectory: false)
-    await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+    await reporter.report(
+      phase: .finalizing, fraction: 1, processedBytes: bytes, totalBytes: bytes,
+      completedFiles: files, totalFiles: files, outputURL: result)
     return result
   }
 
@@ -526,7 +541,8 @@ extension ArchiveService {
     _ url: URL, password: String = "", maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
     directory: URL? = nil, createsSubfolder: Bool = true, progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
-    await progress?(ArchiveProgress(phase: .preparing))
+    let reporter = ArchiveProgressReporter(progress)
+    await reporter.report(phase: .preparing)
     let session = try await open(url, password: password)
     defer {
       sessions.removeValue(forKey: session.id)
@@ -555,9 +571,14 @@ extension ArchiveService {
         throw ArchiveError.outputLimit
       }
       source = transaction.appendingPathComponent("inner.tar")
+      await reporter.report(
+        phase: .extracting, fraction: 0, processedBytes: 0, totalBytes: entry.size,
+        completedFiles: 0, totalFiles: 1, currentFile: entry.path, outputURL: url)
       try await extractFile(
         entry, from: url, to: source, password: password,
-        progress: engineProgress(progress, phase: .extracting, from: 0, to: 0.1))
+        progress: reporter.engine(
+          phase: .extracting, from: 0, to: 0.1, totalBytes: entry.size, itemBytes: entry.size,
+          completedFiles: 0, totalFiles: 1, currentFile: entry.path, outputURL: url))
       verificationStart = 0.1
       descriptor = try await readArchive(source, password: password, in: transaction)
       guard descriptor.format == "tar" else { throw ArchiveError.invalidArchive }
@@ -577,17 +598,26 @@ extension ArchiveService {
         normalized[key] = path
       }
     }
+    let workload = try ArchiveWorkload(entries: descriptor.entries)
     let extractionStart = verificationStart + 0.1
     let verificationBase = verificationStart
-    await progress?(ArchiveProgress(phase: .verifying, fraction: verificationBase))
+    await reporter.report(
+      phase: .verifying, fraction: verificationBase, processedBytes: 0,
+      totalBytes: workload.bytes, totalFiles: workload.files, outputURL: url)
     try await verify(
       source, passwordArguments: ["-p" + password], in: transaction,
-      progress: engineProgress(
-        progress, phase: .verifying, from: verificationBase, to: extractionStart))
+      progress: reporter.engine(
+        phase: .verifying, from: verificationBase, to: extractionStart,
+        totalBytes: workload.bytes, totalFiles: workload.files, outputURL: url))
     var completedWeight = 0.0
+    var completedBytes: UInt64 = 0
+    var completedFiles = 0
     let totalWeight = descriptor.entries.filter { !$0.isDirectory }.reduce(0.0) {
       $0 + max(1, Double($1.size))
     }
+    await reporter.report(
+      phase: .extracting, fraction: extractionStart, processedBytes: 0,
+      totalBytes: workload.bytes, completedFiles: 0, totalFiles: workload.files, outputURL: url)
     for entry in descriptor.entries {
       try Task.checkCancellation()
       let target = output.appendingPathComponent(entry.path)
@@ -597,17 +627,28 @@ extension ArchiveService {
       if !entry.isDirectory {
         let weight = max(1, Double(entry.size))
         let start = completedWeight
+        await reporter.report(
+          phase: .extracting,
+          fraction: extractionStart + start / totalWeight * (0.99 - extractionStart),
+          processedBytes: completedBytes, totalBytes: workload.bytes,
+          completedFiles: completedFiles, totalFiles: workload.files, currentFile: entry.path)
         try await extractFile(
           entry, from: source, to: target, password: password,
-          progress: engineProgress(
-            progress, phase: .extracting,
+          progress: reporter.engine(
+            phase: .extracting,
             from: extractionStart + start / totalWeight * (0.99 - extractionStart),
-            to: extractionStart + (start + weight) / totalWeight * (0.99 - extractionStart)))
+            to: extractionStart + (start + weight) / totalWeight * (0.99 - extractionStart),
+            totalBytes: workload.bytes, baseBytes: completedBytes, itemBytes: entry.size,
+            completedFiles: completedFiles, totalFiles: workload.files, currentFile: entry.path))
         completedWeight += weight
+        completedBytes += entry.size
+        completedFiles += 1
         try Quarantine.copy(from: url, to: target)
       }
     }
-    await progress?(ArchiveProgress(phase: .finalizing, fraction: 0.99))
+    await reporter.report(
+      phase: .finalizing, fraction: 0.99, processedBytes: workload.bytes,
+      totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     // Атрибуты папок устанавливаются после записи дочерних файлов.
     for entry in descriptor.entries.sorted(by: { $0.path.count > $1.path.count }) {
       var attributes: [FileAttributeKey: Any] = [:]
@@ -623,7 +664,9 @@ extension ArchiveService {
     try Task.checkCancellation()
     if createsSubfolder {
       let result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: true)
-      await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+      await reporter.report(
+        phase: .finalizing, fraction: 1, processedBytes: workload.bytes,
+        totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
       return result
     }
     for child in try FileManager.default.contentsOfDirectory(
@@ -633,7 +676,9 @@ extension ArchiveService {
         child, proposed: parent.appendingPathComponent(child.lastPathComponent),
         isDirectory: try FileFingerprint(child).type == .typeDirectory)
     }
-    await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+    await reporter.report(
+      phase: .finalizing, fraction: 1, processedBytes: workload.bytes,
+      totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     return parent
   }
 
@@ -689,7 +734,8 @@ extension ArchiveService {
     chooseUniqueName: Bool = false, maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
     progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
-    await progress?(ArchiveProgress(phase: .preparing))
+    let reporter = ArchiveProgressReporter(progress)
+    await reporter.report(phase: .preparing)
     let state = try checkedState(session)
     guard !busy.contains(session.id), destination.isFileURL else {
       throw ArchiveError.invalidOperation
@@ -719,15 +765,21 @@ extension ArchiveService {
         normalized[key] = name
       }
     }
+    let workload = try ArchiveWorkload(entries: entries)
     let manager = FileManager.default
     if isDirectory {
       try manager.createDirectory(
         at: output, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     }
     var completedWeight = 0.0
+    var completedBytes: UInt64 = 0
+    var completedFiles = 0
     let totalWeight = entries.filter { !$0.isDirectory }.reduce(0.0) {
       $0 + max(1, Double($1.size))
     }
+    await reporter.report(
+      phase: .extracting, fraction: 0, processedBytes: 0, totalBytes: workload.bytes,
+      completedFiles: 0, totalFiles: workload.files)
     for entry in entries {
       let relative = entry.path == path ? "" : String(entry.path.dropFirst(path.count + 1))
       let target = relative.isEmpty ? output : output.appendingPathComponent(relative)
@@ -740,12 +792,20 @@ extension ArchiveService {
           attributes: [.posixPermissions: 0o700])
         let weight = max(1, Double(entry.size))
         let start = completedWeight
+        await reporter.report(
+          phase: .extracting, fraction: start / totalWeight * 0.99,
+          processedBytes: completedBytes, totalBytes: workload.bytes,
+          completedFiles: completedFiles, totalFiles: workload.files, currentFile: entry.path)
         try await extractFile(
           entry, from: state.url, to: target, password: password,
-          progress: engineProgress(
-            progress, phase: .extracting, from: start / totalWeight * 0.99,
-            to: (start + weight) / totalWeight * 0.99))
+          progress: reporter.engine(
+            phase: .extracting, from: start / totalWeight * 0.99,
+            to: (start + weight) / totalWeight * 0.99, totalBytes: workload.bytes,
+            baseBytes: completedBytes, itemBytes: entry.size, completedFiles: completedFiles,
+            totalFiles: workload.files, currentFile: entry.path))
         completedWeight += weight
+        completedBytes += entry.size
+        completedFiles += 1
         try Quarantine.copy(from: state.url, to: target)
       }
     }
@@ -763,7 +823,9 @@ extension ArchiveService {
     try Quarantine.copy(from: state.url, to: output)
     try Task.checkCancellation()
     _ = try checkedState(session)
-    await progress?(ArchiveProgress(phase: .finalizing, fraction: 0.99))
+    await reporter.report(
+      phase: .finalizing, fraction: 0.99, processedBytes: workload.bytes,
+      totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     try Task.checkCancellation()
     _ = try checkedState(session)
     let result: URL
@@ -773,7 +835,9 @@ extension ArchiveService {
       try ArchiveOutput.publishExact(output, to: destination)
       result = destination
     }
-    await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+    await reporter.report(
+      phase: .finalizing, fraction: 1, processedBytes: workload.bytes,
+      totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     return result
   }
 }

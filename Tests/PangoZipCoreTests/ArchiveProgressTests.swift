@@ -37,11 +37,24 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
     assertValid(createValues)
     XCTAssertTrue(createValues.contains { $0.phase == .compressing })
     XCTAssertTrue(createValues.contains { $0.phase == .verifying })
+    XCTAssertEqual(createValues.last?.totalBytes, UInt64(payload.count))
+    XCTAssertEqual(createValues.last?.processedBytes, UInt64(payload.count))
+    XCTAssertEqual(createValues.last?.completedFiles, 2)
+    XCTAssertEqual(
+      createValues.last?.outputBytes,
+      try FileFingerprint(archive).size)
+    XCTAssertTrue(
+      createValues.filter { $0.phase == .compressing }.allSatisfy {
+        $0.totalBytes == UInt64(payload.count) && $0.totalFiles == 2
+      })
     let extracted = ProgressSamples()
     let output = try await service.extractArchive(archive, progress: { await extracted.record($0) })
     let extractValues = await extracted.values
     assertValid(extractValues)
     XCTAssertTrue(extractValues.contains { $0.phase == .extracting })
+    XCTAssertEqual(extractValues.last?.processedBytes, UInt64(payload.count))
+    XCTAssertEqual(extractValues.last?.completedFiles, 2)
+    XCTAssertTrue(extractValues.contains { $0.currentFile == "Input/binary.dat" })
     XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent("Input/binary.dat")), payload)
     let session = try await service.open(archive)
     let exported = ProgressSamples()
@@ -50,6 +63,9 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
       progress: { await exported.record($0) })
     let exportValues = await exported.values
     assertValid(exportValues)
+    XCTAssertEqual(exportValues.last?.processedBytes, UInt64(payload.count))
+    XCTAssertEqual(exportValues.last?.totalFiles, 2)
+    XCTAssertEqual(exportValues.last?.completedFiles, 2)
     XCTAssertEqual(try Data(contentsOf: export.appendingPathComponent("binary.dat")), payload)
     await service.cleanup()
   }
