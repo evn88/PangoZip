@@ -1,0 +1,152 @@
+import Foundation
+import UniformTypeIdentifiers
+
+public enum FinderAction: String, Codable, Sendable, CaseIterable {
+  case open, extractFiles, extractHere, extract, test, create, createZip, create7z, add
+
+  public var title: String {
+    switch self {
+    case .open: "Открыть архивы"
+    case .extractFiles: "Распаковать…"
+    case .extractHere: "Распаковать здесь"
+    case .extract: "Распаковать в отдельные папки"
+    case .test: "Тестировать архив"
+    case .create: "Добавить в архив…"
+    case .createZip: "Заархивировать в ZIP"
+    case .create7z: "Заархивировать в 7z"
+    case .add: "Добавить в архив…"
+    }
+  }
+}
+
+public struct FinderRequest: Codable, Sendable, Equatable {
+  public let action: FinderAction
+  public let urls: [URL]
+  public static let pasteboardType = "app.pangozip.finder-request"
+  public static let boardPrefix = "app.pangozip.finder."
+  public static let maximumBytes = 8 * 1024 * 1024
+
+  public init(action: FinderAction, urls: [URL]) throws {
+    guard !urls.isEmpty, urls.count <= 10_000,
+      urls.allSatisfy({
+        $0.isFileURL && ($0.host == nil || $0.host == "" || $0.host == "localhost")
+      })
+    else { throw FinderRequestError.invalidSelection }
+    self.action = action
+    var seen: Set<URL> = []
+    self.urls = urls.map(\.standardizedFileURL).filter { seen.insert($0).inserted }
+  }
+
+  public static func decode(_ data: Data) throws -> Self {
+    guard data.count <= maximumBytes else { throw FinderRequestError.invalidSelection }
+    let decoded = try JSONDecoder().decode(Self.self, from: data)
+    return try Self(action: decoded.action, urls: decoded.urls)
+  }
+
+  public static func boardName(from url: URL) -> String? {
+    guard ["pangozip", "pangozip-worker"].contains(url.scheme ?? ""), url.host == "finder",
+      url.path.isEmpty,
+      let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+      let items = parts.queryItems, items.count == 1, items[0].name == "request",
+      let token = items[0].value, UUID(uuidString: token) != nil
+    else { return nil }
+    return boardPrefix + token
+  }
+}
+
+public enum FinderRequestError: LocalizedError {
+  case invalidSelection
+  public var errorDescription: String? { "Не удалось получить выделенные файлы из Finder." }
+}
+
+public struct FinderSelection: Sendable {
+  public let urls: [URL]
+  public let archives: [URL]
+
+  public init(urls: [URL]) {
+    var seen: Set<URL> = []
+    self.urls = urls.filter(\.isFileURL).map(\.standardizedFileURL).filter {
+      seen.insert($0).inserted
+    }
+    archives = self.urls.filter(Self.isArchive)
+  }
+
+  public var actions: [FinderAction] {
+    guard !urls.isEmpty else { return [] }
+    return (archives.isEmpty ? [] : [.open, .extractFiles, .extractHere, .extract, .test]) + [
+      .create, .create7z, .createZip,
+    ]
+  }
+
+  public func title(for action: FinderAction) -> String {
+    switch action {
+    case .open: return archives.count == 1 ? "Открыть архив" : "Открыть архивы"
+    case .extract:
+      return archives.count == 1
+        ? "Распаковать в «\(Self.extractionName(for: archives[0]))/»"
+        : "Распаковать в отдельные папки"
+    case .create7z: return "Добавить в «\(archiveName).7z»"
+    case .createZip: return "Добавить в «\(archiveName).zip»"
+    default: return action.title
+    }
+  }
+
+  public func request(for action: FinderAction) throws -> FinderRequest {
+    try FinderRequest(
+      action: action,
+      urls: [.open, .extractFiles, .extractHere, .extract, .test].contains(action) ? archives : urls
+    )
+  }
+
+  public static func isArchive(_ url: URL) -> Bool {
+    guard url.isFileURL,
+      let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+      values.isDirectory != true, values.isSymbolicLink != true
+    else { return false }
+    let ext = url.pathExtension.lowercased()
+    if [
+      "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz", "tbz2", "txz", "zst",
+      "tzst", "lzma", "lz", "cab", "iso", "wim", "arj", "cpio", "deb", "rpm", "cbz", "cbr",
+    ].contains(ext) {
+      return true
+    }
+    return UTType(filenameExtension: ext)?.conforms(to: .archive) == true
+  }
+
+  public static func extractionName(for url: URL) -> String {
+    let name = url.lastPathComponent
+    for suffix in [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lzma"] {
+      if name.lowercased().hasSuffix(suffix) { return String(name.dropLast(suffix.count)) }
+    }
+    let stem = url.deletingPathExtension().lastPathComponent
+    return stem.isEmpty || stem == "." || stem == ".." ? "Archive" : stem
+  }
+
+  public var archiveName: String {
+    let base: String
+    if urls.count == 1 {
+      let url = urls[0]
+      let name = url.lastPathComponent
+      let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+      if !isDirectory, let dot = name.firstIndex(of: "."), dot != name.startIndex,
+        name[name.index(after: dot)...].firstIndex(of: ".") == nil
+      {
+        base = String(name[..<dot])
+      } else {
+        base = name
+      }
+    } else {
+      let parent = urls.first?.deletingLastPathComponent().lastPathComponent ?? "Archive"
+      base = parent.isEmpty ? "Archive" : parent
+    }
+    let selectedNames = Set(urls.map { $0.lastPathComponent.lowercased() })
+    let extensions = ["zip", "7z", "tar", "wim"]
+    func conflicts(_ name: String) -> Bool {
+      extensions.contains { selectedNames.contains((name + "." + $0).lowercased()) }
+    }
+    guard conflicts(base) else { return base }
+    var number = 2
+    while conflicts(base + "_" + String(number)) { number += 1 }
+    return base + "_" + String(number)
+  }
+}

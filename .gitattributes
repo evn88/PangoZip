@@ -1,0 +1,5 @@
+* text=auto
+Resources/Engine/** -text -whitespace
+*.png binary
+*.icns binary
+*.xz binary

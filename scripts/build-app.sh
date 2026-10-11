@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+configuration="${1:-release}"
+if [[ "$configuration" != release && "$configuration" != debug ]]; then
+  echo "Usage: $0 [release|debug]" >&2
+  exit 1
+fi
+scripts/build-icon.sh
+swift build -c "$configuration"
+bin_dir="$(swift build -c "$configuration" --show-bin-path)"
+app="build/PangoZip.app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cp "$bin_dir/PangoZip" "$app/Contents/MacOS/PangoZip"
+cp Resources/Info.plist "$app/Contents/Info.plist"
+cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+cp Resources/Icons/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+cp -R Resources/Engine "$app/Contents/Resources/"
+chmod +x "$app/Contents/MacOS/PangoZip" "$app/Contents/Resources/Engine/7zz"
+extension="$app/Contents/PlugIns/PangoZipFinderSync.appex"
+mkdir -p "$extension/Contents/MacOS"
+cp FinderExtension/Info.plist "$extension/Contents/Info.plist"
+xcrun swiftc -swift-version 6 -O -parse-as-library -application-extension   -target "$(uname -m)-apple-macos26.0" -module-name PangoZipFinderSync   -Xlinker -e -Xlinker _NSExtensionMain   Sources/PangoZipCore/FinderRequest.swift Sources/PangoZipCore/FinderInstallation.swift FinderExtension/FinderSync.swift   -o "$extension/Contents/MacOS/PangoZipFinderSync"
+signing_identity="${PANGOZIP_SIGNING_IDENTITY:--}"
+codesign --force --sign "$signing_identity" --entitlements FinderExtension/Entitlements.plist "$extension"
+codesign --force --sign "$signing_identity" "$app/Contents/Resources/Engine/7zz"
+worker="$app/Contents/Helpers/PangoZipWorker.app"
+mkdir -p "$worker/Contents/MacOS" "$worker/Contents/Resources"
+cp "$app/Contents/MacOS/PangoZip" "$worker/Contents/MacOS/PangoZip"
+cp Resources/WorkerInfo.plist "$worker/Contents/Info.plist"
+cp LICENSE THIRD_PARTY_NOTICES.md "$worker/Contents/Resources/"
+cp Resources/Icons/AppIcon.icns "$worker/Contents/Resources/AppIcon.icns"
+cp -R Resources/Engine "$worker/Contents/Resources/"
+codesign --force --sign "$signing_identity" "$worker/Contents/Resources/Engine/7zz"
+codesign --force --sign "$signing_identity" "$worker"
+mkdir -p "$app/Contents/SharedSupport"
+xcrun swiftc -swift-version 6 -O -target "$(uname -m)-apple-macos26.0" Tools/Uninstall.swift -o "$app/Contents/Helpers/PangoZipUninstall"
+codesign --force --sign "$signing_identity" "$app/Contents/Helpers/PangoZipUninstall"
+cp scripts/uninstall-app.sh "$app/Contents/SharedSupport/Uninstall PangoZip.command"
+chmod +x "$app/Contents/SharedSupport/Uninstall PangoZip.command"
+codesign --force --sign "$signing_identity" "$app"
+echo "Built: $(pwd)/$app"
