@@ -25,7 +25,7 @@ jobs:
     - name: Check shell scripts
       run: for script in scripts/*.sh scripts/lib/*.sh; do bash -n "$script"; done
     - name: Test signing and notarization scripts without credentials
-      run: python3 scripts/tests/test_release_scripts.py
+      run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
     - name: Build signed application bundle
       run: scripts/build-app.sh
     - name: Verify application signature

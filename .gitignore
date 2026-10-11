@@ -10,3 +10,6 @@ HANDOFF-*.md
 *.keychain-db
 .env
 .env.*
+
+__pycache__/
+*.pyc

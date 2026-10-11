@@ -83,6 +83,8 @@ open ~/Applications/PangoZip.app
 
 Для разработки установочный скрипт `./scripts/install-app.sh` по-прежнему доступен как альтернативный способ установки из исходников. Основной DMG-путь использует перетаскивание приложения и регистрацию вложенных компонентов при первом запуске. Если подменю PangoZip не появилось, включите PangoZip в настройках расширений Finder. Старые Services сохранены как запасной способ запуска. Подробности: [docs/finder-integration.md](docs/finder-integration.md).
 
+Автоматический выпуск DMG в GitHub Releases запускается отправкой нового тега `vMAJOR.MINOR.PATCH`: проверки, сборка, ENG/RUS-описание, DMG и SHA-256, затем публикация как Latest. Подготовка версии и подключение подписи Apple: [docs/github-releases.md](docs/github-releases.md).
+
 Для выпуска с Developer ID и нотариализацией Apple подготовлены `scripts/sign-app.sh` и `scripts/notarize-release.sh`. Однократная настройка сертификата и Keychain, команда выпуска и диагностика описаны в [docs/notarization.md](docs/notarization.md). Без сертификата обычная сборка остаётся ad hoc.
 
 Для упаковки выполните `./scripts/package-dmg.sh`; при уже готовой сборке — `./scripts/package-dmg.sh --skip-build`. Скрипт формирует сжатый образ UDZO `build/PangoZip-<version>-<arch>.dmg`, берёт версию и архитектуру из приложения, проверяет подпись компонентов и целостность образа. В DMG находятся `PangoZip.app`, ссылка `Applications` на `/Applications` и `Read me.txt`; приложение включает расширение Finder, помощников, лицензии и исходники 7-Zip. Основной способ установки из DMG — перетаскивание приложения в Applications. `./scripts/package-app.sh` сохраняет ZIP-пакет для разработчиков.

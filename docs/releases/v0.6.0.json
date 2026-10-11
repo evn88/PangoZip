@@ -1,0 +1,12 @@
+{
+  "en": [
+    "Install by dragging PangoZip.app into Applications; the DMG no longer requires an installer command.",
+    "Register the embedded Finder extension and background helper on first launch. Finder extension consent remains under user control.",
+    "Keep the helper inside the application bundle so removing the app also removes its bundled components."
+  ],
+  "ru": [
+    "Установка перетаскиванием PangoZip.app в Applications; установочная команда в DMG больше не требуется.",
+    "Вложенное расширение Finder и фоновый помощник регистрируются при первом запуске. Разрешение расширения остаётся за пользователем.",
+    "Помощник находится внутри приложения: удаление приложения убирает и его вложенные компоненты."
+  ]
+}

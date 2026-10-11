@@ -1,0 +1,121 @@
+name: Release DMG
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to validate against current sources (dry run, no publication)'
+        required: true
+        default: 'v0.6.0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      NOTARIZE: ${{ vars.PANGOZIP_NOTARIZE == 'true' }}
+    steps:
+      - name: Check out tagged sources
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate tag and bundle versions
+        run: |
+          test "$(uname -m)" = arm64
+          python3 scripts/release_metadata.py validate "$RELEASE_TAG"
+      - name: Check formatting and shell scripts
+        run: |
+          swift format lint --strict --recursive Sources FinderExtension Tests Tools Package.swift
+          for script in scripts/*.sh scripts/lib/*.sh; do bash -n "$script"; done
+      - name: Test release automation without credentials
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+      - name: Run Swift tests
+        run: swift test
+      - name: Import Developer ID and notarization credentials
+        if: env.NOTARIZE == 'true'
+        env:
+          PANGOZIP_CERTIFICATE_BASE64: ${{ secrets.PANGOZIP_CERTIFICATE_BASE64 }}
+          PANGOZIP_CERTIFICATE_PASSWORD: ${{ secrets.PANGOZIP_CERTIFICATE_PASSWORD }}
+          PANGOZIP_SIGNING_IDENTITY: ${{ secrets.PANGOZIP_SIGNING_IDENTITY }}
+          PANGOZIP_APPLE_ID: ${{ secrets.PANGOZIP_APPLE_ID }}
+          PANGOZIP_APPLE_TEAM_ID: ${{ secrets.PANGOZIP_APPLE_TEAM_ID }}
+          PANGOZIP_APPLE_APP_PASSWORD: ${{ secrets.PANGOZIP_APPLE_APP_PASSWORD }}
+        run: scripts/ci-signing.sh setup
+      - name: Build notarized DMG
+        if: env.NOTARIZE == 'true'
+        env:
+          PANGOZIP_SIGNING_IDENTITY: ${{ secrets.PANGOZIP_SIGNING_IDENTITY }}
+          PANGOZIP_NOTARY_PROFILE: PangoZip-CI
+        run: |
+          scripts/notarize-release.sh
+          python3 scripts/release_metadata.py prepare "$RELEASE_TAG" --signing notarized
+      - name: Build ad hoc DMG
+        if: env.NOTARIZE != 'true'
+        env:
+          PANGOZIP_SIGNING_IDENTITY: '-'
+        run: |
+          scripts/build-app.sh release
+          scripts/package-dmg.sh --skip-build
+          python3 scripts/release_metadata.py prepare "$RELEASE_TAG" --signing ad-hoc
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: |
+            build/*.dmg
+            build/*.dmg.sha256
+            build/release-notes.md
+            build/release-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Save failed notarization reports
+        if: failure() && env.NOTARIZE == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: notarization-reports
+          path: |
+            build/notarization/*/*-submission.plist
+            build/notarization/*/*-submission-id.txt
+            build/notarization/*/*-log.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Delete temporary signing material
+        if: always() && env.NOTARIZE == 'true'
+        run: scripts/ci-signing.sh cleanup
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    steps:
+      - name: Check out publication scripts
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Download verified release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release-bundle
+      - name: Publish release with both assets as Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/publish-release.py release-bundle "$GH_REPO" "$RELEASE_TAG"
