@@ -2,7 +2,7 @@
 
 <img src="Resources/Icons/AppIcon-master.png" width="128" alt="PangoZip — золотистый панголин">
 
-Установка перетаскиванием: [PangoZip 0.6.0 (предварительный релиз)](https://github.com/evn88/PangoZip/releases/tag/v0.6.0).
+Скачать: [PangoZip 0.6.0 (предварительный релиз)](https://github.com/evn88/PangoZip/releases/tag/v0.6.0).
 
 Нативный менеджер архивов для **macOS 26+**: SwiftUI, AppKit и официальный 7-Zip 26.04 (`7zz`). 
 
