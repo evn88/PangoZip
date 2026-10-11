@@ -47,6 +47,52 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     } catch { XCTAssertEqual(error as? ArchiveError, .outputLimit) }
   }
 
+  func testStreamsProgressBeforeProcessExitsWithoutMixingItIntoBinaryOutput() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript(
+      "printf 'payload'; printf '  12%%' >&2; exec /bin/sleep 10", in: directory)
+    let samples = EngineSamples()
+    let runner = EngineProcess(executableURL: script, timeout: 15)
+    let output = directory.appendingPathComponent("out")
+    let task = Task {
+      try await runner.run(
+        arguments: [], outputURL: output, limit: 100,
+        progress: { await samples.record($0) })
+    }
+    let deadline = Date().addingTimeInterval(3)
+    while await samples.values.isEmpty, Date() < deadline {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    let beforeCancellation = await samples.values
+    task.cancel()
+    do {
+      try await task.value
+      XCTFail("Expected cancellation")
+    } catch is CancellationError {}
+    XCTAssertEqual(beforeCancellation, [0.12])
+    XCTAssertEqual(try Data(contentsOf: output), Data("payload".utf8))
+    let finalValues = await samples.values
+    XCTAssertFalse(finalValues.contains(1))
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: output.appendingPathExtension("stderr").path))
+  }
+
+  func testFailureDoesNotReportCompletion() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript("printf '  35%%' >&2; exit 2", in: directory)
+    let samples = EngineSamples()
+    do {
+      try await EngineProcess(executableURL: script, timeout: 2).run(
+        arguments: [], outputURL: directory.appendingPathComponent("out"), limit: 100,
+        progress: { await samples.record($0) })
+      XCTFail("Expected error")
+    } catch { XCTAssertEqual(error as? ArchiveError, .invalidArchive) }
+    let values = await samples.values
+    XCTAssertEqual(values, [0.35])
+  }
+
   private func makeDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -59,4 +105,9 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     return url
   }
+}
+
+private actor EngineSamples {
+  private(set) var values: [Double] = []
+  func record(_ value: Double) { values.append(value) }
 }

@@ -35,6 +35,7 @@ final class ArchiveBrowserModel: ObservableObject {
   @Published private(set) var isMaterializing = false
   @Published private(set) var previewURL: URL?
   @Published private(set) var errorMessage: String?
+  @Published private(set) var operationProgress: ArchiveProgress?
   @Published private(set) var operationMessage: String?
   @Published private(set) var activeEdits: [ArchiveEdit] = []
   @Published var selectedPaths: Set<String> = [] { didSet { selectionChanged() } }
@@ -237,7 +238,7 @@ final class ArchiveBrowserModel: ObservableObject {
         while true {
           do {
             _ = try await service.exportItem(
-              path, from: snapshot, to: destination, password: password)
+              path, from: snapshot, to: destination, password: password, progress: progressHandler)
             break
           } catch ArchiveError.passwordRequired {
             errorMessage = ArchiveError.passwordRequired.localizedDescription
@@ -264,6 +265,7 @@ final class ArchiveBrowserModel: ObservableObject {
   private func updateExportState() {
     isExporting = !promiseTasks.isEmpty || !dragLeases.isEmpty
     if !isExporting {
+      operationProgress = nil
       promiseTail = nil
       drainIncomingRequests()
     }
@@ -431,11 +433,19 @@ final class ArchiveBrowserModel: ObservableObject {
     return alert.runModal() == .alertFirstButtonReturn
   }
 
+  private var progressHandler: ArchiveProgressHandler {
+    { [weak self] value in await self?.receiveProgress(value) }
+  }
+
+  private func receiveProgress(_ value: ArchiveProgress) { operationProgress = value }
+
   private func run(_ body: @escaping @MainActor () async -> Void) {
     guard !isBusy, !isClosing else { return }
     isBusy = true
+    operationProgress = nil
     actionTask = Task { [weak self] in
       await body()
+      self?.operationProgress = nil
       self?.isBusy = false
       self?.actionTask = nil
       if self?.errorMessage == nil { self?.selectionChanged() }
@@ -493,7 +503,8 @@ final class ArchiveBrowserModel: ObservableObject {
         let proposed = first.deletingLastPathComponent().appendingPathComponent(
           selection.archiveName + "." + format)
         let result = try await service.createArchive(
-          from: urls, proposedURL: proposed, format: format, options: ArchivePreferences.options)
+          from: urls, proposedURL: proposed, format: format, options: ArchivePreferences.options,
+          progress: progressHandler)
         NSWorkspace.shared.activateFileViewerSelecting([result])
         operationMessage = "Создан архив: " + result.lastPathComponent
       case .extract(let urls):
@@ -503,7 +514,8 @@ final class ArchiveBrowserModel: ObservableObject {
         for (index, url) in urls.enumerated() {
           retryOperation = .extract(Array(urls[index...]))
           operationMessage = "Извлекаем \(index + 1) из \(urls.count): \(url.lastPathComponent)"
-          results.append(try await service.extractArchive(url, password: password))
+          results.append(
+            try await service.extractArchive(url, password: password, progress: progressHandler))
           password = ""
         }
         operationMessage = "Извлечено архивов: \(results.count)"
@@ -520,7 +532,8 @@ final class ArchiveBrowserModel: ObservableObject {
             String(path.split(separator: "/").last!))
           results.append(
             try await service.exportItem(
-              path, from: session, to: destination, password: password, chooseUniqueName: true))
+              path, from: session, to: destination, password: password, chooseUniqueName: true,
+              progress: progressHandler))
         }
         operationMessage = "Извлечено объектов: \(results.count)"
       case .preview:
@@ -552,15 +565,18 @@ final class ArchiveBrowserModel: ObservableObject {
       }
       failedOperation = nil
     } catch is CancellationError {
+      operationProgress = nil
       operationMessage = nil
       loadState = session == nil ? .idle : .loaded
     } catch ArchiveError.passwordRequired {
+      operationProgress = nil
       failedOperation = retryOperation
       operationMessage = nil
       errorMessage = ArchiveError.passwordRequired.localizedDescription
       isPasswordPromptPresented = true
       if session == nil { loadState = .failed }
     } catch {
+      operationProgress = nil
       failedOperation = retryOperation
       operationMessage = nil
       errorMessage = error.localizedDescription

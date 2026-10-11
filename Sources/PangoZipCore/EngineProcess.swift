@@ -5,15 +5,29 @@ struct EngineProcess: Sendable {
   let executableURL: URL
   let timeout: TimeInterval
 
-  func run(arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL? = nil)
-    async throws
-  {
+  func run(
+    arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL? = nil,
+    progress: (@Sendable (Double) async -> Void)? = nil
+  ) async throws {
+    let (updates, continuation) = AsyncStream<Double>.makeStream(
+      bufferingPolicy: .bufferingNewest(8))
+    let relay: (@Sendable (Double) -> Void)?
+    if progress != nil {
+      relay = { @Sendable value in _ = continuation.yield(value) }
+    } else {
+      relay = nil
+    }
     let job = Task.detached(priority: .userInitiated) {
+      defer { continuation.finish() }
       try self.runBlocking(
-        arguments: arguments, outputURL: outputURL, limit: limit, workingDirectory: workingDirectory
-      )
+        arguments: arguments, outputURL: outputURL, limit: limit,
+        workingDirectory: workingDirectory, progress: relay)
     }
     try await withTaskCancellationHandler {
+      for await value in updates {
+        if !Task.isCancelled { await progress?(value) }
+      }
+      // Отмена ожидает остановки процесса и закрытия файлов перед очисткой сеанса.
       try await job.value
       try Task.checkCancellation()
     } onCancel: {
@@ -22,7 +36,8 @@ struct EngineProcess: Sendable {
   }
 
   private func runBlocking(
-    arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL?
+    arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL?,
+    progress: (@Sendable (Double) -> Void)?
   ) throws {
     try Task.checkCancellation()
     let manager = FileManager.default
@@ -38,6 +53,10 @@ struct EngineProcess: Sendable {
       try? errors.close()
       try? manager.removeItem(at: errorsURL)
     }
+    let progressReader = try FileHandle(forReadingFrom: errorsURL)
+    defer { try? progressReader.close() }
+    var parser = EngineProgressParser()
+    // Process и waitUntilExit используют один поток/run loop; здесь нет async-приостановок.
     let process = Process()
     process.executableURL = executableURL
     process.arguments = arguments
@@ -58,9 +77,18 @@ struct EngineProcess: Sendable {
         guard try fileSize(outputURL) <= limit, try fileSize(errorsURL) <= 1_048_576 else {
           throw ArchiveError.outputLimit
         }
+        if let progress {
+          let data = try progressReader.read(upToCount: 65_536) ?? Data()
+          for fraction in parser.consume(data) { progress(fraction) }
+        }
         Thread.sleep(forTimeInterval: 0.02)
       }
       process.waitUntilExit()
+      if let progress {
+        while let data = try progressReader.read(upToCount: 65_536), !data.isEmpty {
+          for fraction in parser.consume(data) { progress(fraction) }
+        }
+      }
       try Task.checkCancellation()
       guard try fileSize(outputURL) <= limit, try fileSize(errorsURL) <= 1_048_576 else {
         throw ArchiveError.outputLimit
@@ -80,6 +108,7 @@ struct EngineProcess: Sendable {
       }
       throw ArchiveError.invalidArchive
     }
+    if let progress { progress(1) }
   }
 
   private func fileSize(_ url: URL) throws -> UInt64 {

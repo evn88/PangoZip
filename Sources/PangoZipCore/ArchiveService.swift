@@ -340,12 +340,16 @@ public actor ArchiveService {
     return try snapshot(id: session.id, state: updated)
   }
 
-  private func verify(_ url: URL, passwordArguments: [String], in directory: URL) async throws {
+  private func verify(
+    _ url: URL, passwordArguments: [String], in directory: URL,
+    progress: (@Sendable (Double) async -> Void)? = nil
+  ) async throws {
     let output = directory.appendingPathComponent(UUID().uuidString + ".verify")
     defer { try? FileManager.default.removeItem(at: output) }
     try await runner().run(
-      arguments: ["t", "-bsp0"] + passwordArguments + ["--", url.path], outputURL: output,
-      limit: 32 * 1024 * 1024)
+      arguments: ["t", progress == nil ? "-bsp0" : "-bsp2"] + passwordArguments + ["--", url.path],
+      outputURL: output,
+      limit: 32 * 1024 * 1024, progress: progress)
   }
 
   private func readArchive(_ url: URL, password: String, in directory: URL) async throws
@@ -429,8 +433,9 @@ public actor ArchiveService {
 extension ArchiveService {
   public func createArchive(
     from urls: [URL], proposedURL: URL, format: String, options: CompressionOptions? = nil,
-    password: String = ""
+    password: String = "", progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
+    await progress?(ArchiveProgress(phase: .preparing))
     guard ["zip", "7z"].contains(format), !urls.isEmpty, proposedURL.isFileURL else {
       throw ArchiveError.invalidOperation
     }
@@ -468,27 +473,38 @@ extension ArchiveService {
     let settings = CompressionOptions(
       format: format, level: compression.level, solid: compression.solid,
       threads: compression.threads)
+    await progress?(ArchiveProgress(phase: .compressing, fraction: 0))
     try await runner().run(
       arguments: [
-        "a", "-t" + format, "-spd", "-ssc", "-snl", "-scsUTF-8", "-bsp0", "-i@" + list.path,
+        "a", "-t" + format, "-spd", "-ssc", "-snl", "-scsUTF-8",
+        progress == nil ? "-bsp0" : "-bsp2", "-i@" + list.path,
       ]
         + settings.arguments
         + (password.isEmpty ? [] : ["-p" + password, format == "7z" ? "-mhe=on" : "-mem=AES256"])
         + ["--", working.path],
       outputURL: transaction.appendingPathComponent("create.log"), limit: 32 * 1024 * 1024,
-      workingDirectory: inputs)
+      workingDirectory: inputs,
+      progress: engineProgress(progress, phase: .compressing, from: 0, to: 0.9))
+    await progress?(ArchiveProgress(phase: .verifying, fraction: 0.9))
     try await verify(
-      working, passwordArguments: password.isEmpty ? [] : ["-p" + password], in: transaction)
+      working, passwordArguments: password.isEmpty ? [] : ["-p" + password], in: transaction,
+      progress: engineProgress(progress, phase: .verifying, from: 0.9, to: 0.99))
     _ = try await readArchive(working, password: password, in: transaction)
     try Task.checkCancellation()
     guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
-    return try ArchiveOutput.publish(working, proposed: proposedURL, isDirectory: false)
+    await progress?(ArchiveProgress(phase: .finalizing, fraction: 0.99))
+    try Task.checkCancellation()
+    guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
+    let result = try ArchiveOutput.publish(working, proposed: proposedURL, isDirectory: false)
+    await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+    return result
   }
 
   public func extractArchive(
     _ url: URL, password: String = "", maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
-    directory: URL? = nil, createsSubfolder: Bool = true
+    directory: URL? = nil, createsSubfolder: Bool = true, progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
+    await progress?(ArchiveProgress(phase: .preparing))
     let session = try await open(url, password: password)
     defer {
       sessions.removeValue(forKey: session.id)
@@ -505,6 +521,7 @@ extension ArchiveService {
       at: output, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     var source = url
     var descriptor = state.descriptor
+    var verificationStart = 0.0
     // В tar.gz/tgz и аналогах сначала снимаем слой сжатия, затем извлекаем TAR.
     if ["gzip", "bzip2", "xz", "zstd", "lzma"].contains(descriptor.format),
       descriptor.entries.count == 1,
@@ -516,7 +533,10 @@ extension ArchiveService {
         throw ArchiveError.outputLimit
       }
       source = transaction.appendingPathComponent("inner.tar")
-      try await extractFile(entry, from: url, to: source, password: password)
+      try await extractFile(
+        entry, from: url, to: source, password: password,
+        progress: engineProgress(progress, phase: .extracting, from: 0, to: 0.1))
+      verificationStart = 0.1
       descriptor = try await readArchive(source, password: password, in: transaction)
       guard descriptor.format == "tar" else { throw ArchiveError.invalidArchive }
     }
@@ -535,7 +555,17 @@ extension ArchiveService {
         normalized[key] = path
       }
     }
-    try await verify(source, passwordArguments: ["-p" + password], in: transaction)
+    let extractionStart = verificationStart + 0.1
+    let verificationBase = verificationStart
+    await progress?(ArchiveProgress(phase: .verifying, fraction: verificationBase))
+    try await verify(
+      source, passwordArguments: ["-p" + password], in: transaction,
+      progress: engineProgress(
+        progress, phase: .verifying, from: verificationBase, to: extractionStart))
+    var completedWeight = 0.0
+    let totalWeight = descriptor.entries.filter { !$0.isDirectory }.reduce(0.0) {
+      $0 + max(1, Double($1.size))
+    }
     for entry in descriptor.entries {
       try Task.checkCancellation()
       let target = output.appendingPathComponent(entry.path)
@@ -543,10 +573,19 @@ extension ArchiveService {
         at: entry.isDirectory ? target : target.deletingLastPathComponent(),
         withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
       if !entry.isDirectory {
-        try await extractFile(entry, from: source, to: target, password: password)
+        let weight = max(1, Double(entry.size))
+        let start = completedWeight
+        try await extractFile(
+          entry, from: source, to: target, password: password,
+          progress: engineProgress(
+            progress, phase: .extracting,
+            from: extractionStart + start / totalWeight * (0.99 - extractionStart),
+            to: extractionStart + (start + weight) / totalWeight * (0.99 - extractionStart)))
+        completedWeight += weight
         try Quarantine.copy(from: url, to: target)
       }
     }
+    await progress?(ArchiveProgress(phase: .finalizing, fraction: 0.99))
     // Атрибуты папок устанавливаются после записи дочерних файлов.
     for entry in descriptor.entries.sorted(by: { $0.path.count > $1.path.count }) {
       var attributes: [FileAttributeKey: Any] = [:]
@@ -561,7 +600,9 @@ extension ArchiveService {
     _ = try checkedState(session)
     try Task.checkCancellation()
     if createsSubfolder {
-      return try ArchiveOutput.publish(output, proposed: destination, isDirectory: true)
+      let result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: true)
+      await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+      return result
     }
     for child in try FileManager.default.contentsOfDirectory(
       at: output, includingPropertiesForKeys: nil)
@@ -570,6 +611,7 @@ extension ArchiveService {
         child, proposed: parent.appendingPathComponent(child.lastPathComponent),
         isDirectory: try FileFingerprint(child).type == .typeDirectory)
     }
+    await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
     return parent
   }
 
@@ -585,14 +627,16 @@ extension ArchiveService {
   }
 
   private func extractFile(
-    _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String
+    _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String,
+    progress: (@Sendable (Double) async -> Void)? = nil
   ) async throws {
     try await runner().run(
       arguments: [
-        "x", "-so", "-spd", "-ssc", "-y", "-bso0", "-bsp0", "-p" + password, "--", archive.path,
+        "x", "-so", "-spd", "-ssc", "-y", "-bso0", progress == nil ? "-bsp0" : "-bsp2",
+        "-p" + password, "--", archive.path,
         entry.path,
       ],
-      outputURL: output, limit: entry.size)
+      outputURL: output, limit: entry.size, progress: progress)
     guard try FileFingerprint(output).size == entry.size else {
       throw ArchiveError.extractionMismatch
     }
@@ -616,8 +660,10 @@ extension ArchiveService {
 
   public func exportItem(
     _ path: String, from session: ArchiveSession, to destination: URL, password: String = "",
-    chooseUniqueName: Bool = false, maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024
+    chooseUniqueName: Bool = false, maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
+    progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
+    await progress?(ArchiveProgress(phase: .preparing))
     let state = try checkedState(session)
     guard !busy.contains(session.id), destination.isFileURL else {
       throw ArchiveError.invalidOperation
@@ -652,6 +698,10 @@ extension ArchiveService {
       try manager.createDirectory(
         at: output, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     }
+    var completedWeight = 0.0
+    let totalWeight = entries.filter { !$0.isDirectory }.reduce(0.0) {
+      $0 + max(1, Double($1.size))
+    }
     for entry in entries {
       let relative = entry.path == path ? "" : String(entry.path.dropFirst(path.count + 1))
       let target = relative.isEmpty ? output : output.appendingPathComponent(relative)
@@ -662,7 +712,14 @@ extension ArchiveService {
         try manager.createDirectory(
           at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
           attributes: [.posixPermissions: 0o700])
-        try await extractFile(entry, from: state.url, to: target, password: password)
+        let weight = max(1, Double(entry.size))
+        let start = completedWeight
+        try await extractFile(
+          entry, from: state.url, to: target, password: password,
+          progress: engineProgress(
+            progress, phase: .extracting, from: start / totalWeight * 0.99,
+            to: (start + weight) / totalWeight * 0.99))
+        completedWeight += weight
         try Quarantine.copy(from: state.url, to: target)
       }
     }
@@ -680,10 +737,17 @@ extension ArchiveService {
     try Quarantine.copy(from: state.url, to: output)
     try Task.checkCancellation()
     _ = try checkedState(session)
+    await progress?(ArchiveProgress(phase: .finalizing, fraction: 0.99))
+    try Task.checkCancellation()
+    _ = try checkedState(session)
+    let result: URL
     if chooseUniqueName {
-      return try ArchiveOutput.publish(output, proposed: destination, isDirectory: isDirectory)
+      result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: isDirectory)
+    } else {
+      try ArchiveOutput.publishExact(output, to: destination)
+      result = destination
     }
-    try ArchiveOutput.publishExact(output, to: destination)
-    return destination
+    await progress?(ArchiveProgress(phase: .finalizing, fraction: 1))
+    return result
   }
 }

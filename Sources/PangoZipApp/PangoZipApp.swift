@@ -37,7 +37,7 @@ struct PangoZipApp: App {
           }
       }
     }
-    .defaultSize(width: isFinderWorker ? 454 : 1480, height: isFinderWorker ? 140 : 820)
+    .defaultSize(width: isFinderWorker ? 454 : 1480, height: isFinderWorker ? 190 : 820)
     .windowResizability(isFinderWorker ? .contentSize : .contentMinSize)
     .restorationBehavior(isFinderWorker ? .disabled : .automatic)
     .commands { ArchiveCommands(model: model) }

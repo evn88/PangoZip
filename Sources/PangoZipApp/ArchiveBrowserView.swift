@@ -195,7 +195,11 @@ struct ArchiveBrowserView: View {
   private var statusBar: some View {
     HStack(spacing: 14) {
       if model.isBusy || model.isExporting || model.isClosing {
-        ProgressView().controlSize(.small)
+        if let progress = model.operationProgress {
+          OperationProgressView(progress: progress).frame(width: 220)
+        } else {
+          ProgressView().controlSize(.small)
+        }
         Text(model.isClosing ? "Закрываем архив…" : model.operationMessage ?? "Выполняем операцию…")
         Button("Отмена", action: model.cancelCurrentOperation).disabled(model.isClosing)
       } else if let message = model.errorMessage {

@@ -15,6 +15,7 @@ enum ApplicationMode {
 
 @MainActor
 final class FinderOperationModel: ObservableObject {
+  @Published private(set) var progress: ArchiveProgress?
   @Published private(set) var message = "Подготавливаем операцию…"
   @Published private(set) var errorMessage: String?
   @Published private(set) var needsPassword = false
@@ -32,6 +33,12 @@ final class FinderOperationModel: ObservableObject {
   private var panel: NSSavePanel?
   private var saveDelegate: NewArchiveSaveDelegate?
   private var started = false
+
+  private var progressHandler: ArchiveProgressHandler {
+    { [weak self] value in await self?.receiveProgress(value) }
+  }
+
+  private func receiveProgress(_ value: ArchiveProgress) { progress = value }
 
   func start(_ request: FinderRequest) {
     guard !started else { return }
@@ -53,6 +60,7 @@ final class FinderOperationModel: ObservableObject {
         NSApp.terminate(nil)
       } catch {
         await service.cleanup()
+        progress = nil
         errorMessage = error.localizedDescription
         task = nil
         NSApp.activate(ignoringOtherApps: true)
@@ -91,6 +99,7 @@ final class FinderOperationModel: ObservableObject {
 
   private func askPassword(for url: URL) async throws -> String {
     try Task.checkCancellation()
+    progress = nil
     message = "Введите пароль: " + url.lastPathComponent
     password = ""
     needsPassword = true
@@ -155,7 +164,7 @@ final class FinderOperationModel: ObservableObject {
       }
       _ = try await service.createArchive(
         from: selection.urls, proposedURL: destination, format: options.format, options: options,
-        password: creationPassword)
+        password: creationPassword, progress: progressHandler)
     case .createZip, .create7z:
       let selection = FinderSelection(urls: request.urls)
       guard let first = selection.urls.first else { throw ArchiveError.invalidOperation }
@@ -165,7 +174,8 @@ final class FinderOperationModel: ObservableObject {
       let proposed = first.deletingLastPathComponent().appendingPathComponent(
         selection.archiveName + "." + format)
       _ = try await service.createArchive(
-        from: selection.urls, proposedURL: proposed, format: format, options: options)
+        from: selection.urls, proposedURL: proposed, format: format, options: options,
+        progress: progressHandler)
     case .extract, .extractHere, .extractFiles, .test:
       var destination: URL?
       if request.action == .extractFiles {
@@ -195,11 +205,12 @@ final class FinderOperationModel: ObservableObject {
             + "\(index + 1) из \(request.urls.count): \(url.lastPathComponent)"
           do {
             if request.action == .test {
+              progress = ArchiveProgress(phase: .verifying)
               try await service.testArchive(url, password: suppliedPassword)
             } else {
               _ = try await service.extractArchive(
                 url, password: suppliedPassword, directory: destination,
-                createsSubfolder: request.action == .extract)
+                createsSubfolder: request.action == .extract, progress: progressHandler)
             }
             break
           } catch ArchiveError.passwordRequired {
@@ -217,8 +228,11 @@ struct FinderOperationView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(spacing: 14) {
-        if model.errorMessage == nil { ProgressView().controlSize(.small) }
+        Image(systemName: model.errorMessage == nil ? "archivebox" : "exclamationmark.triangle")
         Text(model.errorMessage ?? model.message).lineLimit(4)
+      }
+      if model.errorMessage == nil && !model.needsPassword {
+        OperationProgressView(progress: model.progress)
       }
       if model.needsPassword {
         SecureField("Пароль архива", text: $model.password)
