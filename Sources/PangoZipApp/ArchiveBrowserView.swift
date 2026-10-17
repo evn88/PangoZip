@@ -5,25 +5,23 @@ import UniformTypeIdentifiers
 
 struct ArchiveBrowserView: View {
   @ObservedObject var model: ArchiveBrowserModel
+  @ObservedObject var integration: FinderIntegrationModel
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var isDropTargeted = false
+  @State private var showsMetadata = false
   @FocusState private var searchFocused: Bool
 
   var body: some View {
-    VStack(spacing: 0) {
-      archiveHeader
-      Divider()
-      HSplitView {
-        archiveTable
-          .frame(minWidth: 760, idealWidth: 1100, maxWidth: .infinity, maxHeight: .infinity)
-        if model.showsPreview {
-          preview
-            .frame(minWidth: 320, idealWidth: 360, maxWidth: 400, maxHeight: .infinity)
-            .layoutPriority(-1)
-        }
-      }
-      Divider()
-      statusBar
-    }
+    ArchiveSplitView(
+      showsPreview: model.showsPreview, reduceMotion: reduceMotion,
+      content: archiveContent, preview: preview
+    )
+    .navigationTitle(model.session?.url.lastPathComponent ?? "PangoZip")
+    .navigationSubtitle(
+      model.session.map { $0.format.uppercased() + ($0.canModify ? "" : " — Только чтение") } ?? ""
+    )
+    .searchable(text: $model.searchText, placement: .toolbar, prompt: "Имя или путь в архиве")
+    .searchFocused($searchFocused)
     .toolbar {
       ToolbarItemGroup(placement: .automatic) {
         Button("Открыть архив…", systemImage: "archivebox", action: model.chooseArchive)
@@ -33,6 +31,13 @@ struct ArchiveBrowserView: View {
           .labelStyle(.iconOnly)
           .help("Закрыть архив (⌘W)")
           .disabled(model.session == nil && !model.isBusy || model.isClosing)
+      }
+      ToolbarSpacer(.fixed)
+      ToolbarItem(placement: .automatic) {
+        Button("Извлечь…", systemImage: "arrow.up.bin", action: model.extractSelected)
+          .labelStyle(.titleAndIcon)
+          .help("Извлечь выбранные файлы и папки (⌘⇧E)")
+          .disabled(!model.canAct || model.selectedPaths.isEmpty)
       }
       ToolbarSpacer(.fixed)
       ToolbarItemGroup(placement: .automatic) {
@@ -86,27 +91,14 @@ struct ArchiveBrowserView: View {
     }
   }
 
-  private var archiveHeader: some View {
-    HStack(spacing: 12) {
-      Image(systemName: "archivebox")
-        .foregroundStyle(.tint)
-      if let session = model.session {
-        Text(session.url.lastPathComponent).font(.headline).lineLimit(1)
-        Text(session.format.uppercased()).foregroundStyle(.secondary)
-        if !session.canModify { Text("Только чтение").foregroundStyle(.secondary) }
-      } else {
-        Text("PangoZip").font(.headline)
-      }
-      Spacer()
-      Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-      TextField("Имя или путь в архиве", text: $model.searchText)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: 280)
-        .focused($searchFocused)
-        .disabled(model.session == nil)
-        .accessibilityLabel("Поиск в архиве")
+  private var archiveContent: some View {
+    VStack(spacing: 0) {
+      FinderIntegrationBanner(model: integration)
+      archiveTable
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      Divider()
+      statusBar
     }
-    .padding(.horizontal, 16).padding(.vertical, 10)
   }
 
   @ViewBuilder
@@ -117,7 +109,12 @@ struct ArchiveBrowserView: View {
           if model.visibleRoots.isEmpty {
             ContentUnavailableView(
               model.searchText.isEmpty ? "Архив пуст" : "Ничего не найдено",
-              systemImage: "archivebox"
+              systemImage: model.searchText.isEmpty ? "archivebox" : "magnifyingglass",
+              description: Text(
+                model.searchText.isEmpty
+                  ? "В этом архиве пока нет файлов."
+                  : "Попробуйте другое имя или путь в архиве."
+              )
             )
             .allowsHitTesting(false)
           }
@@ -130,17 +127,17 @@ struct ArchiveBrowserView: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
-      VStack(spacing: 16) {
-        Image(systemName: "doc.zipper").font(.system(size: 46)).foregroundStyle(.secondary)
-        Text("Откройте архив").font(.title2)
-        Text("Перетащите архив в окно или выберите файл на диске.").foregroundStyle(.secondary)
+      ContentUnavailableView {
+        Label("Откройте архив", systemImage: "doc.zipper")
+      } description: {
+        Text("Перетащите архив в окно, чтобы просмотреть и извлечь файлы.")
+      } actions: {
         Button("Выбрать архив…", action: model.chooseArchive)
-          .buttonStyle(.borderedProminent).disabled(!model.canAct)
+          .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canAct)
         if let message = model.errorMessage {
           Text(message).foregroundStyle(.red).frame(maxWidth: 550).multilineTextAlignment(.center)
         }
       }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 
@@ -149,41 +146,69 @@ struct ArchiveBrowserView: View {
       HStack {
         Text("Предпросмотр").font(.headline)
         Spacer()
-        Button(action: model.togglePreview) { Image(systemName: "xmark") }
-          .buttonStyle(.plain).help("Скрыть предпросмотр")
+        Button("Скрыть предпросмотр", systemImage: "xmark", action: model.togglePreview)
+          .labelStyle(.iconOnly).buttonStyle(.borderless)
+          .help("Скрыть предпросмотр (⌘⇧P)")
       }
       .padding(14)
       Divider()
-      if let entry = model.selectedEntry {
+      if let details = model.selectedItemDetails {
+        let entry = details.entry
         VStack(alignment: .leading, spacing: 5) {
-          Text(entry.path).font(.callout).lineLimit(2).textSelection(.enabled)
+          Text(URL(fileURLWithPath: entry.path).lastPathComponent)
+            .font(.headline).lineLimit(2).truncationMode(.middle).textSelection(.enabled)
+          Text(entry.path).font(.caption).foregroundStyle(.secondary)
+            .lineLimit(2).truncationMode(.middle).textSelection(.enabled).help(entry.path)
+          if !entry.isDirectory {
+            Text(ProgressFormatting.bytes(entry.size))
+              .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+          }
           if model.activeEdits.contains(where: { $0.entry.path == entry.path }) {
             Text("Есть рабочая копия: сохраните файл в редакторе, затем нажмите ⌘S здесь.")
               .font(.caption).foregroundStyle(.secondary)
           }
+          if !entry.isDirectory {
+            DisclosureGroup("Сведения", isExpanded: $showsMetadata) {
+              ScrollView {
+                ArchiveMetadataView(details: details).padding(.top, 8)
+              }
+              .frame(maxHeight: 240)
+            }
+            .padding(.top, 8)
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
         Divider()
-        if let url = model.previewURL {
+        if entry.isDirectory {
+          ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+              Label("Папка", systemImage: "folder")
+                .font(.title3).foregroundStyle(.secondary)
+              ArchiveMetadataView(details: details)
+              Text("Размер без сжатия и количество объектов включают все вложенные папки.")
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let url = model.previewURL {
           QuickLookPreview(url: url).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.isMaterializing {
           VStack(spacing: 12) {
             ProgressView()
             Text("Подготавливаем предпросмотр…").font(.callout).foregroundStyle(.secondary)
-            Button("Отмена", action: model.cancelPreview)
+            Button("Отмена") { model.cancelPreview() }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-          ContentUnavailableView(
-            entry.isDirectory ? "Папка" : "Предпросмотр недоступен",
-            systemImage: entry.isDirectory ? "folder" : "doc"
-          )
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          ContentUnavailableView("Предпросмотр недоступен", systemImage: "doc")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       } else {
         ContentUnavailableView(
           model.selectedPaths.count > 1 ? "Выбрано несколько объектов" : "Выберите файл",
-          systemImage: "doc.text.magnifyingglass"
+          systemImage: "doc.text.magnifyingglass",
+          description: Text("Предпросмотр появится здесь без извлечения всего архива.")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -211,13 +236,13 @@ struct ArchiveBrowserView: View {
         }
       } else if let message = model.errorMessage {
         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-        Text(message).textSelection(.enabled)
+        Text(message).textSelection(.enabled).lineLimit(3).help(message)
         Button("Повторить", action: model.retryWithPassword)
       } else if let message = model.operationMessage {
         Text(message).lineLimit(1)
       } else if let session = model.session {
-        Text("Объектов: \(session.entries.count)")
-        Text("Выбрано: \(model.selectedPaths.count)")
+        Text("Объектов: \(session.entries.count)").monospacedDigit()
+        Text("Выбрано: \(model.selectedPaths.count)").monospacedDigit()
       } else {
         Text("Готово")
       }
@@ -228,7 +253,8 @@ struct ArchiveBrowserView: View {
       }
     }
     .font(.caption).foregroundStyle(.secondary)
-    .padding(.horizontal, 14).padding(.vertical, 8)
+    .padding(.horizontal, 16).padding(.vertical, 10)
+    .background(Color(nsColor: .windowBackgroundColor))
   }
 
   private var passwordSheet: some View {
@@ -238,6 +264,7 @@ struct ArchiveBrowserView: View {
         .font(.callout).foregroundStyle(.secondary)
       SecureField("Пароль", text: $model.password)
         .textFieldStyle(.roundedBorder).onSubmit { model.retryWithPassword() }
+        .accessibilityLabel("Пароль архива")
       HStack {
         Spacer()
         Button("Отмена", role: .cancel, action: model.cancelPasswordPrompt)

@@ -95,7 +95,7 @@ struct FinderIntegrationBanner: View {
           default: EmptyView()
           }
         }
-        .padding(12).background(.bar)
+        .padding(12).background(Color(nsColor: .windowBackgroundColor))
         Divider()
       }
     }

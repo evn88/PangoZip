@@ -65,6 +65,10 @@ final class ArchiveBrowserModel: ObservableObject {
 
   var selectedPath: String? { selectedPaths.count == 1 ? selectedPaths.first : nil }
   var selectedEntry: ArchiveEntry? { session?.entries.first { $0.path == selectedPath } }
+  var selectedItemDetails: ArchiveItemDetails? {
+    guard let selectedPath, let session else { return nil }
+    return ArchiveItemDetails(path: selectedPath, roots: session.roots)
+  }
   var canAct: Bool {
     !isBusy && !isExporting && !isClosing && !isPasswordPromptPresented && activePanel == nil
   }
@@ -361,7 +365,11 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Скрытие панели отменяет материализацию, а повторный показ использует текущее выделение.
   func togglePreview() {
     showsPreview.toggle()
-    if showsPreview { selectionChanged() } else { cancelPreview() }
+    if showsPreview {
+      if previewURL == nil { selectionChanged() }
+    } else {
+      cancelPreview(preservingContent: true)
+    }
   }
 
   /// Меняет токен даже при повторном запросе, чтобы SwiftUI снова перевёл фокус.
@@ -383,12 +391,13 @@ final class ArchiveBrowserModel: ObservableObject {
   func cancelLoading() { cancelCurrentOperation() }
 
   /// Меняет поколение до отмены задачи, чтобы запоздалый результат не заменил предпросмотр.
-  func cancelPreview() {
+  func cancelPreview(preservingContent: Bool = false) {
     previewGeneration += 1
     previewTask?.cancel()
     if let previewTask { retiredPreviewTasks.append(previewTask) }
     previewTask = nil
-    previewURL = nil
+    // Готовый файл остаётся видимым до конца анимации; смена выделения очищает его.
+    if !preservingContent { previewURL = nil }
     isMaterializing = false
   }
 
@@ -796,6 +805,7 @@ struct QuickLookPreview: NSViewRepresentable {
   }
   /// Обновляет тот же Quick Look view при смене файла без создания второго экземпляра.
   func updateNSView(_ nsView: QLPreviewView, context: Context) {
+    guard nsView.previewItem?.previewItemURL != url else { return }
     nsView.previewItem = url as NSURL
   }
 }

@@ -37,8 +37,20 @@ struct ArchiveSettingsView: View {
   @AppStorage("compressionThreads") private var threads = 0
 
   var body: some View {
+    TabView {
+      compressionSettings
+        .tabItem { Label("Архивация", systemImage: "archivebox") }
+      finderSettings
+        .tabItem { Label("Finder", systemImage: "folder") }
+      applicationSettings
+        .tabItem { Label("Приложение", systemImage: "app.badge") }
+    }
+    .frame(width: 560, height: 480)
+  }
+
+  private var compressionSettings: some View {
     Form {
-      Section("Архивация из Finder") {
+      Section("Параметры по умолчанию") {
         Picker("Формат по умолчанию", selection: $format) {
           Text("ZIP").tag("zip")
           Text("7z").tag("7z")
@@ -51,8 +63,9 @@ struct ArchiveSettingsView: View {
           Text("Ультра").tag(9)
         }
         Toggle("Сплошное сжатие 7z", isOn: $solid)
+          .disabled(format != "7z")
           .help("Улучшает сжатие похожих файлов в 7z, но замедляет извлечение отдельных файлов.")
-        Picker("Потоки", selection: $threads) {
+        Picker("Потоки процессора", selection: $threads) {
           Text("Автоматически").tag(0)
           ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
         }
@@ -61,6 +74,12 @@ struct ArchiveSettingsView: View {
         )
         .font(.caption).foregroundStyle(.secondary)
       }
+    }
+    .formStyle(.grouped)
+  }
+
+  private var finderSettings: some View {
+    Form {
       Section("Finder") {
         Text(integration.statusText).font(.callout)
         Button("Настроить расширение Finder…", action: integration.openExtensionSettings)
@@ -71,6 +90,12 @@ struct ArchiveSettingsView: View {
         )
         .font(.caption).foregroundStyle(.secondary)
       }
+    }
+    .formStyle(.grouped)
+  }
+
+  private var applicationSettings: some View {
+    Form {
       if let supportURL = SupportConfiguration.pageURL {
         DevelopmentSupportSection(pageURL: supportURL)
       }
@@ -84,6 +109,6 @@ struct ArchiveSettingsView: View {
         .font(.caption).foregroundStyle(.secondary)
       }
     }
-    .formStyle(.grouped).frame(width: 520, height: 610)
+    .formStyle(.grouped)
   }
 }

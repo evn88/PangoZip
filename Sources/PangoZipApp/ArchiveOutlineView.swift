@@ -1,6 +1,7 @@
 import AppKit
 import PangoZipCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ArchiveOutlineView: NSViewRepresentable {
   @ObservedObject var model: ArchiveBrowserModel
@@ -26,15 +27,19 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.usesAlternatingRowBackgroundColors = true
     outline.columnAutoresizingStyle = .noColumnAutoresizing
     outline.autosaveExpandedItems = false
+    outline.autosaveName = "ArchiveContents"
+    outline.autosaveTableColumns = true
+    outline.setAccessibilityLabel("Содержимое архива")
     let columns: [(String, String, CGFloat)] = [
-      ("name", "Имя", 300), ("size", "Размер", 90), ("created", "Создан", 145),
-      ("modified", "Изменён", 145), ("permissions", "Права", 100), ("owner", "Владелец", 110),
+      ("name", "Имя", 340), ("size", "Размер", 90), ("packed", "В архиве", 100),
+      ("kind", "Тип", 150), ("modified", "Изменён", 150), ("method", "Метод", 100),
     ]
     for (id, title, width) in columns {
       let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
       column.title = title
       column.width = width
       column.minWidth = id == "name" ? 220 : 70
+      if id == "size" || id == "packed" { column.headerCell.alignment = .right }
       outline.addTableColumn(column)
     }
     outline.outlineTableColumn = outline.tableColumns.first
@@ -100,6 +105,11 @@ struct ArchiveOutlineView: NSViewRepresentable {
       updating = true
       defer { updating = false }
       if previousRoots != parent.roots || previousSessionID != parent.sessionID {
+        let entries = parent.model.session?.entries ?? []
+        outline.tableColumn(withIdentifier: .init("packed"))?.isHidden =
+          !entries.contains { !$0.isDirectory && $0.packedSize != nil }
+        outline.tableColumn(withIdentifier: .init("method"))?.isHidden =
+          !entries.contains { !$0.isDirectory && $0.method != nil }
         if previousSessionID != parent.sessionID { expandedPaths.removeAll() }
         previousSessionID = parent.sessionID
         previousRoots = parent.roots
@@ -200,11 +210,22 @@ struct ArchiveOutlineView: NSViewRepresentable {
               : ByteCountFormatter.string(
                 fromByteCount: Int64(clamping: $0.size), countStyle: .file)
           } ?? "—"
-      case "created": value = entry?.createdAt.map(Self.dateFormatter.string(from:)) ?? "—"
+      case "packed":
+        value =
+          isFolder
+          ? "—"
+          : entry?.packedSize.map {
+            ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file)
+          } ?? "—"
+      case "kind":
+        let extensionName = (item.node.name as NSString).pathExtension
+        value =
+          isFolder
+          ? "Папка"
+          : UTType(filenameExtension: extensionName)?.localizedDescription
+            ?? (extensionName.isEmpty ? "Файл" : extensionName.uppercased())
       case "modified": value = entry?.modifiedAt.map(Self.dateFormatter.string(from:)) ?? "—"
-      case "permissions": value = entry?.permissions ?? "—"
-      case "owner":
-        value = [entry?.owner, entry?.group].compactMap { $0 }.joined(separator: ":")
+      case "method": value = isFolder ? "—" : entry?.method ?? "—"
       default: value = "—"
       }
       cell.textField?.stringValue = value.isEmpty ? "—" : value
@@ -407,6 +428,10 @@ struct ArchiveOutlineView: NSViewRepresentable {
         offset = 7
       } else {
         text.textColor = .secondaryLabelColor
+        if id.rawValue == "size" || id.rawValue == "packed" {
+          text.alignment = .right
+          text.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        }
       }
       NSLayoutConstraint.activate([
         text.leadingAnchor.constraint(equalTo: leading, constant: offset),

@@ -3,6 +3,40 @@ import XCTest
 @testable import PangoZipCore
 
 final class ArchiveListingTests: XCTestCase {
+  func testPackedSizeIsNotInventedForMissingOrBlockBasedValues() throws {
+    let entries = try ArchiveListing.parse(
+      """
+      Path = zip.txt
+      Size = 100
+      Packed Size = 45
+
+      Path = solid-a.txt
+      Size = 100
+      Packed Size = 60
+      Block = 0
+
+      Path = solid-b.txt
+      Size = 100
+      Packed Size =
+      Block = 0
+
+      Path = empty.txt
+      Size = 0
+      Packed Size = 0
+
+      Path = single-block.txt
+      Size = 100
+      Packed Size = 32
+      Block = 1
+
+      """.replacingOccurrences(of: "Packed Size =\n", with: "Packed Size = \n"))
+    XCTAssertEqual(entries[0].packedSize, 45)
+    XCTAssertNil(entries[1].packedSize)
+    XCTAssertNil(entries[2].packedSize)
+    XCTAssertEqual(entries[3].packedSize, 0)
+    XCTAssertEqual(entries[4].packedSize, 32)
+  }
+
   /// Проверяет разбор Unicode-имён и восстановление каталогов, отсутствующих в листинге.
   func testReadsUnicodeNamesAndImplicitFoldersFromTechnicalListing() throws {
     let entries = try ArchiveListing.parse(
@@ -39,5 +73,6 @@ final class ArchiveListingTests: XCTestCase {
     XCTAssertNil(missing.owner)
     XCTAssertNil(missing.createdAt)
     XCTAssertNil(missing.permissions)
+    XCTAssertNil(missing.packedSize)
   }
 }

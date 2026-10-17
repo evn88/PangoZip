@@ -26,10 +26,7 @@ struct PangoZipApp: App {
               openArchive: { _ in }, addFiles: { _ in }, finderRequest: worker.start)
           }
       } else {
-        ArchiveBrowserView(model: model)
-          .safeAreaInset(edge: .top, spacing: 0) {
-            FinderIntegrationBanner(model: appDelegate.finderIntegration)
-          }
+        ArchiveBrowserView(model: model, integration: appDelegate.finderIntegration)
           .frame(minWidth: 1100, minHeight: 620)
           .background(WindowLifecycleBridge(prepareClose: { await model.requestTermination() }))
           .onAppear {

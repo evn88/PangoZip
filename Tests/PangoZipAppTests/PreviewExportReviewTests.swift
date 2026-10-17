@@ -5,6 +5,44 @@ import XCTest
 @testable import PangoZipApp
 
 final class PreviewExportReviewTests: XCTestCase, @unchecked Sendable {
+  @MainActor
+  func testHiddenPreviewKeepsContentUntilSelectionChanges() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let first = root.appendingPathComponent("First.txt")
+    let second = root.appendingPathComponent("Second.txt")
+    try Data("first".utf8).write(to: first)
+    try Data("second".utf8).write(to: second)
+    let engine = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("Resources/Engine/7zz")
+    let service = ArchiveService(executableURL: engine)
+    let archive = try await service.createArchive(
+      from: [first, second], proposedURL: root.appendingPathComponent("sample.zip"), format: "zip")
+    let model = ArchiveBrowserModel(service: service)
+    model.open(archive)
+    try await waitUntil { !model.isBusy }
+    model.selectedPaths = ["First.txt"]
+    try await waitUntil { model.previewURL != nil }
+    let preview = try XCTUnwrap(model.previewURL)
+    model.togglePreview()
+    XCTAssertFalse(model.showsPreview)
+    XCTAssertEqual(model.previewURL, preview, "Содержимое не должно мигать во время скрытия")
+    model.togglePreview()
+    XCTAssertEqual(model.previewURL, preview)
+    XCTAssertFalse(model.isMaterializing)
+    model.togglePreview()
+    model.selectedPaths = ["Second.txt"]
+    XCTAssertNil(model.previewURL, "Смена выделения должна убрать прежний файл")
+    model.togglePreview()
+    try await waitUntil { model.previewURL != nil }
+    let secondPreview = try XCTUnwrap(model.previewURL)
+    XCTAssertEqual(try Data(contentsOf: secondPreview), Data("second".utf8))
+    _ = await model.requestTermination()
+  }
+
   /// Выделение во время экспорта откладывает предпросмотр до освобождения архива без ложной ошибки.
   @MainActor
   func testSelectionDuringExportResumesPreviewAfterPromiseCompletes() async throws {

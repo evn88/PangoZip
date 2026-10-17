@@ -238,7 +238,9 @@ struct FinderOperationView: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(spacing: 14) {
         Image(systemName: model.errorMessage == nil ? "archivebox" : "exclamationmark.triangle")
-        Text(model.errorMessage ?? model.message).lineLimit(4)
+          .font(.title2).foregroundStyle(model.errorMessage == nil ? Color.accentColor : .orange)
+        Text(model.errorMessage ?? model.message).font(.headline)
+          .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
       }
       if model.errorMessage == nil && !model.needsPassword {
         OperationProgressView(progress: model.progress)
@@ -246,6 +248,7 @@ struct FinderOperationView: View {
       if model.needsPassword {
         SecureField("Пароль архива", text: $model.password)
           .textFieldStyle(.roundedBorder).onSubmit(model.submitPassword)
+          .accessibilityLabel("Пароль архива")
       }
       HStack {
         Spacer()

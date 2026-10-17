@@ -6,6 +6,13 @@ public enum ArchiveListing {
     var entries: [ArchiveEntry] = []
     var fields: [String: String] = [:]
     var paths: Set<String> = []
+    let lines = output.components(separatedBy: "\n").map {
+      $0.hasSuffix("\r") ? String($0.dropLast()) : $0
+    }
+    var blockCounts: [String: Int] = [:]
+    for line in lines where line.hasPrefix("Block = ") {
+      blockCounts[String(line.dropFirst(8)), default: 0] += 1
+    }
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -38,13 +45,15 @@ public enum ArchiveListing {
           owner: nonempty(fields["User"]) ?? nonempty(fields["User ID"]),
           group: nonempty(fields["Group"]) ?? nonempty(fields["Group ID"]),
           isEncrypted: fields["Encrypted"] == "+", checksum: nonempty(fields["CRC"]),
-          method: nonempty(fields["Method"])))
+          method: nonempty(fields["Method"]),
+          // Общий solid-блок нельзя приписывать одному из его файлов.
+          packedSize: fields["Block"].map { blockCounts[$0, default: 0] > 1 } == true
+            ? nil : fields["Packed Size"].flatMap(UInt64.init)))
       guard entries.count <= 100_000 else { throw ArchiveError.outputLimit }
       fields.removeAll(keepingCapacity: true)
     }
 
-    for rawLine in output.components(separatedBy: "\n") {
-      let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
+    for line in lines {
       if line.isEmpty {
         try appendEntry()
         continue
