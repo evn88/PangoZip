@@ -229,3 +229,7 @@
 "Не удалось проверить работающие операции PangoZip." = "Çalışan PangoZip işlemleri denetlenemedi.";
 "Сначала закройте PangoZip и дождитесь завершения фоновых операций, затем повторите удаление." = "Önce PangoZip'ten çıkın ve arka plan işlemlerinin bitmesini bekleyin, ardından kaldırmayı yeniden deneyin.";
 "PangoZip перемещён в Корзину. Расширение Finder отключено. Настройки сохранены." = "PangoZip Çöp Sepeti'ne taşındı. Finder uzantısı devre dışı bırakıldı. Ayarlar korundu.";
+"Сжатие" = "Sıkıştırma";
+"На сколько размер в архиве меньше исходного. Отрицательное значение означает увеличение размера." = "Arşivdeki boyutun özgün boyuttan ne kadar küçük olduğu. Negatif değer boyutun arttığını gösterir.";
+"Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени." = "Dosyaları birlikte sıkıştırır: arşiv genellikle küçülür, ancak tek bir dosyayı çıkarmak daha uzun sürebilir.";
+"Подсчитываем размеры папок…" = "Klasör boyutları hesaplanıyor…";

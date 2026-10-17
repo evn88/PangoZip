@@ -211,6 +211,13 @@ struct ArchiveBrowserView: View {
           ContentUnavailableView(L10n.tr("Предпросмотр недоступен"), systemImage: "doc")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+      } else if model.selectedPath != nil && model.areFolderDetailsLoading {
+        VStack(spacing: 12) {
+          ProgressView().controlSize(.small)
+          Text(L10n.tr("Подсчитываем размеры папок…"))
+            .font(.callout).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         ContentUnavailableView(
           model.selectedPaths.count > 1

@@ -32,7 +32,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.setAccessibilityLabel(L10n.tr("Содержимое архива"))
     let columns: [(String, String, CGFloat)] = [
       ("name", L10n.tr("Имя"), 340), ("size", L10n.tr("Размер"), 90),
-      ("packed", L10n.tr("В архиве"), 100),
+      ("packed", L10n.tr("В архиве"), 100), ("compression", L10n.tr("Сжатие"), 100),
       ("kind", L10n.tr("Тип"), 150), ("modified", L10n.tr("Изменён"), 150),
       ("method", L10n.tr("Метод"), 100),
     ]
@@ -41,7 +41,14 @@ struct ArchiveOutlineView: NSViewRepresentable {
       column.title = title
       column.width = width
       column.minWidth = id == "name" ? 220 : 70
-      if id == "size" || id == "packed" { column.headerCell.alignment = .right }
+      if id == "size" || id == "packed" || id == "compression" {
+        column.headerCell.alignment = .right
+      }
+      if id == "compression" {
+        column.headerToolTip = L10n.tr(
+          "На сколько размер в архиве меньше исходного. Отрицательное значение означает увеличение размера."
+        )
+      }
       outline.addTableColumn(column)
     }
     outline.outlineTableColumn = outline.tableColumns.first
@@ -85,7 +92,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private var byPath: [String: Item] = [:]
     private var previousRoots: [ArchiveNode] = []
     private var previousSessionID: UUID?
-    private var previousDetailsCount = 0
+    private var previousDetailsRevision = -1
     private var expandedPaths: Set<String> = []
     private var updating = false
     private var dragID: UUID?
@@ -142,14 +149,14 @@ struct ArchiveOutlineView: NSViewRepresentable {
           let row = outline.row(forItem: item)
           return row >= 0 ? row : nil
         })
-      if previousDetailsCount != parent.model.itemDetailsByPath.count {
-        previousDetailsCount = parent.model.itemDetailsByPath.count
-        if let column = outline.tableColumns.firstIndex(where: { $0.identifier.rawValue == "size" })
-        {
-          outline.reloadData(
-            forRowIndexes: rows,
-            columnIndexes: IndexSet(integer: column))
-        }
+      if previousDetailsRevision != parent.model.itemDetailsRevision {
+        previousDetailsRevision = parent.model.itemDetailsRevision
+        let columns = IndexSet(
+          outline.tableColumns.indices.filter {
+            ["size", "compression"].contains(outline.tableColumns[$0].identifier.rawValue)
+          })
+        outline.reloadData(
+          forRowIndexes: IndexSet(integersIn: 0..<outline.numberOfRows), columnIndexes: columns)
       }
       if outline.selectedRowIndexes != rows {
         outline.selectRowIndexes(rows, byExtendingSelection: false)
@@ -218,7 +225,16 @@ struct ArchiveOutlineView: NSViewRepresentable {
         value =
           (isFolder ? parent.model.itemDetailsByPath[item.node.path]?.size : entry?.size).map {
             ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file)
-          } ?? "—"
+          } ?? (isFolder && parent.model.areFolderDetailsLoading ? "…" : "—")
+      case "compression":
+        let details =
+          isFolder
+          ? parent.model.itemDetailsByPath[item.node.path]
+          : entry.map { ArchiveItemDetails(entry: $0) }
+        value =
+          details?.compressionSavings.map {
+            ($0 / 100).formatted(.percent.precision(.fractionLength(0...1)))
+          } ?? (isFolder && parent.model.areFolderDetailsLoading ? "…" : "—")
       case "packed":
         value =
           isFolder
@@ -238,7 +254,13 @@ struct ArchiveOutlineView: NSViewRepresentable {
       default: value = "—"
       }
       cell.textField?.stringValue = value.isEmpty ? "—" : value
-      cell.toolTip = id.rawValue == "name" ? item.node.path : value
+      if isFolder && parent.model.areFolderDetailsLoading
+        && ["size", "compression"].contains(id.rawValue)
+      {
+        cell.toolTip = L10n.tr("Подсчитываем размеры папок…")
+      } else {
+        cell.toolTip = id.rawValue == "name" ? item.node.path : value
+      }
       if id.rawValue == "name" {
         cell.imageView?.image = NSImage(
           systemSymbolName: isFolder ? "folder" : "doc",
@@ -440,7 +462,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         offset = 7
       } else {
         text.textColor = .secondaryLabelColor
-        if id.rawValue == "size" || id.rawValue == "packed" {
+        if ["size", "packed", "compression"].contains(id.rawValue) {
           text.alignment = .right
           text.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         }

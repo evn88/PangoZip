@@ -42,7 +42,7 @@ final class ArchiveBrowserLayoutTests: XCTestCase, @unchecked Sendable {
     let outline = try XCTUnwrap(descendant(NSOutlineView.self, in: host))
     XCTAssertEqual(
       outline.tableColumns.filter { !$0.isHidden }.map(\.title),
-      ["Имя", "Размер", "В архиве", "Тип", "Изменён", "Метод"].map { L10n.tr($0) })
+      ["Имя", "Размер", "В архиве", "Сжатие", "Тип", "Изменён", "Метод"].map { L10n.tr($0) })
     let header = try XCTUnwrap(outline.headerView)
     let headerRect = header.convert(header.bounds, to: host)
     let rowRect = outline.convert(outline.rect(ofRow: 0), to: host)
@@ -83,6 +83,7 @@ final class ArchiveBrowserLayoutTests: XCTestCase, @unchecked Sendable {
     host.layoutSubtreeIfNeeded()
     XCTAssertEqual(model.session?.format, "7z")
     XCTAssertTrue(outline.tableColumn(withIdentifier: .init("packed"))?.isHidden == true)
+    XCTAssertFalse(outline.tableColumn(withIdentifier: .init("compression"))?.isHidden == true)
     _ = await model.requestTermination()
   }
 

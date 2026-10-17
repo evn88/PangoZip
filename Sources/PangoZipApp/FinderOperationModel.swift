@@ -309,8 +309,26 @@ private struct ArchiveCreationOptionsView: View {
         Text(L10n.tr("Максимальная")).tag(7)
         Text(L10n.tr("Ультра")).tag(9)
       }
-      Toggle(L10n.tr("Сплошное сжатие"), isOn: $model.creationSolid).disabled(
-        model.creationFormat != "7z")
+      Toggle(isOn: $model.creationSolid) {
+        HStack(spacing: 6) {
+          Text(L10n.tr("Сплошное сжатие"))
+          Image(systemName: "questionmark.circle")
+            .foregroundStyle(.secondary)
+            .help(
+              L10n.tr(
+                "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
+              )
+            )
+            .accessibilityHidden(true)
+        }
+      }
+      .accessibilityLabel(L10n.tr("Сплошное сжатие"))
+      .accessibilityHint(
+        L10n.tr(
+          "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
+        )
+      )
+      .disabled(model.creationFormat != "7z")
       Picker(L10n.tr("Потоки"), selection: $model.creationThreads) {
         Text(L10n.tr("Автоматически")).tag(0)
         ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }

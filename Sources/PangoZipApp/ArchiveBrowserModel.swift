@@ -27,11 +27,10 @@ final class ArchiveBrowserModel: ObservableObject {
     case finder(FinderRequest)
   }
 
-  @Published private(set) var session: ArchiveSession? {
-    didSet { itemDetailsByPath.removeAll() }
-  }
-  // Повторное выделение и отрисовка ячеек не обходят потомков; новый снимок очищает кэш.
-  private(set) var itemDetailsByPath: [String: ArchiveItemDetails] = [:]
+  @Published private(set) var session: ArchiveSession?
+  @Published private(set) var itemDetailsByPath: [String: ArchiveItemDetails] = [:]
+  @Published private(set) var areFolderDetailsLoading = false
+  private(set) var itemDetailsRevision = 0
   @Published private(set) var loadState: LoadState = .idle
   @Published private(set) var isBusy = false
   @Published private(set) var isExporting = false
@@ -55,6 +54,9 @@ final class ArchiveBrowserModel: ObservableObject {
   private var retiredPreviewTasks: [Task<Void, Never>] = []
   private var closingTask: Task<Bool, Never>?
   private var previewGeneration = 0
+  private var folderDetailsGeneration = 0
+  private var folderCalculation: Task<[String: ArchiveItemDetails], Error>?
+  private var folderPublication: Task<Void, Never>?
   private var failedOperation: Operation?
   private var pendingFinderFiles: [URL] = []
   private var incomingRequests: [IncomingRequest] = []
@@ -70,7 +72,10 @@ final class ArchiveBrowserModel: ObservableObject {
   var selectedPath: String? { selectedPaths.count == 1 ? selectedPaths.first : nil }
   var selectedEntry: ArchiveEntry? { session?.entries.first { $0.path == selectedPath } }
   var selectedItemDetails: ArchiveItemDetails? {
-    selectedPath.flatMap { itemDetailsByPath[$0] }
+    guard let selectedPath else { return nil }
+    if let details = itemDetailsByPath[selectedPath] { return details }
+    guard let entry = selectedEntry, !entry.isDirectory else { return nil }
+    return ArchiveItemDetails(entry: entry)
   }
   var canAct: Bool {
     !isBusy && !isExporting && !isClosing && !isPasswordPromptPresented && activePanel == nil
@@ -540,7 +545,7 @@ final class ArchiveBrowserModel: ObservableObject {
           loadState = .idle
           return
         }
-        session = result
+        await replaceSession(result)
         loadState = .loaded
         if !pendingFinderFiles.isEmpty {
           let urls = pendingFinderFiles
@@ -612,15 +617,16 @@ final class ArchiveBrowserModel: ObservableObject {
       case .add(let urls, let directory):
         guard let session, session.canModify else { return }
         await settlePreviews()
-        apply(try await service.add(urls, to: session, directory: directory, password: password))
+        await apply(
+          try await service.add(urls, to: session, directory: directory, password: password))
       case .delete(let paths):
         guard let session, session.canModify else { return }
         await settlePreviews()
-        apply(try await service.delete(paths, from: session, password: password))
+        await apply(try await service.delete(paths, from: session, password: password))
       case .save:
         guard let session, !activeEdits.isEmpty else { return }
         await settlePreviews()
-        apply(try await service.save(activeEdits, in: session, password: password))
+        await apply(try await service.save(activeEdits, in: session, password: password))
         activeEdits.removeAll()
       }
       failedOperation = nil
@@ -645,11 +651,49 @@ final class ArchiveBrowserModel: ObservableObject {
   }
 
   /// Удаляет устаревшие пути выделения после изменения содержимого архива.
-  private func apply(_ refreshed: ArchiveSession) {
-    session = refreshed
+  func apply(_ refreshed: ArchiveSession) async {
+    await replaceSession(refreshed)
     let validPaths = Set(refreshed.entries.map(\.path)).union(allPaths(refreshed.roots))
     selectedPaths.formIntersection(validPaths)
     selectionChanged()
+  }
+
+  /// Отмена завершается до замены снимка; поколение защищает также обновления с тем же UUID.
+  private func replaceSession(_ refreshed: ArchiveSession?) async {
+    folderDetailsGeneration &+= 1
+    let generation = folderDetailsGeneration
+    let previousCalculation = folderCalculation
+    let previousPublication = folderPublication
+    previousCalculation?.cancel()
+    previousPublication?.cancel()
+    _ = try? await previousCalculation?.value
+    await previousPublication?.value
+    guard folderDetailsGeneration == generation else { return }
+    folderCalculation = nil
+    folderPublication = nil
+    session = refreshed
+    itemDetailsByPath = [:]
+    itemDetailsRevision &+= 1
+    areFolderDetailsLoading = refreshed != nil
+    guard let refreshed else { return }
+    let calculation = Task.detached(priority: .userInitiated) {
+      try ArchiveItemDetails.folders(in: refreshed.roots)
+    }
+    folderCalculation = calculation
+    folderPublication = Task { [weak self] in
+      let results = try? await calculation.value
+      guard !Task.isCancelled, let self, self.folderDetailsGeneration == generation else { return }
+      if let results { self.itemDetailsByPath = results }
+      self.itemDetailsRevision &+= 1
+      self.areFolderDetailsLoading = false
+      self.folderCalculation = nil
+      self.folderPublication = nil
+    }
+  }
+
+  deinit {
+    folderCalculation?.cancel()
+    folderPublication?.cancel()
   }
 
   /// Включает виртуальные папки, которых может не быть в списке записей архива.
@@ -663,9 +707,6 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Отменяет прежний предпросмотр до проверки нового выделения.
   private func selectionChanged() {
     cancelPreview()
-    if let selectedPath, itemDetailsByPath[selectedPath] == nil, let session {
-      itemDetailsByPath[selectedPath] = ArchiveItemDetails(path: selectedPath, roots: session.roots)
-    }
     guard showsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
       let entry = selectedEntry,
       !entry.isDirectory, !entry.isSymbolicLink
@@ -757,7 +798,7 @@ final class ArchiveBrowserModel: ObservableObject {
       errorMessage = error.localizedDescription
       return false
     }
-    session = nil
+    await replaceSession(nil)
     operationMessage = nil
     activeEdits.removeAll()
     selectedPaths = []
@@ -793,7 +834,7 @@ final class ArchiveBrowserModel: ObservableObject {
       errorMessage = error.localizedDescription
       return false
     }
-    session = nil
+    await replaceSession(nil)
     operationMessage = nil
     activeEdits.removeAll()
     selectedPaths = []

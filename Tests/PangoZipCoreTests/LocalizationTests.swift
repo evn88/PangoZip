@@ -9,6 +9,9 @@ final class LocalizationTests: XCTestCase {
     let url = try XCTUnwrap(L10n.bundle.url(forResource: "en", withExtension: "lproj"))
     let english = try XCTUnwrap(Bundle(url: url))
     XCTAssertEqual(english.localizedString(forKey: "Отмена", value: nil, table: nil), "Cancel")
+    XCTAssertEqual(
+      english.localizedString(forKey: "Сжатие", value: nil, table: nil),
+      "Compression")
   }
 
   /// Подстановки не интерпретируют проценты и Unicode в пользовательском имени файла.

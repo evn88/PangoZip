@@ -62,11 +62,26 @@ struct ArchiveSettingsView: View {
           Text(L10n.tr("Максимальная")).tag(7)
           Text(L10n.tr("Ультра")).tag(9)
         }
-        Toggle(L10n.tr("Сплошное сжатие 7z"), isOn: $solid)
-          .disabled(format != "7z")
-          .help(
-            L10n.tr(
-              "Улучшает сжатие похожих файлов в 7z, но замедляет извлечение отдельных файлов."))
+        Toggle(isOn: $solid) {
+          HStack(spacing: 6) {
+            Text(L10n.tr("Сплошное сжатие 7z"))
+            Image(systemName: "questionmark.circle")
+              .foregroundStyle(.secondary)
+              .help(
+                L10n.tr(
+                  "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
+                )
+              )
+              .accessibilityHidden(true)
+          }
+        }
+        .accessibilityLabel(L10n.tr("Сплошное сжатие 7z"))
+        .accessibilityHint(
+          L10n.tr(
+            "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
+          )
+        )
+        .disabled(format != "7z")
         Picker(L10n.tr("Потоки процессора"), selection: $threads) {
           Text(L10n.tr("Автоматически")).tag(0)
           ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
