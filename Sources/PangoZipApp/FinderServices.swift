@@ -60,7 +60,7 @@ final class FinderServices: NSObject {
     let urls = fileURLs(from: pasteboard)
     guard !urls.isEmpty else {
       error.pointee =
-        NSLocalizedString("Выберите локальный файл или папку.", comment: "Ошибка Finder Services")
+        L10n.tr("Выберите локальный файл или папку.")
         as NSString
       return
     }
@@ -77,9 +77,7 @@ final class FinderServices: NSObject {
     let urls = fileURLs(from: pasteboard)
     guard !urls.isEmpty else {
       error.pointee =
-        NSLocalizedString(
-          "Не удалось получить выбранные локальные файлы или папки.",
-          comment: "Ошибка Finder Services") as NSString
+        L10n.tr("Не удалось получить выбранные локальные файлы или папки.") as NSString
       return
     }
     if let request = try? FinderRequest(action: .create, urls: urls) { deliver(.finder(request)) }

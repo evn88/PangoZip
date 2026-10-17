@@ -11,7 +11,9 @@ func run(_ executable: String, _ arguments: [String], required: Bool = true) thr
   if required && process.terminationStatus != 0 {
     throw NSError(
       domain: "app.pangozip.uninstall", code: Int(process.terminationStatus),
-      userInfo: [NSLocalizedDescriptionKey: "Не удалось отменить системную регистрацию PangoZip."])
+      userInfo: [
+        NSLocalizedDescriptionKey: L10n.tr("Не удалось отменить системную регистрацию PangoZip.")
+      ])
   }
 }
 
@@ -24,7 +26,7 @@ func refuse(_ message: String) -> Never {
 let app = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
   .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 guard Bundle(url: app)?.bundleIdentifier == "app.pangozip.desktop" else {
-  refuse("Программа удаления должна находиться внутри PangoZip.app.")
+  refuse(L10n.tr("Программа удаления должна находиться внутри PangoZip.app."))
 }
 let registrar =
   "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
@@ -47,7 +49,7 @@ let processes = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile()
   }
 running.waitUntilExit()
 guard running.terminationStatus == 0 else {
-  refuse("Не удалось проверить работающие операции PangoZip.")
+  refuse(L10n.tr("Не удалось проверить работающие операции PangoZip."))
 }
 let executables = [
   app.appendingPathComponent("Contents/MacOS/PangoZip").path,
@@ -55,7 +57,9 @@ let executables = [
 ]
 if processes.contains(where: { executables.contains($0.command) }) {
   refuse(
-    "Сначала закройте PangoZip и дождитесь завершения фоновых операций, затем повторите удаление.")
+    L10n.tr(
+      "Сначала закройте PangoZip и дождитесь завершения фоновых операций, затем повторите удаление."
+    ))
 }
 
 do {
@@ -69,10 +73,13 @@ do {
   }
   try run(registrar, ["-u", worker.path], required: false)
   try run(registrar, ["-u", app.path], required: false)
+  // После перемещения комплекта его каталоги переводов уже недоступны.
+  let successMessage = L10n.tr(
+    "PangoZip перемещён в Корзину. Расширение Finder отключено. Настройки сохранены.")
   var trash: NSURL?
   try FileManager.default.trashItem(at: app, resultingItemURL: &trash)
   try run("/System/Library/CoreServices/pbs", ["-update"], required: false)
-  print("PangoZip перемещён в Корзину. Расширение Finder отключено. Настройки сохранены.")
+  print(successMessage)
 } catch {
   // При любой ошибке до перемещения возвращаем регистрацию приложения.
   if FileManager.default.fileExists(atPath: app.path) {

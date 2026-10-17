@@ -1,3 +1,4 @@
+import PangoZipCore
 import SwiftUI
 
 struct ArchiveCommands: Commands {
@@ -5,44 +6,44 @@ struct ArchiveCommands: Commands {
 
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
-      Button("Открыть архив…", action: model.chooseArchive)
+      Button(L10n.tr("Открыть архив…"), action: model.chooseArchive)
         .keyboardShortcut("o", modifiers: .command)
         .disabled(!model.canAct)
     }
     CommandGroup(replacing: .saveItem) {
-      Button("Сохранить в архив", action: model.saveWorkingCopies)
+      Button(L10n.tr("Сохранить в архив"), action: model.saveWorkingCopies)
         .keyboardShortcut("s", modifiers: .command)
         .disabled(!model.canModify || model.activeEdits.isEmpty)
     }
     CommandGroup(before: .windowArrangement) {
-      Button("Закрыть архив", action: model.closeArchive)
+      Button(L10n.tr("Закрыть архив"), action: model.closeArchive)
         .keyboardShortcut("w", modifiers: .command)
         .disabled(model.session == nil && !model.isBusy || model.isClosing)
     }
-    CommandMenu("Архив") {
-      Button("Добавить файлы и папки…", action: model.chooseFilesToAdd)
+    CommandMenu(L10n.tr("Архив")) {
+      Button(L10n.tr("Добавить файлы и папки…"), action: model.chooseFilesToAdd)
         .keyboardShortcut("a", modifiers: [.command, .shift])
         .disabled(!model.canModify)
-      Button("Извлечь выбранное…", action: model.extractSelected)
+      Button(L10n.tr("Извлечь выбранное…"), action: model.extractSelected)
         .keyboardShortcut("e", modifiers: [.command, .shift])
         .disabled(!model.canAct || model.selectedPaths.isEmpty)
-      Button("Удалить выбранное…", action: model.deleteSelected)
+      Button(L10n.tr("Удалить выбранное…"), action: model.deleteSelected)
         .keyboardShortcut(.delete, modifiers: .command)
         .disabled(!model.canModify || model.selectedPaths.isEmpty)
       Divider()
-      Button("Открыть выбранный файл", action: model.openSelectedExternally)
+      Button(L10n.tr("Открыть выбранный файл"), action: model.openSelectedExternally)
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(!model.canOpenSelection)
-      Button("Редактировать файл", action: model.editSelected)
+      Button(L10n.tr("Редактировать файл"), action: model.editSelected)
         .keyboardShortcut("e", modifiers: .command)
         .disabled(!model.canModify || !model.canOpenSelection)
       Divider()
       Button(
-        model.showsPreview ? "Скрыть предпросмотр" : "Показать предпросмотр",
+        model.showsPreview ? L10n.tr("Скрыть предпросмотр") : L10n.tr("Показать предпросмотр"),
         action: model.togglePreview
       )
       .keyboardShortcut("p", modifiers: [.command, .shift])
-      Button("Поиск в архиве", action: model.focusSearch)
+      Button(L10n.tr("Поиск в архиве"), action: model.focusSearch)
         .keyboardShortcut("f", modifiers: .command)
     }
   }

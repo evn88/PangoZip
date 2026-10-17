@@ -6,15 +6,15 @@ public enum FinderAction: String, Codable, Sendable, CaseIterable {
 
   public var title: String {
     switch self {
-    case .open: "Открыть архивы"
-    case .extractFiles: "Распаковать…"
-    case .extractHere: "Распаковать здесь"
-    case .extract: "Распаковать в отдельные папки"
-    case .test: "Тестировать архив"
-    case .create: "Добавить в архив…"
-    case .createZip: "Заархивировать в ZIP"
-    case .create7z: "Заархивировать в 7z"
-    case .add: "Добавить в архив…"
+    case .open: L10n.tr("Открыть архивы")
+    case .extractFiles: L10n.tr("Распаковать…")
+    case .extractHere: L10n.tr("Распаковать здесь")
+    case .extract: L10n.tr("Распаковать в отдельные папки")
+    case .test: L10n.tr("Тестировать архив")
+    case .create: L10n.tr("Добавить в архив…")
+    case .createZip: L10n.tr("Заархивировать в ZIP")
+    case .create7z: L10n.tr("Заархивировать в 7z")
+    case .add: L10n.tr("Добавить в архив…")
     }
   }
 }
@@ -59,7 +59,9 @@ public struct FinderRequest: Codable, Sendable, Equatable {
 
 public enum FinderRequestError: LocalizedError {
   case invalidSelection
-  public var errorDescription: String? { "Не удалось получить выделенные файлы из Finder." }
+  public var errorDescription: String? {
+    L10n.tr("Не удалось получить выделенные файлы из Finder.")
+  }
 }
 
 public struct FinderSelection: Sendable {
@@ -85,13 +87,14 @@ public struct FinderSelection: Sendable {
   /// Уточняет подпись команды по текущему выделению и предлагаемому имени результата.
   public func title(for action: FinderAction) -> String {
     switch action {
-    case .open: return archives.count == 1 ? "Открыть архив" : "Открыть архивы"
+    case .open: return archives.count == 1 ? L10n.tr("Открыть архив") : L10n.tr("Открыть архивы")
     case .extract:
       return archives.count == 1
-        ? "Распаковать в «\(Self.extractionName(for: archives[0]))/»"
-        : "Распаковать в отдельные папки"
-    case .create7z: return "Добавить в «\(archiveName).7z»"
-    case .createZip: return "Добавить в «\(archiveName).zip»"
+        ? L10n.tr(
+          "Распаковать в «%1$@/»", String(describing: Self.extractionName(for: archives[0])))
+        : L10n.tr("Распаковать в отдельные папки")
+    case .create7z: return L10n.tr("Добавить в «%1$@.7z»", String(describing: archiveName))
+    case .createZip: return L10n.tr("Добавить в «%1$@.zip»", String(describing: archiveName))
     default: return action.title
     }
   }

@@ -19,7 +19,8 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     let plain = root.appendingPathComponent("a*.txt")
     XCTAssertEqual(
       FinderSelection(urls: [directory, plain]).actions, [.create, .create7z, .createZip])
-    XCTAssertEqual(FinderSelection(urls: [plain]).title(for: .createZip), "Добавить в «a*.zip»")
+    XCTAssertEqual(
+      FinderSelection(urls: [plain]).title(for: .createZip), L10n.tr("Добавить в «%1$@.zip»", "a*"))
     XCTAssertEqual(FinderSelection(urls: [directory]).archiveName, "folder.zip")
     let selection = FinderSelection(urls: [zip, directory, zip, plain])
     XCTAssertEqual(selection.archives, [zip])
@@ -29,9 +30,10 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(
       selection.actions,
       [.open, .extractFiles, .extractHere, .extract, .test, .create, .create7z, .createZip])
-    XCTAssertEqual(selection.title(for: .create), "Добавить в архив…")
-    XCTAssertEqual(selection.title(for: .create7z), "Добавить в «\(root.lastPathComponent).7z»")
-    XCTAssertEqual(selection.title(for: .extract), "Распаковать в «data/»")
+    XCTAssertEqual(selection.title(for: .create), L10n.tr("Добавить в архив…"))
+    XCTAssertEqual(
+      selection.title(for: .create7z), L10n.tr("Добавить в «%1$@.7z»", root.lastPathComponent))
+    XCTAssertEqual(selection.title(for: .extract), L10n.tr("Распаковать в «%1$@/»", "data"))
     XCTAssertFalse(selection.actions.contains(.add))
     XCTAssertEqual(try selection.request(for: .test).urls, [zip])
     XCTAssertEqual(

@@ -59,14 +59,16 @@ final class FinderIntegrationModel: ObservableObject {
 
   var statusText: String {
     switch state {
-    case .idle: "Меню Finder ещё не подготовлено."
-    case .preparing: "Подготавливаем меню Finder…"
-    case .enabled: "Расширение PangoZip для Finder включено."
+    case .idle: L10n.tr("Меню Finder ещё не подготовлено.")
+    case .preparing: L10n.tr("Подготавливаем меню Finder…")
+    case .enabled: L10n.tr("Расширение PangoZip для Finder включено.")
     case .needsApproval:
-      "Включите PangoZip в расширениях Finder, чтобы использовать контекстное меню."
+      L10n.tr("Включите PangoZip в расширениях Finder, чтобы использовать контекстное меню.")
     case .requiresInstallation:
-      "Перетащите PangoZip в Applications, извлеките образ и запустите установленное приложение."
-    case .failed(let message): "Не удалось подготовить меню Finder: " + message
+      L10n.tr(
+        "Перетащите PangoZip в Applications, извлеките образ и запустите установленное приложение.")
+    case .failed(let message):
+      L10n.tr("Не удалось подготовить меню Finder: %1$@", String(describing: message))
     }
   }
 }
@@ -87,11 +89,11 @@ struct FinderIntegrationBanner: View {
           Spacer(minLength: 8)
           switch model.state {
           case .needsApproval:
-            Button("Включить меню Finder…", action: model.openExtensionSettings)
+            Button(L10n.tr("Включить меню Finder…"), action: model.openExtensionSettings)
           case .requiresInstallation:
-            Button("Показать Applications", action: model.showApplications)
+            Button(L10n.tr("Показать Applications"), action: model.showApplications)
           case .failed:
-            Button("Повторить") { Task { await model.prepare() } }
+            Button(L10n.tr("Повторить")) { Task { await model.prepare() } }
           default: EmptyView()
           }
         }

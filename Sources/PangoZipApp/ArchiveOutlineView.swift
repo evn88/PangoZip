@@ -29,10 +29,12 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.autosaveExpandedItems = false
     outline.autosaveName = "ArchiveContents"
     outline.autosaveTableColumns = true
-    outline.setAccessibilityLabel("Содержимое архива")
+    outline.setAccessibilityLabel(L10n.tr("Содержимое архива"))
     let columns: [(String, String, CGFloat)] = [
-      ("name", "Имя", 340), ("size", "Размер", 90), ("packed", "В архиве", 100),
-      ("kind", "Тип", 150), ("modified", "Изменён", 150), ("method", "Метод", 100),
+      ("name", L10n.tr("Имя"), 340), ("size", L10n.tr("Размер"), 90),
+      ("packed", L10n.tr("В архиве"), 100),
+      ("kind", L10n.tr("Тип"), 150), ("modified", L10n.tr("Изменён"), 150),
+      ("method", L10n.tr("Метод"), 100),
     ]
     for (id, title, width) in columns {
       let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
@@ -83,6 +85,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private var byPath: [String: Item] = [:]
     private var previousRoots: [ArchiveNode] = []
     private var previousSessionID: UUID?
+    private var previousDetailsCount = 0
     private var expandedPaths: Set<String> = []
     private var updating = false
     private var dragID: UUID?
@@ -139,6 +142,15 @@ struct ArchiveOutlineView: NSViewRepresentable {
           let row = outline.row(forItem: item)
           return row >= 0 ? row : nil
         })
+      if previousDetailsCount != parent.model.itemDetailsByPath.count {
+        previousDetailsCount = parent.model.itemDetailsByPath.count
+        if let column = outline.tableColumns.firstIndex(where: { $0.identifier.rawValue == "size" })
+        {
+          outline.reloadData(
+            forRowIndexes: rows,
+            columnIndexes: IndexSet(integer: column))
+        }
+      }
       if outline.selectedRowIndexes != rows {
         outline.selectRowIndexes(rows, byExtendingSelection: false)
       }
@@ -204,11 +216,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
       case "name": value = item.node.name
       case "size":
         value =
-          entry.flatMap {
-            $0.isDirectory
-              ? nil
-              : ByteCountFormatter.string(
-                fromByteCount: Int64(clamping: $0.size), countStyle: .file)
+          (isFolder ? parent.model.itemDetailsByPath[item.node.path]?.size : entry?.size).map {
+            ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file)
           } ?? "—"
       case "packed":
         value =
@@ -221,9 +230,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
         let extensionName = (item.node.name as NSString).pathExtension
         value =
           isFolder
-          ? "Папка"
+          ? L10n.tr("Папка")
           : UTType(filenameExtension: extensionName)?.localizedDescription
-            ?? (extensionName.isEmpty ? "Файл" : extensionName.uppercased())
+            ?? (extensionName.isEmpty ? L10n.tr("Файл") : extensionName.uppercased())
       case "modified": value = entry?.modifiedAt.map(Self.dateFormatter.string(from:)) ?? "—"
       case "method": value = isFolder ? "—" : entry?.method ?? "—"
       default: value = "—"
@@ -233,7 +242,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       if id.rawValue == "name" {
         cell.imageView?.image = NSImage(
           systemSymbolName: isFolder ? "folder" : "doc",
-          accessibilityDescription: isFolder ? "Папка" : "Файл")
+          accessibilityDescription: isFolder ? L10n.tr("Папка") : L10n.tr("Файл"))
         cell.imageView?.contentTintColor = isFolder ? .controlAccentColor : .secondaryLabelColor
       }
       return cell
@@ -261,32 +270,35 @@ struct ArchiveOutlineView: NSViewRepresentable {
         menu.addItem(item)
       }
       if !model.selectedPaths.isEmpty {
-        add("Открыть файл", #selector(openFile), enabled: model.canOpenSelection, key: "\r")
         add(
-          "Редактировать файл", #selector(editFile),
+          L10n.tr("Открыть файл"), #selector(openFile), enabled: model.canOpenSelection, key: "\r")
+        add(
+          L10n.tr("Редактировать файл"), #selector(editFile),
           enabled: model.canModify && model.canOpenSelection, key: "e")
         add(
-          "Извлечь выбранное…", #selector(extractFiles), enabled: model.canAct, key: "e",
+          L10n.tr("Извлечь выбранное…"), #selector(extractFiles), enabled: model.canAct, key: "e",
           modifiers: [.command, .shift])
-        add("Копировать путь в архиве", #selector(copyPaths), enabled: true)
+        add(L10n.tr("Копировать путь в архиве"), #selector(copyPaths), enabled: true)
         menu.addItem(.separator())
         if row >= 0, model.selectedPaths.count == 1, let item = outline.item(atRow: row) as? Item,
           !item.children.isEmpty
         {
           add(
-            outline.isItemExpanded(item) ? "Свернуть папку" : "Раскрыть папку",
+            outline.isItemExpanded(item) ? L10n.tr("Свернуть папку") : L10n.tr("Раскрыть папку"),
             #selector(toggleFolder), enabled: true)
         }
       }
       add(
-        "Добавить файлы и папки…", #selector(addFiles), enabled: model.canModify, key: "a",
+        L10n.tr("Добавить файлы и папки…"), #selector(addFiles), enabled: model.canModify, key: "a",
         modifiers: [.command, .shift])
       add(
-        "Сохранить изменения в архив", #selector(saveFiles),
+        L10n.tr("Сохранить изменения в архив"), #selector(saveFiles),
         enabled: model.canModify && !model.activeEdits.isEmpty, key: "s")
       if !model.selectedPaths.isEmpty {
         menu.addItem(.separator())
-        add("Удалить из архива…", #selector(deleteFiles), enabled: model.canModify, key: "\u{8}")
+        add(
+          L10n.tr("Удалить из архива…"), #selector(deleteFiles), enabled: model.canModify,
+          key: "\u{8}")
       }
       return menu
     }

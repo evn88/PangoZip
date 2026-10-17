@@ -1,18 +1,22 @@
+import PangoZipCore
 import XCTest
 
 @testable import PangoZipApp
 
 final class ProgressFormattingTests: XCTestCase, @unchecked Sendable {
-  /// Использует десятичные мегабайты и русскую десятичную запятую.
+  /// Использует десятичные мегабайты и системный десятичный разделитель.
   func testDecimalMegabytesUseOneFractionalDigit() {
-    XCTAssertEqual(ProgressFormatting.bytes(1_500_000), "1,5 МБ")
+    let separator = Locale.current.decimalSeparator ?? "."
+    let megabytes = L10n.tr("МБ")
+    XCTAssertEqual(ProgressFormatting.bytes(1_500_000), "1\(separator)5 \(megabytes)")
     XCTAssertEqual(
       ProgressFormatting.processedBytes(128_400_000, total: 256_000_000, estimated: true),
-      "≈ 128,4 МБ из 256,0 МБ")
+      L10n.tr("%1$@ из %2$@", "≈ 128\(separator)4 \(megabytes)", "256\(separator)0 \(megabytes)"))
     XCTAssertEqual(
       ProgressFormatting.processedBytes(128_400_000, total: 256_000_000, estimated: false),
-      "128,4 МБ из 256,0 МБ")
-    XCTAssertEqual(ProgressFormatting.speed(12_300_000), "≈ 12,3 МБ/с")
+      L10n.tr("%1$@ из %2$@", "128\(separator)4 \(megabytes)", "256\(separator)0 \(megabytes)"))
+    XCTAssertEqual(
+      ProgressFormatting.speed(12_300_000), L10n.tr("≈ %1$@/с", "12\(separator)3 \(megabytes)"))
   }
 
   /// Явно отображает ноль, часы и большие конечные длительности.

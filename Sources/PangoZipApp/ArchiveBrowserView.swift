@@ -18,64 +18,71 @@ struct ArchiveBrowserView: View {
     )
     .navigationTitle(model.session?.url.lastPathComponent ?? "PangoZip")
     .navigationSubtitle(
-      model.session.map { $0.format.uppercased() + ($0.canModify ? "" : " — Только чтение") } ?? ""
+      model.session.map {
+        $0.format.uppercased() + ($0.canModify ? "" : L10n.tr(" — Только чтение"))
+      } ?? ""
     )
-    .searchable(text: $model.searchText, placement: .toolbar, prompt: "Имя или путь в архиве")
+    .searchable(
+      text: $model.searchText, placement: .toolbar, prompt: L10n.tr("Имя или путь в архиве")
+    )
     .searchFocused($searchFocused)
     .toolbar {
       ToolbarItemGroup(placement: .automatic) {
-        Button("Открыть архив…", systemImage: "archivebox", action: model.chooseArchive)
+        Button(L10n.tr("Открыть архив…"), systemImage: "archivebox", action: model.chooseArchive)
           .labelStyle(.iconOnly)
-          .help("Открыть архив (⌘O)").disabled(!model.canAct)
-        Button("Закрыть архив", systemImage: "xmark.circle", action: model.closeArchive)
+          .help(L10n.tr("Открыть архив (⌘O)")).disabled(!model.canAct)
+        Button(L10n.tr("Закрыть архив"), systemImage: "xmark.circle", action: model.closeArchive)
           .labelStyle(.iconOnly)
-          .help("Закрыть архив (⌘W)")
+          .help(L10n.tr("Закрыть архив (⌘W)"))
           .disabled(model.session == nil && !model.isBusy || model.isClosing)
       }
       ToolbarSpacer(.fixed)
       ToolbarItem(placement: .automatic) {
-        Button("Извлечь…", systemImage: "arrow.up.bin", action: model.extractSelected)
+        Button(L10n.tr("Извлечь…"), systemImage: "arrow.up.bin", action: model.extractSelected)
           .labelStyle(.titleAndIcon)
-          .help("Извлечь выбранные файлы и папки (⌘⇧E)")
+          .help(L10n.tr("Извлечь выбранные файлы и папки (⌘⇧E)"))
           .disabled(!model.canAct || model.selectedPaths.isEmpty)
       }
       ToolbarSpacer(.fixed)
       ToolbarItemGroup(placement: .automatic) {
-        Button("Добавить файлы и папки…", systemImage: "plus", action: model.chooseFilesToAdd)
+        Button(
+          L10n.tr("Добавить файлы и папки…"), systemImage: "plus", action: model.chooseFilesToAdd
+        )
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Добавить файлы и папки (⌘⇧A)")).disabled(!model.canModify)
+        Button(L10n.tr("Удалить выбранное…"), systemImage: "trash", action: model.deleteSelected)
           .labelStyle(.iconOnly)
-          .help("Добавить файлы и папки (⌘⇧A)").disabled(!model.canModify)
-        Button("Удалить выбранное…", systemImage: "trash", action: model.deleteSelected)
-          .labelStyle(.iconOnly)
-          .help("Удалить выбранное (⌘⌫)")
+          .help(L10n.tr("Удалить выбранное (⌘⌫)"))
           .disabled(!model.canModify || model.selectedPaths.isEmpty)
       }
       ToolbarSpacer(.fixed)
       ToolbarItemGroup(placement: .automatic) {
         Button(
-          "Открыть файл", systemImage: "arrow.up.forward.square",
+          L10n.tr("Открыть файл"), systemImage: "arrow.up.forward.square",
           action: model.openSelectedExternally
         )
         .labelStyle(.iconOnly)
-        .help("Открыть выбранный файл (⌘↩)").disabled(!model.canOpenSelection)
-        Button("Редактировать файл", systemImage: "pencil", action: model.editSelected)
+        .help(L10n.tr("Открыть выбранный файл (⌘↩)")).disabled(!model.canOpenSelection)
+        Button(L10n.tr("Редактировать файл"), systemImage: "pencil", action: model.editSelected)
           .labelStyle(.iconOnly)
-          .help("Открыть рабочую копию в редакторе (⌘E)")
+          .help(L10n.tr("Открыть рабочую копию в редакторе (⌘E)"))
           .disabled(!model.canModify || !model.canOpenSelection)
         Button(
-          "Сохранить в архив", systemImage: "square.and.arrow.down", action: model.saveWorkingCopies
+          L10n.tr("Сохранить в архив"), systemImage: "square.and.arrow.down",
+          action: model.saveWorkingCopies
         )
         .labelStyle(.iconOnly)
-        .help("Сначала сохраните файл в редакторе, затем нажмите ⌘S здесь")
+        .help(L10n.tr("Сначала сохраните файл в редакторе, затем нажмите ⌘S здесь"))
         .disabled(!model.canModify || model.activeEdits.isEmpty)
       }
       ToolbarSpacer(.flexible)
       ToolbarItem(placement: .automatic) {
         Button(
-          model.showsPreview ? "Скрыть предпросмотр" : "Показать предпросмотр",
+          model.showsPreview ? L10n.tr("Скрыть предпросмотр") : L10n.tr("Показать предпросмотр"),
           systemImage: "sidebar.right", action: model.togglePreview
         )
         .labelStyle(.iconOnly)
-        .help("Переключить предпросмотр (⌘⇧P)")
+        .help(L10n.tr("Переключить предпросмотр (⌘⇧P)"))
       }
     }
     .onExitCommand { model.cancelCurrentOperation() }
@@ -108,12 +115,12 @@ struct ArchiveBrowserView: View {
         .overlay {
           if model.visibleRoots.isEmpty {
             ContentUnavailableView(
-              model.searchText.isEmpty ? "Архив пуст" : "Ничего не найдено",
+              model.searchText.isEmpty ? L10n.tr("Архив пуст") : L10n.tr("Ничего не найдено"),
               systemImage: model.searchText.isEmpty ? "archivebox" : "magnifyingglass",
               description: Text(
                 model.searchText.isEmpty
-                  ? "В этом архиве пока нет файлов."
-                  : "Попробуйте другое имя или путь в архиве."
+                  ? L10n.tr("В этом архиве пока нет файлов.")
+                  : L10n.tr("Попробуйте другое имя или путь в архиве.")
               )
             )
             .allowsHitTesting(false)
@@ -122,17 +129,17 @@ struct ArchiveBrowserView: View {
     } else if model.loadState == .loading {
       VStack(spacing: 16) {
         ProgressView()
-        Text("Читаем содержимое архива…")
-        Button("Отмена", action: model.cancelCurrentOperation)
+        Text(L10n.tr("Читаем содержимое архива…"))
+        Button(L10n.tr("Отмена"), action: model.cancelCurrentOperation)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
       ContentUnavailableView {
-        Label("Откройте архив", systemImage: "doc.zipper")
+        Label(L10n.tr("Откройте архив"), systemImage: "doc.zipper")
       } description: {
-        Text("Перетащите архив в окно, чтобы просмотреть и извлечь файлы.")
+        Text(L10n.tr("Перетащите архив в окно, чтобы просмотреть и извлечь файлы."))
       } actions: {
-        Button("Выбрать архив…", action: model.chooseArchive)
+        Button(L10n.tr("Выбрать архив…"), action: model.chooseArchive)
           .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canAct)
         if let message = model.errorMessage {
           Text(message).foregroundStyle(.red).frame(maxWidth: 550).multilineTextAlignment(.center)
@@ -144,11 +151,11 @@ struct ArchiveBrowserView: View {
   private var preview: some View {
     VStack(spacing: 0) {
       HStack {
-        Text("Предпросмотр").font(.headline)
+        Text(L10n.tr("Предпросмотр")).font(.headline)
         Spacer()
-        Button("Скрыть предпросмотр", systemImage: "xmark", action: model.togglePreview)
+        Button(L10n.tr("Скрыть предпросмотр"), systemImage: "xmark", action: model.togglePreview)
           .labelStyle(.iconOnly).buttonStyle(.borderless)
-          .help("Скрыть предпросмотр (⌘⇧P)")
+          .help(L10n.tr("Скрыть предпросмотр (⌘⇧P)"))
       }
       .padding(14)
       Divider()
@@ -164,11 +171,11 @@ struct ArchiveBrowserView: View {
               .font(.caption).foregroundStyle(.secondary).monospacedDigit()
           }
           if model.activeEdits.contains(where: { $0.entry.path == entry.path }) {
-            Text("Есть рабочая копия: сохраните файл в редакторе, затем нажмите ⌘S здесь.")
+            Text(L10n.tr("Есть рабочая копия: сохраните файл в редакторе, затем нажмите ⌘S здесь."))
               .font(.caption).foregroundStyle(.secondary)
           }
           if !entry.isDirectory {
-            DisclosureGroup("Сведения", isExpanded: $showsMetadata) {
+            DisclosureGroup(L10n.tr("Сведения"), isExpanded: $showsMetadata) {
               ScrollView {
                 ArchiveMetadataView(details: details).padding(.top, 8)
               }
@@ -182,10 +189,10 @@ struct ArchiveBrowserView: View {
         if entry.isDirectory {
           ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-              Label("Папка", systemImage: "folder")
+              Label(L10n.tr("Папка"), systemImage: "folder")
                 .font(.title3).foregroundStyle(.secondary)
               ArchiveMetadataView(details: details)
-              Text("Размер без сжатия и количество объектов включают все вложенные папки.")
+              Text(L10n.tr("Размер без сжатия и количество объектов включают все вложенные папки."))
                 .font(.caption).foregroundStyle(.secondary)
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -196,19 +203,20 @@ struct ArchiveBrowserView: View {
         } else if model.isMaterializing {
           VStack(spacing: 12) {
             ProgressView()
-            Text("Подготавливаем предпросмотр…").font(.callout).foregroundStyle(.secondary)
-            Button("Отмена") { model.cancelPreview() }
+            Text(L10n.tr("Подготавливаем предпросмотр…")).font(.callout).foregroundStyle(.secondary)
+            Button(L10n.tr("Отмена")) { model.cancelPreview() }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-          ContentUnavailableView("Предпросмотр недоступен", systemImage: "doc")
+          ContentUnavailableView(L10n.tr("Предпросмотр недоступен"), systemImage: "doc")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       } else {
         ContentUnavailableView(
-          model.selectedPaths.count > 1 ? "Выбрано несколько объектов" : "Выберите файл",
+          model.selectedPaths.count > 1
+            ? L10n.tr("Выбрано несколько объектов") : L10n.tr("Выберите файл"),
           systemImage: "doc.text.magnifyingglass",
-          description: Text("Предпросмотр появится здесь без извлечения всего архива.")
+          description: Text(L10n.tr("Предпросмотр появится здесь без извлечения всего архива."))
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -224,11 +232,14 @@ struct ArchiveBrowserView: View {
           HStack {
             if model.operationProgress == nil { ProgressView().controlSize(.small) }
             Text(
-              model.isClosing ? "Закрываем архив…" : model.operationMessage ?? "Выполняем операцию…"
+              model.isClosing
+                ? L10n.tr("Закрываем архив…")
+                : model.operationMessage ?? L10n.tr("Выполняем операцию…")
             )
             .lineLimit(1)
             Spacer()
-            Button("Отмена", action: model.cancelCurrentOperation).disabled(model.isClosing)
+            Button(L10n.tr("Отмена"), action: model.cancelCurrentOperation).disabled(
+              model.isClosing)
           }
           if let progress = model.operationProgress {
             OperationProgressView(progress: progress).frame(maxWidth: 620, alignment: .leading)
@@ -237,19 +248,24 @@ struct ArchiveBrowserView: View {
       } else if let message = model.errorMessage {
         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
         Text(message).textSelection(.enabled).lineLimit(3).help(message)
-        Button("Повторить", action: model.retryWithPassword)
+        Button(L10n.tr("Повторить"), action: model.retryWithPassword)
       } else if let message = model.operationMessage {
         Text(message).lineLimit(1)
       } else if let session = model.session {
-        Text("Объектов: \(session.entries.count)").monospacedDigit()
-        Text("Выбрано: \(model.selectedPaths.count)").monospacedDigit()
+        Text(L10n.tr("Объектов: %1$@", String(describing: session.entries.count))).monospacedDigit()
+        Text(L10n.tr("Выбрано: %1$@", String(describing: model.selectedPaths.count)))
+          .monospacedDigit()
       } else {
-        Text("Готово")
+        Text(L10n.tr("Готово"))
       }
       Spacer()
       if !model.activeEdits.isEmpty {
-        Text("Рабочих копий: \(model.activeEdits.count). Для записи в архив нажмите ⌘S.")
-          .foregroundStyle(.tint)
+        Text(
+          L10n.tr(
+            "Рабочих копий: %1$@. Для записи в архив нажмите ⌘S.",
+            String(describing: model.activeEdits.count))
+        )
+        .foregroundStyle(.tint)
       }
     }
     .font(.caption).foregroundStyle(.secondary)
@@ -259,17 +275,17 @@ struct ArchiveBrowserView: View {
 
   private var passwordSheet: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Label("Пароль архива", systemImage: "lock.fill").font(.title3.weight(.semibold))
-      Text(model.errorMessage ?? "Введите пароль для продолжения операции.")
+      Label(L10n.tr("Пароль архива"), systemImage: "lock.fill").font(.title3.weight(.semibold))
+      Text(model.errorMessage ?? L10n.tr("Введите пароль для продолжения операции."))
         .font(.callout).foregroundStyle(.secondary)
-      SecureField("Пароль", text: $model.password)
+      SecureField(L10n.tr("Пароль"), text: $model.password)
         .textFieldStyle(.roundedBorder).onSubmit { model.retryWithPassword() }
-        .accessibilityLabel("Пароль архива")
+        .accessibilityLabel(L10n.tr("Пароль архива"))
       HStack {
         Spacer()
-        Button("Отмена", role: .cancel, action: model.cancelPasswordPrompt)
+        Button(L10n.tr("Отмена"), role: .cancel, action: model.cancelPasswordPrompt)
           .keyboardShortcut(.cancelAction)
-        Button("Продолжить", action: model.retryWithPassword)
+        Button(L10n.tr("Продолжить"), action: model.retryWithPassword)
           .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
       }
     }

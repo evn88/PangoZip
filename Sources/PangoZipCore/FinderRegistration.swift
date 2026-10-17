@@ -81,11 +81,15 @@ public enum FinderRegistrationError: LocalizedError, Sendable, Equatable {
   public var errorDescription: String? {
     switch self {
     case .notInstalled:
-      "Переместите PangoZip в папку «Программы» и откройте приложение оттуда."
+      L10n.tr("Переместите PangoZip в папку «Программы» и откройте приложение оттуда.")
     case .invalidBundle(let url):
-      "Компонент \(url.lastPathComponent) отсутствует или повреждён. Установите PangoZip заново."
+      L10n.tr(
+        "Компонент %1$@ отсутствует или повреждён. Установите PangoZip заново.",
+        String(describing: url.lastPathComponent))
     case .registrationFailed(let url, let status):
-      "Не удалось зарегистрировать \(url.lastPathComponent) в macOS (код \(status))."
+      L10n.tr(
+        "Не удалось зарегистрировать %1$@ в macOS (код %2$@).",
+        String(describing: url.lastPathComponent), String(describing: status))
     }
   }
 }

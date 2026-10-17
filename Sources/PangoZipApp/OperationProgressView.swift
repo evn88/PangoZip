@@ -12,7 +12,7 @@ struct OperationProgressView: View {
     } else {
       VStack(alignment: .leading, spacing: 8) {
         ProgressView().progressViewStyle(.linear)
-        Text("Подготовка файлов…")
+        Text(L10n.tr("Подготовка файлов…"))
           .font(.caption).foregroundStyle(.secondary)
       }
       .accessibilityElement(children: .combine)
@@ -51,29 +51,29 @@ struct OperationProgressView: View {
         Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 5) {
           GridRow {
             metric(
-              "Обработано",
+              L10n.tr("Обработано"),
               ProgressFormatting.processedBytes(
                 value.processedBytes, total: value.totalBytes, estimated: value.bytesAreEstimated))
-            metric("Средняя скорость", ProgressFormatting.speed(value.bytesPerSecond))
+            metric(L10n.tr("Средняя скорость"), ProgressFormatting.speed(value.bytesPerSecond))
           }
           GridRow {
             metric(
-              "Файлы",
+              L10n.tr("Файлы"),
               ProgressFormatting.files(
                 completed: value.completedFiles, total: value.totalFiles))
-            metric("Прошло", ProgressFormatting.time(shownElapsed))
+            metric(L10n.tr("Прошло"), ProgressFormatting.time(shownElapsed))
           }
           GridRow {
-            metric("Размер архива", ProgressFormatting.bytes(value.outputBytes))
+            metric(L10n.tr("Размер архива"), ProgressFormatting.bytes(value.outputBytes))
             metric(
-              "Осталось на этапе",
+              L10n.tr("Осталось на этапе"),
               ProgressFormatting.eta(
                 value.remainingSeconds, phase: value.phase))
           }
         }
         .font(.caption)
       } else {
-        Text("Прошло  \(ProgressFormatting.time(shownElapsed))")
+        Text(L10n.tr("Прошло  %1$@", String(describing: ProgressFormatting.time(shownElapsed))))
           .font(.caption).foregroundStyle(.secondary).monospacedDigit()
       }
 
@@ -82,7 +82,7 @@ struct OperationProgressView: View {
           .font(.caption2).foregroundStyle(.secondary)
           .lineLimit(1).truncationMode(.middle)
           .help(file)
-          .accessibilityLabel("Текущий файл: \(file)")
+          .accessibilityLabel(L10n.tr("Текущий файл: %1$@", String(describing: file)))
       }
     }
     .accessibilityElement(children: .contain)
@@ -103,7 +103,7 @@ enum ProgressFormatting {
   /// Создаёт локализованное десятичное число с одной цифрой после запятой.
   private static func numberString(_ value: Double) -> String {
     let formatter = NumberFormatter()
-    formatter.locale = Locale(identifier: "ru_RU")
+    formatter.locale = Locale.current
     formatter.numberStyle = .decimal
     formatter.minimumFractionDigits = 1
     formatter.maximumFractionDigits = 1
@@ -118,7 +118,9 @@ enum ProgressFormatting {
 
   /// Форматирует скорость в десятичных единицах без потери дробной части.
   private static func byteQuantity(_ value: Double) -> String {
-    let units = ["Б", "кБ", "МБ", "ГБ", "ТБ", "ПБ"]
+    let units = [
+      L10n.tr("Б"), L10n.tr("кБ"), L10n.tr("МБ"), L10n.tr("ГБ"), L10n.tr("ТБ"), L10n.tr("ПБ"),
+    ]
     var amount = value
     var unit = 0
     while amount >= 1_000, unit < units.count - 1 {
@@ -137,13 +139,15 @@ enum ProgressFormatting {
   /// Форматирует обработанные байты и общий объём, сохраняя неизвестные значения.
   static func processedBytes(_ processed: UInt64?, total: UInt64?, estimated: Bool) -> String {
     guard let processed, let total else { return "—" }
-    return "\(estimatedBytes(processed, estimated: estimated)) из \(bytes(total))"
+    return L10n.tr(
+      "%1$@ из %2$@", String(describing: estimatedBytes(processed, estimated: estimated)),
+      String(describing: bytes(total)))
   }
 
   /// Форматирует скорость и не подменяет неизвестное значение нулём.
   static func speed(_ value: Double?) -> String {
     guard let value, value.isFinite, value > 0, value < Double(Int.max) else { return "—" }
-    return "≈ \(byteQuantity(value))/с"
+    return L10n.tr("≈ %1$@/с", String(describing: byteQuantity(value)))
   }
 
   /// Форматирует целое время как часы, минуты и секунды; ноль остаётся явным значением.
@@ -169,14 +173,14 @@ enum ProgressFormatting {
     return String(total)
   }
 
-  /// Возвращает русское название текущего этапа.
+  /// Возвращает локализованное название текущего этапа.
   static func phaseTitle(_ phase: ArchiveProgress.Phase) -> String {
     switch phase {
-    case .preparing: "Подготовка файлов…"
-    case .compressing: "Сжатие…"
-    case .verifying: "Проверка архива…"
-    case .extracting: "Извлечение…"
-    case .finalizing: "Завершение…"
+    case .preparing: L10n.tr("Подготовка файлов…")
+    case .compressing: L10n.tr("Сжатие…")
+    case .verifying: L10n.tr("Проверка архива…")
+    case .extracting: L10n.tr("Извлечение…")
+    case .finalizing: L10n.tr("Завершение…")
     }
   }
 }

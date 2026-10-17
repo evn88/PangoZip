@@ -27,7 +27,11 @@ final class ArchiveBrowserModel: ObservableObject {
     case finder(FinderRequest)
   }
 
-  @Published private(set) var session: ArchiveSession?
+  @Published private(set) var session: ArchiveSession? {
+    didSet { itemDetailsByPath.removeAll() }
+  }
+  // Повторное выделение и отрисовка ячеек не обходят потомков; новый снимок очищает кэш.
+  private(set) var itemDetailsByPath: [String: ArchiveItemDetails] = [:]
   @Published private(set) var loadState: LoadState = .idle
   @Published private(set) var isBusy = false
   @Published private(set) var isExporting = false
@@ -66,8 +70,7 @@ final class ArchiveBrowserModel: ObservableObject {
   var selectedPath: String? { selectedPaths.count == 1 ? selectedPaths.first : nil }
   var selectedEntry: ArchiveEntry? { session?.entries.first { $0.path == selectedPath } }
   var selectedItemDetails: ArchiveItemDetails? {
-    guard let selectedPath, let session else { return nil }
-    return ArchiveItemDetails(path: selectedPath, roots: session.roots)
+    selectedPath.flatMap { itemDetailsByPath[$0] }
   }
   var canAct: Bool {
     !isBusy && !isExporting && !isClosing && !isPasswordPromptPresented && activePanel == nil
@@ -124,8 +127,8 @@ final class ArchiveBrowserModel: ObservableObject {
       return
     }
     let panel = archivePanel()
-    panel.message = "Выберите архив, в который нужно добавить выбранные файлы и папки."
-    panel.prompt = "Выбрать архив"
+    panel.message = L10n.tr("Выберите архив, в который нужно добавить выбранные файлы и папки.")
+    panel.prompt = L10n.tr("Выбрать архив")
     activePanel = panel
     panel.begin { [weak self] response in
       Task { @MainActor in
@@ -185,9 +188,10 @@ final class ArchiveBrowserModel: ObservableObject {
     chooser.canChooseDirectories = true
     chooser.canChooseFiles = false
     chooser.canCreateDirectories = true
-    chooser.prompt = "Извлечь"
+    chooser.prompt = L10n.tr("Извлечь")
     chooser.message =
-      "Выберите папку для выделенных файлов и папок. Существующие объекты не перезаписываются."
+      L10n.tr(
+        "Выберите папку для выделенных файлов и папок. Существующие объекты не перезаписываются.")
     activePanel = chooser
     chooser.begin { [weak self] response in
       Task { @MainActor in
@@ -249,7 +253,7 @@ final class ArchiveBrowserModel: ObservableObject {
         try Task.checkCancellation()
         guard !isClosing, session?.id == snapshot.id else { throw ArchiveError.sessionExpired }
         await settlePreviews()
-        operationMessage = "Извлекаем: " + path
+        operationMessage = L10n.tr("Извлекаем: %1$@", String(describing: path))
         while true {
           do {
             _ = try await service.exportItem(
@@ -263,7 +267,8 @@ final class ArchiveBrowserModel: ObservableObject {
             password = answer
           }
         }
-        operationMessage = "Извлечено: " + destination.lastPathComponent
+        operationMessage = L10n.tr(
+          "Извлечено: %1$@", String(describing: destination.lastPathComponent))
         errorMessage = nil
         completion.finish(nil)
       } catch {
@@ -307,7 +312,7 @@ final class ArchiveBrowserModel: ObservableObject {
     panel.canChooseDirectories = true
     panel.canChooseFiles = true
     panel.allowsMultipleSelection = true
-    panel.prompt = "Добавить"
+    panel.prompt = L10n.tr("Добавить")
     let directory = insertionDirectory
     activePanel = panel
     panel.begin { [weak self] response in
@@ -327,18 +332,21 @@ final class ArchiveBrowserModel: ObservableObject {
   func deleteSelected() {
     guard canModify, !selectedPaths.isEmpty else { return }
     let alert = NSAlert()
-    alert.messageText = "Удалить выбранные объекты из архива?"
+    alert.messageText = L10n.tr("Удалить выбранные объекты из архива?")
     alert.informativeText =
-      "Объектов: \(selectedPaths.count). Содержимое выбранных папок также будет удалено."
+      L10n.tr(
+        "Объектов: %1$@. Содержимое выбранных папок также будет удалено.",
+        String(describing: selectedPaths.count))
     alert.alertStyle = .warning
-    alert.addButton(withTitle: "Удалить")
-    alert.addButton(withTitle: "Отмена")
+    alert.addButton(withTitle: L10n.tr("Удалить"))
+    alert.addButton(withTitle: L10n.tr("Отмена"))
     guard alert.runModal() == .alertFirstButtonReturn else { return }
     let paths = selectedPaths.sorted()
     if activeEdits.contains(where: { edit in
       paths.contains { edit.entry.path == $0 || edit.entry.path.hasPrefix($0 + "/") }
     }) {
-      errorMessage = "Сначала сохраните рабочие копии или закройте архив, выбрав «Не сохранять»."
+      errorMessage = L10n.tr(
+        "Сначала сохраните рабочие копии или закройте архив, выбрав «Не сохранять».")
       return
     }
     start(.delete(paths))
@@ -469,10 +477,11 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Требует явного согласия на замену совпадающих путей при добавлении.
   private func confirmAdding() -> Bool {
     let alert = NSAlert()
-    alert.messageText = "Добавить файлы в архив?"
-    alert.informativeText = "Файлы с совпадающими именами по выбранному пути будут заменены."
-    alert.addButton(withTitle: "Добавить")
-    alert.addButton(withTitle: "Отмена")
+    alert.messageText = L10n.tr("Добавить файлы в архив?")
+    alert.informativeText = L10n.tr(
+      "Файлы с совпадающими именами по выбранному пути будут заменены.")
+    alert.addButton(withTitle: L10n.tr("Добавить"))
+    alert.addButton(withTitle: L10n.tr("Отмена"))
     return alert.runModal() == .alertFirstButtonReturn
   }
 
@@ -537,7 +546,7 @@ final class ArchiveBrowserModel: ObservableObject {
           let urls = pendingFinderFiles
           pendingFinderFiles = []
           if !result.canModify {
-            errorMessage = "Этот формат доступен только для чтения."
+            errorMessage = L10n.tr("Этот формат доступен только для чтения.")
           } else if confirmAdding() {
             await perform(.add(urls, ""))
             return
@@ -547,26 +556,29 @@ final class ArchiveBrowserModel: ObservableObject {
         await settlePreviews()
         let selection = FinderSelection(urls: urls)
         guard let first = urls.first else { throw ArchiveError.invalidOperation }
-        operationMessage = "Создаём архив…"
+        operationMessage = L10n.tr("Создаём архив…")
         let proposed = first.deletingLastPathComponent().appendingPathComponent(
           selection.archiveName + "." + format)
         let result = try await service.createArchive(
           from: urls, proposedURL: proposed, format: format, options: ArchivePreferences.options,
           progress: progressHandler)
         NSWorkspace.shared.activateFileViewerSelecting([result])
-        operationMessage = "Создан архив: " + result.lastPathComponent
+        operationMessage = L10n.tr(
+          "Создан архив: %1$@", String(describing: result.lastPathComponent))
       case .extract(let urls):
         await settlePreviews()
         var results: [URL] = []
         defer { if !results.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(results) } }
         for (index, url) in urls.enumerated() {
           retryOperation = .extract(Array(urls[index...]))
-          operationMessage = "Извлекаем \(index + 1) из \(urls.count): \(url.lastPathComponent)"
+          operationMessage = L10n.tr(
+            "Извлекаем %1$@ из %2$@: %3$@", String(describing: index + 1),
+            String(describing: urls.count), String(describing: url.lastPathComponent))
           results.append(
             try await service.extractArchive(url, password: password, progress: progressHandler))
           password = ""
         }
-        operationMessage = "Извлечено архивов: \(results.count)"
+        operationMessage = L10n.tr("Извлечено архивов: %1$@", String(describing: results.count))
       case .export(let paths, let directory):
         guard let session else { throw ArchiveError.sessionExpired }
         await settlePreviews()
@@ -575,7 +587,7 @@ final class ArchiveBrowserModel: ObservableObject {
         defer { if !results.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(results) } }
         for (index, path) in roots.enumerated() {
           retryOperation = .export(Array(roots[index...]), directory)
-          operationMessage = "Извлекаем: " + path
+          operationMessage = L10n.tr("Извлекаем: %1$@", String(describing: path))
           let destination = directory.appendingPathComponent(
             String(path.split(separator: "/").last!))
           results.append(
@@ -583,7 +595,7 @@ final class ArchiveBrowserModel: ObservableObject {
               path, from: session, to: destination, password: password, chooseUniqueName: true,
               progress: progressHandler))
         }
-        operationMessage = "Извлечено объектов: \(results.count)"
+        operationMessage = L10n.tr("Извлечено объектов: %1$@", String(describing: results.count))
       case .preview:
         return
       case .external(let entry):
@@ -651,6 +663,9 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Отменяет прежний предпросмотр до проверки нового выделения.
   private func selectionChanged() {
     cancelPreview()
+    if let selectedPath, itemDetailsByPath[selectedPath] == nil, let session {
+      itemDetailsByPath[selectedPath] = ArchiveItemDetails(path: selectedPath, roots: session.roots)
+    }
     guard showsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
       let entry = selectedEntry,
       !entry.isDirectory, !entry.isSymbolicLink
@@ -704,7 +719,7 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Сохраняет ошибку запуска внешнего приложения в состоянии интерфейса.
   private func openInWorkspace(_ url: URL) {
     if !NSWorkspace.shared.open(url) {
-      errorMessage = "Не удалось открыть файл во внешнем приложении."
+      errorMessage = L10n.tr("Не удалось открыть файл во внешнем приложении.")
     }
   }
 
@@ -712,12 +727,14 @@ final class ArchiveBrowserModel: ObservableObject {
   private func confirmWorkingCopies() async -> Bool {
     guard !activeEdits.isEmpty else { return true }
     let alert = NSAlert()
-    alert.messageText = "Сохранить рабочие копии в архив?"
+    alert.messageText = L10n.tr("Сохранить рабочие копии в архив?")
     alert.informativeText =
-      "Сначала сохраните файлы во внешнем редакторе. Рабочих копий: \(activeEdits.count). При выборе «Не сохранять» они будут удалены."
-    alert.addButton(withTitle: "Сохранить")
-    alert.addButton(withTitle: "Не сохранять")
-    alert.addButton(withTitle: "Отмена")
+      L10n.tr(
+        "Сначала сохраните файлы во внешнем редакторе. Рабочих копий: %1$@. При выборе «Не сохранять» они будут удалены.",
+        String(describing: activeEdits.count))
+    alert.addButton(withTitle: L10n.tr("Сохранить"))
+    alert.addButton(withTitle: L10n.tr("Не сохранять"))
+    alert.addButton(withTitle: L10n.tr("Отмена"))
     switch alert.runModal() {
     case .alertFirstButtonReturn:
       await perform(.save)
