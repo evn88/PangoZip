@@ -177,6 +177,27 @@ printf 'NEW DMG' > "$PANGOZIP_DMG_DIRECTORY/PangoZip-0.6.0-arm64.dmg"
                 self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(args[0] == "xcrun" for args in self.commands()))
 
+    def test_dmg_layout_configures_retina_background_volume_icon_and_ds_store(self):
+        """Проверяет создание HiDPI-фона, флага иконки тома и позиций элементов в .DS_Store."""
+        volume = self.root / "dmg-volume"
+        volume.mkdir()
+        icon = REPOSITORY / "Resources/Icons/AppIcon.icns"
+        result = subprocess.run(
+            ["python3", str(REPOSITORY / "scripts/dmg_layout.py"), "configure-volume", str(volume), "--icon", str(icon)],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((volume / ".background/background.tiff").is_file())
+        self.assertTrue((volume / ".VolumeIcon.icns").is_file())
+        ds_store = (volume / ".DS_Store").read_bytes()
+        self.assertEqual(len(ds_store), 10244)
+        self.assertIn("Applications".encode("utf-16-be") + b"Ilocblob", ds_store)
+        self.assertIn("PangoZip.app".encode("utf-16-be") + b"Ilocblob", ds_store)
+        self.assertIn(b"icvpblob", ds_store)
+        self.assertIn(b"bwspblob", ds_store)
+        self.assertIn(b"pBBkblob", ds_store)
+
 
 if __name__ == "__main__":
     unittest.main()

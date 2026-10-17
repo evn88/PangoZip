@@ -67,38 +67,44 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 payload="$workspace/payload"
 mkdir "$payload"
+if [[ "$signing_identity" != - ]]; then
+  verify_distribution_app "$app"
+fi
 ditto "$app" "$payload/PangoZip.app"
 ln -s /Applications "$payload/Applications"
-if [[ "$signing_identity" == - ]]; then
-  cp docs/installation.txt "$payload/Read me.txt"
-else
-  verify_distribution_app "$app"
-  # Нотариализация выполняется после упаковки; не обещаем её в ещё не принятом образе.
-  sed -e 's/Текущая сборка подписана ad hoc, без сертификата Developer ID и нотариализации Apple, поэтому предупреждение Gatekeeper может появиться./Сборка подписана сертификатом Developer ID Application. Статус нотариализации указан в описании релиза./' \
-      -e 's/Текущая сборка подписана ad hoc, без сертификата Developer ID и нотариализации Apple. Это не подтверждённая Apple подпись разработчика; macOS может заблокировать открытие загруженного приложения./Сборка подписана сертификатом Developer ID Application. До публикации релиз должен пройти нотариализацию Apple./' \
-      docs/installation.txt > "$payload/Read me.txt"
-fi
 codesign --verify --deep --strict "$payload/PangoZip.app"
+python3 scripts/dmg_layout.py prepare-payload "$payload" --icon "$app/Contents/Resources/AppIcon.icns"
 output_directory="${PANGOZIP_DMG_DIRECTORY:-$(pwd)/build}"
 mkdir -p "$output_directory"
 output_directory="$(cd "$output_directory" && pwd)"
 output="$output_directory/PangoZip-$version-$architecture.dmg"
+mountpoint="$workspace/mount"
+mkdir "$mountpoint"
+trap 'status=$?; if [[ "${mounted:-false}" == true ]]; then hdiutil detach "$mountpoint" >/dev/null || hdiutil detach -force "$mountpoint" >/dev/null || true; fi; cleanup "$status"' EXIT
+# Записываем финальный .DS_Store и флаг иконки тома непосредственно на HFS+ том перед сжатием в UDZO.
+hdiutil create -srcfolder "$payload" -fs HFS+ -format UDRW -volname "PangoZip $version" "$workspace/PangoZip-rw.dmg" >/dev/null
+hdiutil attach -readwrite -noverify -noautoopen -nobrowse -mountpoint "$mountpoint" "$workspace/PangoZip-rw.dmg" >/dev/null
+mounted=true
+python3 scripts/dmg_layout.py finalize-volume "$mountpoint"
+sync
+hdiutil detach "$mountpoint" >/dev/null || hdiutil detach -force "$mountpoint" >/dev/null
+mounted=false
 # Готовый файл заменяется только после проверки сжатого образа UDZO.
-hdiutil create -srcfolder "$payload" -fs HFS+ -format UDZO -imagekey zlib-level=9 -volname "PangoZip $version" "$workspace/PangoZip.dmg"
+hdiutil convert "$workspace/PangoZip-rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$workspace/PangoZip.dmg" >/dev/null
+rm -f "$workspace/PangoZip-rw.dmg"
 if [[ "$signing_identity" != - ]]; then
   codesign --force --sign "$signing_identity" --timestamp "$workspace/PangoZip.dmg"
   codesign --verify --strict "$workspace/PangoZip.dmg"
 fi
 hdiutil verify "$workspace/PangoZip.dmg"
-mountpoint="$workspace/mount"
-mkdir "$mountpoint"
 hdiutil attach -readonly -nobrowse -mountpoint "$mountpoint" "$workspace/PangoZip.dmg" >/dev/null
 mounted=true
-trap 'status=$?; if [[ "${mounted:-false}" == true ]]; then hdiutil detach "$mountpoint" >/dev/null || true; fi; cleanup "$status"' EXIT
 [[ -d "$mountpoint/PangoZip.app" ]] || { echo "Missing PangoZip.app in DMG" >&2; exit 1; }
 [[ -L "$mountpoint/Applications" && "$(readlink "$mountpoint/Applications")" == /Applications ]] || { echo "Invalid Applications link in DMG" >&2; exit 1; }
-[[ -f "$mountpoint/Read me.txt" ]] || { echo "Missing Read me.txt in DMG" >&2; exit 1; }
-[[ "$(find "$mountpoint" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" == 3 ]] || { echo "Unexpected DMG root contents" >&2; exit 1; }
+[[ -f "$mountpoint/.DS_Store" ]] || { echo "Missing .DS_Store in DMG" >&2; exit 1; }
+[[ -f "$mountpoint/.VolumeIcon.icns" ]] || { echo "Missing .VolumeIcon.icns in DMG" >&2; exit 1; }
+[[ -f "$mountpoint/.background/background.tiff" ]] || { echo "Missing background.tiff in DMG" >&2; exit 1; }
+[[ "$(find "$mountpoint" -mindepth 1 -maxdepth 1 -not -name '.*' | wc -l | tr -d ' ')" == 2 ]] || { echo "Unexpected visible DMG root contents" >&2; exit 1; }
 hdiutil detach "$mountpoint" >/dev/null
 mounted=false
 mv -f "$workspace/PangoZip.dmg" "$output"
