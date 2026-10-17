@@ -113,7 +113,8 @@ final class FinderRegistrationTests: XCTestCase {
       calls.withLock { $0.append(url) }
       return 0
     }
-    XCTAssertEqual(calls.withLock { $0 }, [plan.applicationURL, plan.workerURL])
+    XCTAssertEqual(
+      calls.withLock { $0 }, [plan.applicationURL, plan.workerURL, plan.extensionURL])
     do {
       try await FinderRegistration.register(plan) { url, _ in
         url == plan.workerURL ? -10811 : 0
@@ -121,6 +122,14 @@ final class FinderRegistrationTests: XCTestCase {
       XCTFail("Ожидалась ошибка регистрации worker")
     } catch {
       XCTAssertEqual(error as? FinderRegistrationError, .registrationFailed(plan.workerURL, -10811))
+    }
+    do {
+      try await FinderRegistration.register(plan) { url, _ in
+        url == plan.extensionURL ? 1 : 0
+      }
+      XCTFail("Ожидалась ошибка регистрации расширения Finder")
+    } catch {
+      XCTAssertEqual(error as? FinderRegistrationError, .registrationFailed(plan.extensionURL, 1))
     }
   }
 

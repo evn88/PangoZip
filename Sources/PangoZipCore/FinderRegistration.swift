@@ -95,23 +95,32 @@ public enum FinderRegistrationError: LocalizedError, Sendable, Equatable {
 }
 
 public enum FinderRegistration {
-  /// Обновляет записи приложения и worker; встроенное расширение обнаруживает сама macOS.
+  /// Обновляет все вложенные компоненты, сохраняя пользовательский выбор включения расширения.
   public static func register(_ plan: FinderRegistrationPlan) async throws {
     try await register(plan) { url, update in
-      LSRegisterURL(url as CFURL, update)
+      guard url == plan.extensionURL else { return LSRegisterURL(url as CFURL, update) }
+      // Обнаружение appex через одну регистрацию приложения не гарантируется PlugInKit.
+      // Ключ -a восстанавливает запись, но не включает расширение вопреки выбору пользователя.
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
+      process.arguments = ["-a", url.path]
+      process.standardOutput = FileHandle.nullDevice
+      try process.run()
+      process.waitUntilExit()
+      return process.terminationStatus
     }
   }
 
   /// Выполняет синхронный API вне главного потока и дожидается завершения при отмене.
   static func register(
     _ plan: FinderRegistrationPlan,
-    executor: @escaping @Sendable (URL, Bool) -> Int32
+    executor: @escaping @Sendable (URL, Bool) throws -> Int32
   ) async throws {
     try Task.checkCancellation()
     let task = Task.detached(priority: .utility) {
-      for url in [plan.applicationURL, plan.workerURL] {
+      for url in [plan.applicationURL, plan.workerURL, plan.extensionURL] {
         try Task.checkCancellation()
-        let status = executor(url, true)
+        let status = try executor(url, true)
         guard status == noErr else {
           throw FinderRegistrationError.registrationFailed(url, status)
         }

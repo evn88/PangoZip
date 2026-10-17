@@ -14,17 +14,21 @@ final class FinderSync: FIFinderSync {
     super.init()
     // Меню для локальных томов; значки и обход файловой системы не нужны.
     FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/")]
+    logger.notice("Finder menu provider initialized")
   }
 
   /// Создаёт меню из снимка выделения только при наличии основного приложения и помощника.
   override func menu(for menuKind: FIMenuKind) -> NSMenu? {
+    let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
+    logger.notice(
+      "Finder menu requested: kind=\(menuKind.rawValue) selection=\(selectedURLs.count)")
     guard FinderInstallation.isInstalledLocation(applicationURL),
       FinderInstallation.isAvailable(at: applicationURL),
       menuKind == .contextualMenuForItems || menuKind == .contextualMenuForSidebar
     else {
       return nil
     }
-    let selection = FinderSelection(urls: FIFinderSyncController.default().selectedItemURLs() ?? [])
+    let selection = FinderSelection(urls: selectedURLs)
     guard !selection.actions.isEmpty else { return nil }
     let menu = NSMenu()
     let root = NSMenuItem(title: "PangoZip", action: nil, keyEquivalent: "")
@@ -65,7 +69,9 @@ final class FinderSync: FIFinderSync {
       FinderInstallation.isAvailable(at: applicationURL)
     else {
       requests.removeAll()
-      FIFinderSyncController.default().directoryURLs = []
+      // Разовый отказ метаданных при обновлении приложения не должен отключать меню навсегда.
+      // Следующий запрос Finder повторит проверку, удалённое приложение по-прежнему не допускается.
+      logger.notice("Finder action skipped: containing application is unavailable")
       return
     }
     guard let request = requests.removeValue(forKey: sender.tag),
