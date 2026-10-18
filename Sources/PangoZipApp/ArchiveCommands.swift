@@ -21,6 +21,9 @@ struct ArchiveCommands: Commands {
         .disabled(model.session == nil && !model.isBusy || model.isClosing)
     }
     CommandMenu(L10n.tr("Архив")) {
+      Button(L10n.tr("Назад"), action: model.navigateBack)
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(!model.canNavigateBack)
       Button(L10n.tr("Откатить последнее изменение архива"), action: model.undoLastChange)
         .keyboardShortcut("z", modifiers: [.command, .option])
         .disabled(!model.canUndoLastChange)

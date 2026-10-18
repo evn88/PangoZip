@@ -285,3 +285,4 @@
 "Дождитесь завершения фоновых операций с архивами и повторите выход." = "Arşivlerle ilgili arka plan işlemlerinin bitmesini bekleyin, ardından çıkmayı yeniden deneyin.";
 "Обновление ожидает завершения работы" = "Güncelleme bekliyor";
 "Перед обновлением завершите операции Finder и закройте другие окна PangoZip." = "Güncellemeden önce Finder işlemlerini bitirin ve diğer PangoZip pencerelerini kapatın.";
+"Назад" = "Geri";
