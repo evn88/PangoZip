@@ -60,7 +60,8 @@ class MainReleaseTests(unittest.TestCase):
             info = plistlib.loads((self.root / name).read_bytes())
             self.assertEqual((info["CFBundleShortVersionString"], info["CFBundleVersion"]), ("0.7.1", "13"))
         changes = json.loads((self.root / "docs/releases/v0.7.1.json").read_text())
-        self.assertIn("Improve archive extraction", " ".join(changes["en"]))
+        self.assertNotIn("Improve archive extraction", " ".join(changes["en"]))
+        self.assertEqual(changes["ru"], ["Техническое обновление приложения."])
         self.assertIn("0.7.1 (13)", (self.root / "README.md").read_text())
         self.assertEqual(self.git("status", "--porcelain"), "")
 

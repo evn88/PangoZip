@@ -4,6 +4,7 @@
 import argparse
 import base64
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,58 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_FILES = ("Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist",
                 "QuickLookExtension/Info.plist")
 VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+
+DEFAULT_CHANGES = {
+    "en": ["App maintenance update."],
+    "ru": ["Техническое обновление приложения."],
+    "sr-Latn": ["Tehničko ažuriranje aplikacije."],
+    "de": ["Technisches Update der App."],
+    "fr": ["Mise à jour technique de l’application."],
+    "es": ["Actualización de mantenimiento de la aplicación."],
+    "it": ["Aggiornamento di manutenzione dell’app."],
+    "pt": ["Atualização de manutenção do aplicativo."],
+    "pl": ["Aktualizacja techniczna aplikacji."],
+    "uk": ["Технічне оновлення застосунку."],
+    "tr": ["Uygulama bakım güncellemesi."],
+    "zh-Hans": ["应用维护更新。"],
+    "ja": ["アプリのメンテナンス更新。"],
+    "ko": ["앱 유지보수 업데이트."],
+}
+
+
+def release_changes(changes):
+    """Не выдумывает исправления и не подставляет названия коммитов вместо пользовательских заметок."""
+    changes = DEFAULT_CHANGES if changes is None else changes
+    if not {"en", "ru"}.issubset(changes) or not set(changes).issubset(DEFAULT_CHANGES) or any(
+        not isinstance(lines, list) or not lines or any(not isinstance(line, str) or not line.strip() for line in lines)
+        for lines in changes.values()
+    ):
+        raise ValueError("Release changes require non-empty en and ru lists and supported language codes.")
+    return changes
+
+
+def localize_update_feed(path, changes):
+    """Sparkle выбирает description по xml:lang; HTML содержит только короткий список изменений."""
+    changes = release_changes(changes)
+    tree = ET.parse(path)
+    items = tree.findall("channel/item")
+    if len(items) != 1:
+        raise ValueError("Expected exactly one update item")
+    item = items[0]
+    namespace = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+    for child in list(item):
+        if child.tag in ("description", namespace + "releaseNotesLink", namespace + "fullReleaseNotesLink"):
+            item.remove(child)
+    for language, fallback in DEFAULT_CHANGES.items():
+        lines = changes.get(language, fallback)
+        content = "".join("<li>" + html.escape(line) + "</li>" for line in lines)
+        node = ET.SubElement(item, "description", {"{http://www.w3.org/XML/1998/namespace}lang": language})
+        node.text = (f'<html lang="{language}"><head><meta charset="utf-8">'
+                     '<style>:root{color-scheme:light dark}body{font:13px -apple-system;line-height:1.5;'
+                     'margin:12px}ul{padding-left:20px}li{margin:6px 0}</style></head>'
+                     f'<body><ul>{content}</ul></body></html>')
+    ET.register_namespace("sparkle", namespace[1:-1])
+    tree.write(path, encoding="utf-8", xml_declaration=True)
 
 
 def version_from_tag(tag):
@@ -51,15 +104,7 @@ def render_notes(tag, mode, repository, commit, changes=None):
         raise ValueError("Invalid GitHub repository")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Invalid source commit")
-    changes = {
-        "en": [f"See the [source changes](https://github.com/{repository}/commits/{tag}) included in this version."],
-        "ru": [f"Изменения этой версии доступны в [истории исходников](https://github.com/{repository}/commits/{tag})."],
-    } if changes is None else changes
-    if set(changes) != {"en", "ru"} or any(
-        not isinstance(lines, list) or not lines or any(not isinstance(line, str) or not line.strip() for line in lines)
-        for lines in changes.values()
-    ):
-        raise ValueError("Release changes must contain non-empty en and ru lists.")
+    changes = release_changes(changes)
     warning_en = ("Signed with Developer ID Application and notarized by Apple. Notarization tickets are attached to the app and DMG."
                   if mode == "notarized" else
                   "**Ad hoc signed, without Developer ID or Apple notarization. Gatekeeper may block this download. Do not disable macOS security protections.**")
@@ -156,7 +201,7 @@ def validate_update_feed(directory, tag, build=None):
     return signature
 
 
-def generate_update_feed(tag, directory, root=ROOT):
+def generate_update_feed(tag, directory, root=ROOT, changes=None):
     """Проверяет ключ приложения и подписывает архив и ленту официальным инструментом Sparkle."""
     version_from_tag(tag)
     tool = root / ".build/artifacts/sparkle/Sparkle/bin/generate_appcast"
@@ -174,23 +219,24 @@ def generate_update_feed(tag, directory, root=ROOT):
             raise ValueError("PANGOZIP_SPARKLE_PRIVATE_KEY is not a valid exported Sparkle key")
     command = [str(tool), "--download-url-prefix", f"https://github.com/evn88/PangoZip/releases/download/{tag}/",
                "--link", f"https://github.com/evn88/PangoZip/releases/tag/{tag}",
-               "--maximum-deltas", "0", "--maximum-versions", "1", "--embed-release-notes"]
+               "--maximum-deltas", "0", "--maximum-versions", "1"]
     command += ["--ed-key-file", "-"] if secret else ["--account", "app.pangozip.desktop"]
     # Отдельная папка исключает прежние DMG и не даёт генератору перемещать старые релизы.
     with tempfile.TemporaryDirectory(prefix=".update-feed-", dir=directory) as temporary:
         staging = Path(temporary)
         dmg = directory / f"PangoZip-{version_from_tag(tag)}-arm64.dmg"
         shutil.copy2(dmg, staging / dmg.name)
-        notes = dmg.with_suffix(".md")
-        if notes.exists():
-            shutil.copy2(notes, staging / notes.name)
         subprocess.run([*command, str(staging)], input=secret, env=environment, check=True, text=True, timeout=300)
         shutil.copy2(staging / "appcast.xml", directory / "appcast.xml")
+    # Генератор подписывает исходную ленту; локализованные описания требуют новой подписи всего XML.
+    localize_update_feed(directory / "appcast.xml", changes)
+    verifier = str(tool.with_name("sign_update"))
+    credentials = ["--ed-key-file", "-"] if secret else ["--account", "app.pangozip.desktop"]
+    subprocess.run([verifier, *credentials, str(directory / "appcast.xml")],
+                   input=secret, env=environment, check=True, text=True, timeout=60)
     with (root / "Resources/Info.plist").open("rb") as source:
         build = plistlib.load(source)["CFBundleVersion"]
     signature = validate_update_feed(directory, tag, build)
-    verifier = str(tool.with_name("sign_update"))
-    credentials = ["--ed-key-file", "-"] if secret else ["--account", "app.pangozip.desktop"]
     for file, arguments in [(directory / "appcast.xml", []),
                             (directory / f"PangoZip-{version_from_tag(tag)}-arm64.dmg", [signature])]:
         subprocess.run([verifier, *credentials, "--verify", str(file), *arguments],
@@ -211,8 +257,7 @@ def write_metadata(tag, mode, root=ROOT):
     changes = json.loads(changes_path.read_text()) if changes_path.exists() else None
     notes = render_notes(tag, mode, repository, commit, changes)
     (directory / "release-notes.md").write_text(notes)
-    dmg.with_suffix(".md").write_text(notes)
-    generate_update_feed(tag, directory, root)
+    generate_update_feed(tag, directory, root, changes)
     manifest = {"tag": tag, "version": version, "commit": commit, "signing": mode,
                 "assets": {dmg.name: digest, checksum.name: hashlib.sha256(checksum.read_bytes()).hexdigest(),
                            "appcast.xml": hashlib.sha256((directory / "appcast.xml").read_bytes()).hexdigest()}}

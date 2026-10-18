@@ -5,11 +5,14 @@ import base64
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import plistlib
 import sys
+import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -200,6 +203,78 @@ class ReleaseAutomationTests(unittest.TestCase):
         validate_update_feed(self.directory, self.tag, "12")
         with self.assertRaises(ValueError):
             validate_update_feed(self.directory, self.tag, "11")
+
+    def test_update_feed_contains_only_short_localized_change_lists(self):
+        """Старые полные заметки заменяются списками на всех языках приложения."""
+        from release_metadata import localize_update_feed
+        root = ET.fromstring(self.feed_content)
+        item = root.find("channel/item")
+        ET.SubElement(item, "description").text = "ENG RUS Installation Merge pull request"
+        ET.SubElement(item, "{http://www.andymatuschak.org/xml-namespaces/sparkle}releaseNotesLink").text = "https://example.invalid/full"
+        feed = self.directory / "appcast.xml"
+        feed.write_bytes(ET.tostring(root))
+        localize_update_feed(feed, {"en": ["Short update notes."], "ru": ["Короткие заметки.", "<script>unsafe</script>"]})
+        item = ET.parse(feed).find("channel/item")
+        descriptions = {node.get("{http://www.w3.org/XML/1998/namespace}lang"): node.text
+                        for node in item.findall("description")}
+        self.assertEqual(set(descriptions), {"en", "ru", "sr-Latn", "de", "fr", "es", "it", "pt", "pl", "uk", "tr", "zh-Hans", "ja", "ko"})
+        self.assertIn("Короткие заметки.", descriptions["ru"])
+        self.assertNotIn("Short update notes.", descriptions["ru"])
+        self.assertIn("&lt;script&gt;unsafe&lt;/script&gt;", descriptions["ru"])
+        self.assertEqual(descriptions["ru"].count("<li>"), 2)
+        self.assertIn('lang="ja"', descriptions["ja"])
+        self.assertIn("<ul>", descriptions["ja"])
+        self.assertFalse(item.findall("{http://www.andymatuschak.org/xml-namespaces/sparkle}releaseNotesLink"))
+        for text in descriptions.values():
+            for unwanted in ["ENG", "RUS", "Installation", "Merge pull request", "<h1>"]:
+                self.assertNotIn(unwanted, text)
+
+    def test_final_feed_is_signed_after_localization_and_then_verified(self):
+        """Подпись старого XML не переносится на изменённую ленту."""
+        resources = self.directory / "Resources"
+        resources.mkdir()
+        (resources / "Info.plist").write_bytes(plistlib.dumps({"CFBundleVersion": "12"}))
+        phases = []
+        def signed(data):
+            return data + f"<!-- sparkle-signatures:\nedSignature: {self.signature}\nlength: {len(data)}\n-->\n".encode()
+        def run(command, **kwargs):
+            if command[0].endswith("generate_appcast"):
+                phases.append("generate")
+                staging = Path(command[-1])
+                self.assertFalse(list(staging.glob("*.md")))
+                (staging / "appcast.xml").write_bytes(signed(self.feed_content))
+            elif "--verify" in command:
+                phases.append("verify-feed" if command[-1].endswith("appcast.xml") else "verify-dmg")
+            else:
+                phases.append("sign")
+                feed = Path(command[-1])
+                data = feed.read_bytes()
+                self.assertNotIn(b"sparkle-signatures", data)
+                descriptions = ET.fromstring(data).findall("channel/item/description")
+                self.assertEqual(len(descriptions), 14)
+                self.assertTrue(any("Короткие заметки" in node.text for node in descriptions))
+                feed.write_bytes(signed(data))
+        with patch("release_metadata.os.environ", {}), patch("release_metadata.subprocess.run", side_effect=run):
+            generate_update_feed(self.tag, self.directory, self.directory,
+                                 {"en": ["Short update notes."], "ru": ["Короткие заметки."]})
+        self.assertEqual(phases, ["generate", "sign", "verify-feed", "verify-dmg"])
+
+    @unittest.skipUnless((Path(__file__).resolve().parents[2] / ".build/artifacts/sparkle/Sparkle/bin/sign_update").exists(),
+                         "Sparkle signing tool is available after swift build")
+    def test_real_signature_rejects_modified_localized_notes(self):
+        """Одноразовый seed проверяет подпись XML без Keychain и ключа приложения."""
+        from release_metadata import localize_update_feed
+        tool = Path(__file__).resolve().parents[2] / ".build/artifacts/sparkle/Sparkle/bin/sign_update"
+        feed = self.directory / "appcast.xml"
+        localize_update_feed(feed, {"en": ["Short notes."], "ru": ["Короткие заметки."]})
+        seed = base64.b64encode(os.urandom(32)).decode()
+        def run(*args):
+            return subprocess.run([str(tool), "--ed-key-file", "-", *args, str(feed)],
+                                  input=seed, text=True, capture_output=True)
+        self.assertEqual(run().returncode, 0)
+        self.assertEqual(run("--verify").returncode, 0)
+        feed.write_bytes(feed.read_bytes().replace("Короткие".encode(), "Новые".encode(), 1))
+        self.assertNotEqual(run("--verify").returncode, 0)
 
     def test_ci_refuses_missing_or_invalid_private_key_without_printing_it(self):
         """Публикация не переключается на другой ключ и не раскрывает некорректный секрет."""

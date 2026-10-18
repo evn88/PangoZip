@@ -9,7 +9,7 @@ import plistlib
 import re
 import subprocess
 
-from release_metadata import BUNDLE_FILES, version_from_tag
+from release_metadata import BUNDLE_FILES, DEFAULT_CHANGES, version_from_tag
 
 REPOSITORY = "evn88/PangoZip"
 
@@ -92,13 +92,7 @@ def prepare(root, requested, published):
     if count != 1:
         raise ValueError("README current version was not found")
     readme.write_text(text)
-    revision = f"{latest[1]}..{requested}" if latest else requested
-    subjects = git(root, "log", "--format=%s", "--max-count=30", revision).splitlines()
-    # Названия коммитов отображаются как текст, а не как внедрённая разметка описания релиза.
-    subjects = [re.sub(r"([\\`*_{}\[\]()<>#!|])", r"\\\1", item[:500]) for item in subjects]
-    link = f"https://github.com/{REPOSITORY}/commits/{tag}"
-    notes = {"en": subjects + [f"[Full source history]({link})."],
-             "ru": subjects + [f"[Полная история изменений]({link})."]}
+    notes = DEFAULT_CHANGES
     path = root / f"docs/releases/{tag}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():

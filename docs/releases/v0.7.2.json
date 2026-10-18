@@ -1,0 +1,58 @@
+{
+  "en": [
+    "Update notes now use the app’s language.",
+    "The update window shows a short list of changes without technical details."
+  ],
+  "ru": [
+    "Заметки об обновлении отображаются на языке приложения.",
+    "В окне обновления остался короткий список изменений без технических подробностей."
+  ],
+  "sr-Latn": [
+    "Beleške o ažuriranju sada su na jeziku aplikacije.",
+    "Prozor za ažuriranje prikazuje kratak spisak izmena bez tehničkih detalja."
+  ],
+  "de": [
+    "Aktualisierungshinweise werden jetzt in der Sprache der App angezeigt.",
+    "Das Aktualisierungsfenster zeigt eine kurze Liste der Änderungen ohne technische Details."
+  ],
+  "fr": [
+    "Les notes de mise à jour s’affichent désormais dans la langue de l’application.",
+    "La fenêtre de mise à jour présente une courte liste des changements, sans détails techniques."
+  ],
+  "es": [
+    "Las notas de actualización ahora se muestran en el idioma de la aplicación.",
+    "La ventana de actualización muestra una lista breve de cambios, sin detalles técnicos."
+  ],
+  "it": [
+    "Le note di aggiornamento ora vengono mostrate nella lingua dell’app.",
+    "La finestra di aggiornamento mostra un breve elenco delle modifiche, senza dettagli tecnici."
+  ],
+  "pt": [
+    "As notas de atualização são agora apresentadas no idioma da aplicação.",
+    "A janela de atualização apresenta uma lista breve de alterações, sem detalhes técnicos."
+  ],
+  "pl": [
+    "Informacje o aktualizacji są teraz wyświetlane w języku aplikacji.",
+    "Okno aktualizacji pokazuje krótką listę zmian bez szczegółów technicznych."
+  ],
+  "uk": [
+    "Нотатки про оновлення тепер відображаються мовою застосунку.",
+    "У вікні оновлення показано короткий список змін без технічних подробиць."
+  ],
+  "tr": [
+    "Güncelleme notları artık uygulamanın dilinde gösteriliyor.",
+    "Güncelleme penceresinde teknik ayrıntılar olmadan kısa bir değişiklik listesi gösteriliyor."
+  ],
+  "zh-Hans": [
+    "更新说明现在会使用应用的语言显示。",
+    "更新窗口会简要列出更改，不包含技术细节。"
+  ],
+  "ja": [
+    "アップデートの説明がアプリの言語で表示されるようになりました。",
+    "アップデート画面には、技術的な詳細を省いた変更点が簡潔に表示されます。"
+  ],
+  "ko": [
+    "업데이트 노트가 이제 앱 언어로 표시됩니다.",
+    "업데이트 창에는 기술적인 세부 정보 없이 변경 사항이 간략히 표시됩니다."
+  ]
+}
