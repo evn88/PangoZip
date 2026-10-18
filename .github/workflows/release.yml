@@ -112,7 +112,7 @@ jobs:
       - name: Delete temporary signing material
         if: steps.version.outputs.ready == 'true' && (always() && env.NOTARIZE == 'true')
         run: scripts/ci-signing.sh cleanup
-      - name: Commit the verified version and tag atomically
+      - name: Publish the verified release tag
         if: steps.version.outputs.ready == 'true'
         id: refs
         env:

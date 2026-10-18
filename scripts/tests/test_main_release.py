@@ -79,12 +79,55 @@ class MainReleaseTests(unittest.TestCase):
         run("push", "origin", "main")
         return run("rev-parse", "HEAD")
 
-    def test_finalize_publishes_matching_main_and_tag_atomically(self):
+    def test_finalize_publishes_tag_without_writing_protected_main(self):
         import main_release
         state = main_release.prepare(self.root, self.source, {"v0.7.0"})
+        hook = self.remote / "hooks/pre-receive"
+        hook.write_text('#!/bin/sh\nwhile read old new ref; do\n  if [ "$ref" = refs/heads/main ]; then\n    echo "GH013: Changes must be made through a pull request" >&2\n    exit 1\n  fi\ndone\n')
+        hook.chmod(0o755)
         self.assertTrue(main_release.finalize(self.root, state))
-        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], state["commit"])
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], self.source)
         self.assertEqual(self.git("ls-remote", "origin", "refs/tags/v0.7.1").split()[0], state["commit"])
+
+    def test_legacy_release_commit_on_main_is_reused(self):
+        import main_release
+        state = main_release.prepare(self.root, self.source, {"v0.7.0"})
+        self.git("tag", state["tag"], state["commit"])
+        self.git("push", "origin", f'{state["commit"]}:refs/heads/main', state["tag"])
+        self.git("checkout", "--detach", self.source)
+        self.assertEqual(main_release.prepare(self.root, self.source, {"v0.7.0"}), state)
+        self.assertFalse(main_release.prepare(self.root, state["commit"], {"v0.7.0", "v0.7.1"})["ready"])
+
+    def test_latest_readme_link_supports_generated_version(self):
+        import main_release
+        (self.root / "README.md").write_text(
+            "Скачать: [PangoZip](https://github.com/evn88/PangoZip/releases/latest).\n"
+            "Последняя версия: [GitHub Releases](https://github.com/evn88/PangoZip/releases/latest).\n")
+        self.git("add", "README.md")
+        self.git("commit", "-m", "Link to latest release")
+        self.git("push", "origin", "main")
+        state = main_release.prepare(self.root, self.git("rev-parse", "HEAD"), {"v0.7.0"})
+        self.assertEqual(state["tag"], "v0.7.1")
+        self.assertIn("0.7.1 (13)", (self.root / "README.md").read_text())
+
+    def test_cli_reports_remote_error_without_token(self):
+        import contextlib
+        import io
+        import os
+        import runpy
+        from unittest.mock import patch
+        error = subprocess.CalledProcessError(
+            1, ["gh"], stderr="GH013: Changes must be made through a pull request fake-test-token")
+        output = io.StringIO()
+        with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main", "GITHUB_REPOSITORY": "evn88/PangoZip",
+                                     "GITHUB_OUTPUT": str(self.directory / "output"), "GH_TOKEN": "fake-test-token"}):
+            with patch.object(sys, "argv", ["main_release.py", "prepare", "--state", str(self.directory / "state")]):
+                with patch("subprocess.check_output", side_effect=error), contextlib.redirect_stderr(output):
+                    with self.assertRaises(SystemExit) as caught:
+                        runpy.run_path(str(Path(__file__).resolve().parents[1] / "main_release.py"), run_name="__main__")
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn("Changes must be made through a pull request", output.getvalue())
+        self.assertNotIn("fake-test-token", output.getvalue())
 
     def test_superseded_event_does_not_prepare_an_old_release(self):
         import main_release
@@ -127,7 +170,7 @@ class MainReleaseTests(unittest.TestCase):
             self.assertFalse(main_release.prepare(self.root, requested, {"v0.7.0", "v0.7.1"})["ready"])
         self.assertEqual(self.git("tag", "--list", "v0.7.2"), "")
 
-    def test_race_after_last_remote_check_cannot_publish_a_tag_alone(self):
+    def test_race_after_last_remote_check_keeps_new_main_and_checked_tag(self):
         import main_release
         from unittest.mock import patch
         state = main_release.prepare(self.root, self.source, {"v0.7.0"})
@@ -138,9 +181,12 @@ class MainReleaseTests(unittest.TestCase):
                 newer.append(self.advance_main())
             return original(root, *args)
         with patch.object(main_release, "git", side_effect=race):
-            self.assertFalse(main_release.finalize(self.root, state))
+            self.assertTrue(main_release.finalize(self.root, state))
         self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], newer[0])
-        self.assertEqual(self.git("ls-remote", "origin", "refs/tags/v0.7.1"), "")
+        self.assertEqual(self.git("ls-remote", "origin", "refs/tags/v0.7.1").split()[0], state["commit"])
+        next_state = main_release.prepare(self.root, newer[0], {"v0.7.0", "v0.7.1"})
+        self.assertEqual(next_state["tag"], "v0.7.2")
+        self.assertEqual(plistlib.loads((self.root / self.files[0]).read_bytes())["CFBundleVersion"], "14")
 
     def test_explicit_minor_version_is_preserved_and_build_increments(self):
         import main_release

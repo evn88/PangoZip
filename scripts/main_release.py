@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Готовит версию из main и публикует проверенный коммит с тегом одним push."""
+"""Готовит версию из main и публикует тег проверенного коммита, не меняя защищённый main."""
 
 import argparse
 import json
@@ -8,6 +8,7 @@ from pathlib import Path
 import plistlib
 import re
 import subprocess
+import sys
 
 from release_metadata import BUNDLE_FILES, DEFAULT_CHANGES, version_from_tag
 
@@ -47,6 +48,24 @@ def prepare(root, requested, published):
             return {"ready": False}
         git(root, "checkout", "--detach", head)
         return {"ready": True, "source": marker[1], "commit": head, "tag": tag}
+    for tag in git(root, "tag", "--list", "v*").splitlines():
+        try:
+            version_from_tag(tag)
+        except ValueError:
+            continue
+        commit = git(root, "rev-parse", f"{tag}^{{commit}}")
+        message = git(root, "show", "-s", "--format=%B", commit)
+        if f"PangoZip-Release-Source: {requested}" not in message.splitlines():
+            continue
+        if git(root, "rev-list", "--parents", "-n", "1", commit).split() != [commit, requested]:
+            raise ValueError("Release tag is not based on its recorded source")
+        info = plistlib.loads(git(root, "show", f"{commit}:Resources/Info.plist").encode())
+        if tag != "v" + info["CFBundleShortVersionString"]:
+            raise ValueError("Release tag does not match its bundle version")
+        if tag in published or head != requested:
+            return {"ready": False}
+        git(root, "checkout", "--detach", commit)
+        return {"ready": True, "source": requested, "commit": commit, "tag": tag}
     if head != requested:
         return {"ready": False}
     git(root, "checkout", "--detach", requested)
@@ -86,7 +105,7 @@ def prepare(root, requested, published):
     text = readme.read_text()
     text = re.sub(r"^Скачать: .*", f"Скачать: [PangoZip {number}](https://github.com/{REPOSITORY}/releases/tag/{tag}).",
                   text, flags=re.MULTILINE)
-    text, count = re.subn(r"^Текущая версия: .*",
+    text, count = re.subn(r"^(?:Текущая версия|Последняя версия): .*",
                          f"Текущая версия: **{number} ({build})**. [Изменения {number}](https://github.com/{REPOSITORY}/releases/tag/{tag}).",
                          text, flags=re.MULTILINE)
     if count != 1:
@@ -105,7 +124,7 @@ def prepare(root, requested, published):
 
 
 def finalize(root, state):
-    """Обычный atomic push не позволяет опубликовать тег, если main уже продвинулся."""
+    """Публикует проверенный тег без записи в main и без force push."""
     if not state["ready"]:
         return False
     commit, source, tag = state["commit"], state["source"], state["tag"]
@@ -122,12 +141,7 @@ def finalize(root, state):
         return False
     if tag not in git(root, "tag", "--list").splitlines():
         git(root, "tag", "--no-sign", tag, commit)
-    try:
-        git(root, "push", "--atomic", "origin", f"{commit}:refs/heads/main", f"refs/tags/{tag}:refs/tags/{tag}")
-    except subprocess.CalledProcessError:
-        if remote_main(root) not in (source, commit):
-            return False
-        raise
+    git(root, "push", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
     return True
 
 
@@ -158,8 +172,17 @@ def main():
         state = json.loads(args.state.read_text())
         accepted = finalize(root, state)
         outputs(output, {"published_refs": accepted})
-        print("Release refs published atomically" if accepted else "Main advanced; a newer run will release it")
+        print("Verified release tag published" if accepted else "Main advanced; a newer run will release it")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        message = error.stderr or str(error)
+        for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+            token = os.environ.get(name)
+            if token:
+                message = message.replace(token, "<REDACTED>")
+        print(message, file=sys.stderr)
+        sys.exit(error.returncode or 1)
