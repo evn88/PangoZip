@@ -1,0 +1,12 @@
+{
+  "en": [
+    "Merge pull request \\#2 from evn88/codex/release-0.7.0",
+    "Automate verified main releases and transactional version bumps",
+    "[Full source history](https://github.com/evn88/PangoZip/commits/v0.7.1)."
+  ],
+  "ru": [
+    "Merge pull request \\#2 from evn88/codex/release-0.7.0",
+    "Automate verified main releases and transactional version bumps",
+    "[Полная история изменений](https://github.com/evn88/PangoZip/commits/v0.7.1)."
+  ]
+}
