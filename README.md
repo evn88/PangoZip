@@ -4,7 +4,7 @@
 
 Скачать: [PangoZip 0.7.0](https://github.com/evn88/PangoZip/releases/tag/v0.7.0).
 
-Нативный менеджер архивов для **macOS 26+**: SwiftUI, AppKit и официальный 7-Zip 26.04 (`7zz`). 
+Менеджер архивов для **macOS 26+** 
 
 Текущая версия: **0.7.0 (12)**. [Изменения 0.7.0](docs/release-0.7.0.md).
 
