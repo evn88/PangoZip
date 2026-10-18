@@ -27,74 +27,17 @@ struct ArchiveBrowserView: View {
     )
     .searchFocused($searchFocused)
     .toolbar {
-      ToolbarItemGroup(placement: .automatic) {
-        Button(L10n.tr("Открыть архив…"), systemImage: "archivebox", action: model.chooseArchive)
-          .labelStyle(.iconOnly)
-          .help(L10n.tr("Открыть архив (⌘O)")).disabled(!model.canAct)
-        Button(L10n.tr("Закрыть архив"), systemImage: "xmark.circle", action: model.closeArchive)
-          .labelStyle(.iconOnly)
-          .help(L10n.tr("Закрыть архив (⌘W)"))
-          .disabled(model.session == nil && !model.isBusy || model.isClosing)
-      }
+      archiveActionsToolbar
       ToolbarSpacer(.fixed)
-      ToolbarItem(placement: .automatic) {
-        Button(L10n.tr("Извлечь…"), systemImage: "arrow.up.bin", action: model.extractSelected)
-          .labelStyle(.iconOnly)
-          .help(L10n.tr("Извлечь выбранные файлы и папки (⌘⇧E)"))
-          .disabled(!model.canAct || model.selectedPaths.isEmpty)
-      }
+      extractionToolbar
       ToolbarSpacer(.fixed)
-      ToolbarItemGroup(placement: .automatic) {
-        Button(
-          L10n.tr("Добавить файлы и папки…"), systemImage: "plus", action: model.chooseFilesToAdd
-        )
-        .labelStyle(.iconOnly)
-        .help(L10n.tr("Добавить файлы и папки (⌘⇧A)")).disabled(!model.canModify)
-        Button(L10n.tr("Удалить выбранное…"), systemImage: "trash", action: model.deleteSelected)
-          .labelStyle(.iconOnly)
-          .help(L10n.tr("Удалить выбранное (⌘⌫)"))
-          .disabled(!model.canModify || model.selectedPaths.isEmpty)
-      }
+      modificationToolbar
       ToolbarSpacer(.fixed)
-      ToolbarItemGroup(placement: .automatic) {
-        Button(
-          L10n.tr("Открыть файл"), systemImage: "arrow.up.forward.square",
-          action: model.openSelectedExternally
-        )
-        .labelStyle(.iconOnly)
-        .help(L10n.tr("Открыть выбранный файл (⌘↩)")).disabled(!model.canOpenSelection)
-        Button(L10n.tr("Редактировать файл"), systemImage: "pencil", action: model.editSelected)
-          .labelStyle(.iconOnly)
-          .help(L10n.tr("Открыть рабочую копию в редакторе (⌘E)"))
-          .disabled(!model.canModify || !model.canOpenSelection)
-        Button(
-          L10n.tr("Сохранить в архив"), systemImage: "square.and.arrow.down",
-          action: model.saveWorkingCopies
-        )
-        .labelStyle(.iconOnly)
-        .help(L10n.tr("Сохранить рабочие копии сейчас"))
-        .disabled(!model.canModify || model.activeEdits.isEmpty)
-      }
-      ToolbarItem(placement: .automatic) {
-        if let url = model.session?.url {
-          ShareLink(item: url) {
-            Label(L10n.tr("Поделиться архивом"), systemImage: "square.and.arrow.up")
-          }
-          .labelStyle(.iconOnly)
-          .help(L10n.tr("Поделиться архивом"))
-          .disabled(!model.canAct)
-        }
-      }
+      editorToolbar
+      sharingToolbar
       ToolbarItem(placement: .automatic) { ArchiveColumnsMenu() }
       ToolbarSpacer(.flexible)
-      ToolbarItem(placement: .automatic) {
-        Button(
-          model.showsPreview ? L10n.tr("Скрыть предпросмотр") : L10n.tr("Показать предпросмотр"),
-          systemImage: "sidebar.right", action: model.togglePreview
-        )
-        .labelStyle(.iconOnly)
-        .help(L10n.tr("Переключить предпросмотр (⌘⇧P)"))
-      }
+      previewToolbar
     }
     .onExitCommand { model.cancelCurrentOperation() }
     .onChange(of: model.searchFocusToken) { _, _ in searchFocused = true }
@@ -106,6 +49,93 @@ struct ArchiveBrowserView: View {
           .stroke(.tint, style: StrokeStyle(lineWidth: 3, dash: [9]))
           .padding(8).allowsHitTesting(false)
       }
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var archiveActionsToolbar: some ToolbarContent {
+    ToolbarItemGroup(placement: .automatic) {
+      Button(L10n.tr("Открыть архив…"), systemImage: "archivebox", action: model.chooseArchive)
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Открыть архив (⌘O)")).disabled(!model.canAct)
+      Button(L10n.tr("Закрыть архив"), systemImage: "xmark.circle", action: model.closeArchive)
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Закрыть архив (⌘W)"))
+        .disabled(model.session == nil && !model.isBusy || model.isClosing)
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var extractionToolbar: some ToolbarContent {
+    ToolbarItem(placement: .automatic) {
+      Button(L10n.tr("Извлечь…"), systemImage: "arrow.up.bin", action: model.extractSelected)
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Извлечь выбранные файлы и папки (⌘⇧E)"))
+        .disabled(!model.canAct || model.selectedPaths.isEmpty)
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var modificationToolbar: some ToolbarContent {
+    ToolbarItemGroup(placement: .automatic) {
+      Button(
+        L10n.tr("Добавить файлы и папки…"), systemImage: "plus", action: model.chooseFilesToAdd
+      )
+      .labelStyle(.iconOnly)
+      .help(L10n.tr("Добавить файлы и папки (⌘⇧A)")).disabled(!model.canModify)
+      Button(L10n.tr("Удалить выбранное…"), systemImage: "trash", action: model.deleteSelected)
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Удалить выбранное (⌘⌫)"))
+        .disabled(!model.canModify || model.selectedPaths.isEmpty)
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var editorToolbar: some ToolbarContent {
+    ToolbarItemGroup(placement: .automatic) {
+      Button(
+        L10n.tr("Открыть файл"), systemImage: "arrow.up.forward.square",
+        action: model.openSelectedExternally
+      )
+      .labelStyle(.iconOnly)
+      .help(L10n.tr("Открыть выбранный файл (⌘↩)")).disabled(!model.canOpenSelection)
+      Button(L10n.tr("Редактировать файл"), systemImage: "pencil", action: model.editSelected)
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Открыть рабочую копию в редакторе (⌘E)"))
+        .disabled(!model.canModify || !model.canOpenSelection)
+      Button(
+        L10n.tr("Сохранить в архив"), systemImage: "square.and.arrow.down",
+        action: model.saveWorkingCopies
+      )
+      .labelStyle(.iconOnly)
+      .help(L10n.tr("Сохранить рабочие копии сейчас"))
+      .disabled(!model.canModify || model.activeEdits.isEmpty)
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var sharingToolbar: some ToolbarContent {
+    ToolbarItem(placement: .automatic) {
+      if let url = model.session?.url {
+        ShareLink(item: url) {
+          Label(L10n.tr("Поделиться архивом"), systemImage: "square.and.arrow.up")
+        }
+        .labelStyle(.iconOnly)
+        .help(L10n.tr("Поделиться архивом"))
+        .disabled(!model.canAct)
+      }
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var previewToolbar: some ToolbarContent {
+    ToolbarItem(placement: .automatic) {
+      Button(
+        model.showsPreview ? L10n.tr("Скрыть предпросмотр") : L10n.tr("Показать предпросмотр"),
+        systemImage: "sidebar.right", action: model.togglePreview
+      )
+      .labelStyle(.iconOnly)
+      .help(L10n.tr("Переключить предпросмотр (⌘⇧P)"))
     }
   }
 
