@@ -4,7 +4,7 @@
 
 Нативный менеджер архивов для macOS: просмотр содержимого, извлечение и редактирование отдельных файлов.
 
-Текущая версия: [скачать PangoZip](https://github.com/evn88/PangoZip/releases/latest).
+Последняя версия: [скачать PangoZip](https://github.com/evn88/PangoZip/releases/latest).
 
 ## Возможности
 
