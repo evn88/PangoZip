@@ -2,11 +2,11 @@
 
 <img src="Resources/Icons/AppIcon-master.png" width="128" alt="PangoZip — золотистый панголин">
 
-Скачать: [PangoZip 0.7.1](https://github.com/evn88/PangoZip/releases/tag/v0.7.1).
+Скачать: [PangoZip](https://github.com/evn88/PangoZip/releases/latest).
 
 Менеджер архивов для **macOS 26+** 
 
-Текущая версия: **0.7.1 (13)**. [Изменения 0.7.1](https://github.com/evn88/PangoZip/releases/tag/v0.7.1).
+Последняя версия: [GitHub Releases](https://github.com/evn88/PangoZip/releases/latest).
 
 ## Под капотом
 
