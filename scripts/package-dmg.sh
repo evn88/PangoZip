@@ -35,6 +35,7 @@ for executable in \
   Contents/MacOS/PangoZip \
   Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip \
   Contents/PlugIns/PangoZipFinderSync.appex/Contents/MacOS/PangoZipFinderSync \
+  Contents/PlugIns/PangoZipPreview.appex/Contents/MacOS/PangoZipPreview \
   Contents/Helpers/PangoZipUninstall; do
   [[ -x "$app/$executable" ]] || { echo "Missing component: $executable" >&2; exit 1; }
   [[ "$(architecture_name "$app/$executable")" == "$architecture" ]] || { echo "Architecture mismatch: $executable" >&2; exit 1; }

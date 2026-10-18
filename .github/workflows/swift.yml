@@ -21,7 +21,7 @@ jobs:
     - name: Run tests
       run: swift test -v
     - name: Check Swift formatting
-      run: swift format lint --strict --recursive Sources FinderExtension Tests Tools Package.swift
+      run: swift format lint --strict --recursive Sources FinderExtension QuickLookExtension Tests Tools Package.swift
     - name: Check shell scripts
       run: for script in scripts/*.sh scripts/lib/*.sh; do bash -n "$script"; done
     - name: Test signing and notarization scripts without credentials

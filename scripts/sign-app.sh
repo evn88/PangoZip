@@ -20,6 +20,7 @@ for component in \
   codesign "${signing_arguments[@]}" "$component"
 done
 codesign "${signing_arguments[@]}" --entitlements FinderExtension/Entitlements.plist "$app/Contents/PlugIns/PangoZipFinderSync.appex"
+codesign "${signing_arguments[@]}" --entitlements QuickLookExtension/Entitlements.plist "$app/Contents/PlugIns/PangoZipPreview.appex"
 codesign "${signing_arguments[@]}" "$app"
 codesign --verify --deep --strict "$app"
 if [[ "$signing_identity" != - ]]; then verify_distribution_app "$app"; fi

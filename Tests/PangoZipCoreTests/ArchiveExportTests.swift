@@ -107,6 +107,28 @@ final class ArchiveExportTests: XCTestCase, @unchecked Sendable {
         atPath: root.appendingPathComponent("output").path), [])
   }
 
+  /// Отмена перед публикацией пустой папки завершает задачу и не оставляет частичный результат.
+  func testEmptyFolderCancellationAtFinalizingLeavesNoOutput() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = ArchiveService(executableURL: engine)
+    let session = try await service.open(root.appendingPathComponent("sample.zip"))
+    let target = root.appendingPathComponent("output/empty")
+    let job = Task {
+      try await service.exportItem(
+        "docs/empty", from: session, to: target,
+        progress: { value in
+          if value.phase == .finalizing { withUnsafeCurrentTask { $0?.cancel() } }
+        })
+    }
+    do {
+      _ = try await job.value
+      XCTFail("Expected cancellation")
+    } catch is CancellationError {}
+    XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+    try await service.close(session)
+  }
+
   /// Создаёт архив с вложенными путями для проверки выборочного экспорта.
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(

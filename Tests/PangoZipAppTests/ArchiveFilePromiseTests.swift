@@ -78,6 +78,56 @@ final class ArchiveFilePromiseTests: XCTestCase, @unchecked Sendable {
     XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
   }
 
+  /// Получатель AppKit уже удерживает координацию записи до завершения обещания папки.
+  @MainActor
+  func testEmptyFolderPromiseCompletesInsideReceiverCoordination() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let empty = root.appendingPathComponent("Empty")
+    try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: false)
+    let engine = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
+        "Resources/Engine/7zz")
+    let service = ArchiveService(executableURL: engine)
+    let archive = try await service.createArchive(
+      from: [empty], proposedURL: root.appendingPathComponent("empty.zip"), format: "zip")
+    let model = ArchiveBrowserModel(service: service)
+    model.open(archive)
+    while model.isBusy { await Task.yield() }
+    let snapshot = try XCTUnwrap(model.session)
+    let target = root.appendingPathComponent("output/Empty")
+    let done = expectation(description: "Receiver releases coordination")
+    let completed = expectation(description: "Empty folder promise completed")
+    let completion = PromiseCompletion { error in
+      XCTAssertNil(error)
+      completed.fulfill()
+    }
+    let dragID = UUID()
+    model.beginDragging(id: dragID, paths: ["Empty"])
+    let queue = DispatchQueue(label: "test.promise.receiver")
+    queue.async {
+      var error: NSError?
+      NSFileCoordinator().coordinate(writingItemAt: target, options: [], error: &error) { url in
+        let signal = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+          model.fulfillPromise(
+            path: "Empty", session: snapshot, to: url, dragID: dragID,
+            completion: PromiseCompletion { error in
+              completion.finish(error)
+              signal.signal()
+            })
+        }
+        XCTAssertEqual(signal.wait(timeout: .now() + 3), .success)
+      }
+      done.fulfill()
+    }
+    await fulfillment(of: [done, completed], timeout: 6)
+    while model.isExporting { await Task.yield() }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
+    let closed = await model.requestTermination()
+    XCTAssertTrue(closed)
+  }
+
   /// Передаёт запрос promise делегату и проверяет согласованность его имени.
   @MainActor
   private func fulfill(

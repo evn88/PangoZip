@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct ArchiveOutlineView: NSViewRepresentable {
   @ObservedObject var model: ArchiveBrowserModel
+  @ObservedObject var columnSettings: ArchiveColumnSettings = .shared
   var roots: [ArchiveNode] { model.visibleRoots }
   var sessionID: UUID? { model.session?.id }
   var selectedPaths: Set<String> {
@@ -30,28 +31,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.autosaveName = "ArchiveContents"
     outline.autosaveTableColumns = true
     outline.setAccessibilityLabel(L10n.tr("Содержимое архива"))
-    let columns: [(String, String, CGFloat)] = [
-      ("name", L10n.tr("Имя"), 340), ("size", L10n.tr("Размер"), 90),
-      ("packed", L10n.tr("В архиве"), 100), ("compression", L10n.tr("Сжатие"), 100),
-      ("kind", L10n.tr("Тип"), 150), ("modified", L10n.tr("Изменён"), 150),
-      ("method", L10n.tr("Метод"), 100),
-    ]
-    for (id, title, width) in columns {
-      let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
-      column.title = title
-      column.width = width
-      column.minWidth = id == "name" ? 220 : 70
-      if id == "size" || id == "packed" || id == "compression" {
-        column.headerCell.alignment = .right
-      }
-      if id == "compression" {
-        column.headerToolTip = L10n.tr(
-          "На сколько размер в архиве меньше исходного. Отрицательное значение означает увеличение размера."
-        )
-      }
-      outline.addTableColumn(column)
-    }
-    outline.outlineTableColumn = outline.tableColumns.first
+    context.coordinator.configureColumns(in: outline)
+    outline.outlineTableColumn = outline.tableColumn(withIdentifier: .init("name"))
     outline.delegate = context.coordinator
     outline.dataSource = context.coordinator
     outline.target = context.coordinator
@@ -108,18 +89,70 @@ struct ArchiveOutlineView: NSViewRepresentable {
     /// Сохраняет представление, которое будет заменяться при обновлениях SwiftUI.
     init(_ parent: ArchiveOutlineView) { self.parent = parent }
 
+    func configureColumns(in outline: NSOutlineView) {
+      for definition in ArchiveColumn.allCases {
+        let column = NSTableColumn(identifier: .init(definition.rawValue))
+        column.title = definition.title
+        column.width = definition.width
+        column.minWidth = definition == .name ? 220 : 70
+        if definition.isNumeric { column.headerCell.alignment = .right }
+        if definition == .compression {
+          column.headerToolTip = L10n.tr(
+            "На сколько размер в архиве меньше исходного. Отрицательное значение означает увеличение размера."
+          )
+        } else if definition == .fileCount || definition == .folderCount {
+          column.headerToolTip = L10n.tr("Количество во всех вложенных папках")
+        }
+        outline.addTableColumn(column)
+      }
+    }
+
+    private func applyColumnVisibility() {
+      guard let outline else { return }
+      for column in outline.tableColumns {
+        guard let definition = ArchiveColumn(rawValue: column.identifier.rawValue) else { continue }
+        column.isHidden = !parent.columnSettings.isVisible(definition)
+      }
+      let menu = NSMenu()
+      menu.autoenablesItems = false
+      for column in ArchiveColumn.allCases {
+        let item = NSMenuItem(
+          title: column.title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = column.rawValue
+        item.state = parent.columnSettings.isVisible(column) ? .on : .off
+        item.isEnabled = column != .name
+        menu.addItem(item)
+      }
+      menu.addItem(.separator())
+      let reset = NSMenuItem(
+        title: L10n.tr("Стандартные колонки"), action: #selector(resetColumns), keyEquivalent: "")
+      reset.target = self
+      menu.addItem(reset)
+      outline.headerView?.menu = menu
+    }
+
+    @objc private func toggleColumn(_ sender: NSMenuItem) {
+      guard let rawValue = sender.representedObject as? String,
+        let column = ArchiveColumn(rawValue: rawValue)
+      else { return }
+      parent.columnSettings.setVisible(!parent.columnSettings.isVisible(column), for: column)
+      applyColumnVisibility()
+    }
+
+    @objc private func resetColumns() {
+      parent.columnSettings.reset()
+      applyColumnVisibility()
+    }
+
     /// Восстанавливает раскрытие и выделение без обратной записи промежуточных событий AppKit.
     func update(_ newParent: ArchiveOutlineView) {
       parent = newParent
       guard let outline else { return }
+      applyColumnVisibility()
       updating = true
       defer { updating = false }
       if previousRoots != parent.roots || previousSessionID != parent.sessionID {
-        let entries = parent.model.session?.entries ?? []
-        outline.tableColumn(withIdentifier: .init("packed"))?.isHidden =
-          !entries.contains { !$0.isDirectory && $0.packedSize != nil }
-        outline.tableColumn(withIdentifier: .init("method"))?.isHidden =
-          !entries.contains { !$0.isDirectory && $0.method != nil }
         if previousSessionID != parent.sessionID { expandedPaths.removeAll() }
         previousSessionID = parent.sessionID
         previousRoots = parent.roots
@@ -153,7 +186,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
         previousDetailsRevision = parent.model.itemDetailsRevision
         let columns = IndexSet(
           outline.tableColumns.indices.filter {
-            ["size", "compression"].contains(outline.tableColumns[$0].identifier.rawValue)
+            ["size", "compression", "fileCount", "folderCount"].contains(
+              outline.tableColumns[$0].identifier.rawValue)
           })
         outline.reloadData(
           forRowIndexes: IndexSet(integersIn: 0..<outline.numberOfRows), columnIndexes: columns)
@@ -251,13 +285,45 @@ struct ArchiveOutlineView: NSViewRepresentable {
             ?? (extensionName.isEmpty ? L10n.tr("Файл") : extensionName.uppercased())
       case "modified": value = entry?.modifiedAt.map(Self.dateFormatter.string(from:)) ?? "—"
       case "method": value = isFolder ? "—" : entry?.method ?? "—"
-      default: value = "—"
+      case "created": value = entry?.createdAt.map(Self.dateFormatter.string(from:)) ?? "—"
+      case "permissions": value = entry?.permissions ?? "—"
+      case "owner": value = entry?.owner ?? "—"
+      case "group": value = entry?.group ?? "—"
+      case "encrypted": value = entry.map { $0.isEncrypted ? L10n.tr("Да") : L10n.tr("Нет") } ?? "—"
+      case "checksum": value = entry?.checksum ?? "—"
+      case "path": value = item.node.path
+      case "specialFile":
+        value = entry.map { $0.isSymbolicLink ? L10n.tr("Да") : L10n.tr("Нет") } ?? "—"
+      case "fileCount", "folderCount":
+        if isFolder {
+          let details = parent.model.itemDetailsByPath[item.node.path]
+          value =
+            details.map {
+              (id.rawValue == "fileCount" ? $0.fileCount : $0.folderCount).formatted()
+            } ?? (parent.model.areFolderDetailsLoading ? "…" : "—")
+        } else {
+          value = "—"
+        }
+      case "otherMetadata":
+        let knownFields = Set(ArchiveColumn.allCases.compactMap(\.metadataKey))
+        let metadata = (entry?.additionalMetadata ?? [:]).filter {
+          !knownFields.contains($0.key)
+        }.sorted { $0.key < $1.key }
+        value =
+          metadata.isEmpty ? "—" : metadata.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+      default:
+        value =
+          ArchiveColumn(rawValue: id.rawValue)?.metadataKey.flatMap {
+            entry?.additionalMetadata[$0]
+          } ?? "—"
       }
       cell.textField?.stringValue = value.isEmpty ? "—" : value
       if isFolder && parent.model.areFolderDetailsLoading
-        && ["size", "compression"].contains(id.rawValue)
+        && ["size", "compression", "fileCount", "folderCount"].contains(id.rawValue)
       {
-        cell.toolTip = L10n.tr("Подсчитываем размеры папок…")
+        cell.toolTip =
+          ["fileCount", "folderCount"].contains(id.rawValue)
+          ? L10n.tr("Подсчитываем содержимое папок…") : L10n.tr("Подсчитываем размеры папок…")
       } else {
         cell.toolTip = id.rawValue == "name" ? item.node.path : value
       }
@@ -462,7 +528,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
         offset = 7
       } else {
         text.textColor = .secondaryLabelColor
-        if ["size", "packed", "compression"].contains(id.rawValue) {
+        if ArchiveColumn(rawValue: id.rawValue)?.isNumeric == true {
           text.alignment = .right
           text.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         }

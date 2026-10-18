@@ -44,6 +44,26 @@ final class ArchiveEditingTests: XCTestCase, @unchecked Sendable {
       }, [])
   }
 
+  /// Повторные сохранения редактора не удаляют рабочую копию и обновляют тот же файл архива.
+  func testRepeatedAutosavesRetainWorkingCopy() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent("sample.zip")
+    try run(["a", archive.path, "keep.txt"], in: root)
+    let service = ArchiveService(executableURL: engine)
+    var session = try await service.open(archive)
+    let edit = try await service.beginEditing(XCTUnwrap(session.entries.first), in: session)
+    for value in ["first save", "second save with more text"] {
+      try Data(value.utf8).write(to: edit.fileURL, options: .atomic)
+      session = try await service.save([edit], in: session, retainingWorkingCopies: true)
+      XCTAssertTrue(FileManager.default.fileExists(atPath: edit.fileURL.path))
+      let output = try await service.materialize(XCTUnwrap(session.entries.first), in: session)
+      XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), value)
+    }
+    try await service.close(session)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: edit.fileURL.path))
+  }
+
   /// Проверяет очистку временных копий при закрытии архива.
   func testClosingArchiveRemovesPreviewAndEditingCopies() async throws {
     let root = try fixture()

@@ -18,6 +18,11 @@ public enum ArchiveListing {
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
     formatter.timeZone = .current
 
+    let representedFields: Set<String> = [
+      "Path", "Size", "Folder", "Created", "Modified", "Mode", "User", "Group", "Encrypted", "CRC",
+      "Method", "Packed Size",
+    ]
+
     /// Завершает накопленную запись только после проверки обязательных полей и безопасного пути.
     func appendEntry() throws {
       guard !fields.isEmpty else { return }
@@ -48,7 +53,11 @@ public enum ArchiveListing {
           method: nonempty(fields["Method"]),
           // Общий solid-блок нельзя приписывать одному из его файлов.
           packedSize: fields["Block"].map { blockCounts[$0, default: 0] > 1 } == true
-            ? nil : fields["Packed Size"].flatMap(UInt64.init)))
+            ? nil : fields["Packed Size"].flatMap(UInt64.init),
+          additionalMetadata: fields.filter {
+            !representedFields.contains($0.key) && !$0.value.isEmpty
+              && !$0.key.lowercased().contains("password")
+          }))
       guard entries.count <= 100_000 else { throw ArchiveError.outputLimit }
       fields.removeAll(keepingCapacity: true)
     }

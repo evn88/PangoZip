@@ -8,7 +8,7 @@ on:
       tag:
         description: 'Version to validate against current sources (dry run, no publication)'
         required: true
-        default: 'v0.6.0'
+        default: 'v0.6.1'
 
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
           python3 scripts/release_metadata.py validate "$RELEASE_TAG"
       - name: Check formatting and shell scripts
         run: |
-          swift format lint --strict --recursive Sources FinderExtension Tests Tools Package.swift
+          swift format lint --strict --recursive Sources FinderExtension QuickLookExtension Tests Tools Package.swift
           for script in scripts/*.sh scripts/lib/*.sh; do bash -n "$script"; done
       - name: Test release automation without credentials
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'

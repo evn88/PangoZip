@@ -22,7 +22,7 @@ pbs="/System/Library/CoreServices/pbs"
 source_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$source_app/Contents/Info.plist")"
 [[ "$source_id" == app.pangozip.desktop ]] || { echo "Invalid application bundle" >&2; exit 1; }
 codesign --verify --deep --strict "$source_app"
-for resource in Contents/MacOS/PangoZip Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip Contents/PlugIns/PangoZipFinderSync.appex/Contents/MacOS/PangoZipFinderSync Contents/Helpers/PangoZipUninstall; do
+for resource in Contents/MacOS/PangoZip Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip Contents/PlugIns/PangoZipFinderSync.appex/Contents/MacOS/PangoZipFinderSync Contents/PlugIns/PangoZipPreview.appex/Contents/MacOS/PangoZipPreview Contents/Helpers/PangoZipUninstall; do
   [[ -x "$source_app/$resource" ]] || { echo "Missing component: $resource" >&2; exit 1; }
 done
 
@@ -36,7 +36,7 @@ if [[ -e "$destination" ]]; then
 fi
 # Дожидаемся штатного закрытия пользователем, не прерываем операции с архивами.
 processes="$(/bin/ps -axo comm=)"
-for executable in "$destination/Contents/MacOS/PangoZip" "$destination/Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip"; do
+for executable in "$destination/Contents/MacOS/PangoZip" "$destination/Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip" "$destination/Contents/PlugIns/PangoZipPreview.appex/Contents/MacOS/PangoZipPreview"; do
   if /usr/bin/grep -Fxq "$executable" <<< "$processes"; then
     echo "Сначала закройте PangoZip и дождитесь завершения фоновых операций." >&2
     exit 1
@@ -60,6 +60,11 @@ register() {
     /usr/bin/pluginkit -e use -i app.pangozip.desktop.finder
     snapshot="$(/usr/bin/pluginkit -m -Av -i app.pangozip.desktop.finder)"
     if /usr/bin/grep -F "app.pangozip.desktop.finder($version)" <<< "$snapshot" | /usr/bin/grep -F "$extension" | /usr/bin/grep -q '^+'; then
+      local preview="$destination/Contents/PlugIns/PangoZipPreview.appex"
+      if [[ -d "$preview" ]]; then
+        /usr/bin/pluginkit -a "$preview"
+        /usr/bin/pluginkit -e use -i app.pangozip.desktop.preview
+      fi
       "$pbs" -update
       return 0
     fi
@@ -78,6 +83,7 @@ cleanup() {
     committed=true
   fi
   if [[ "$committed" != true && "$installed_new" == true && ! -d "$backup" ]]; then
+    /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipPreview.appex" || true
     /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipFinderSync.appex" || true
     "$lsregister" -u "$destination/Contents/Helpers/PangoZipWorker.app" || true
     "$lsregister" -u "$destination" || true
@@ -91,6 +97,7 @@ trap cleanup EXIT
 ditto "$source_app" "$staging"
 codesign --verify --deep --strict "$staging"
 if [[ -d "$destination" ]]; then
+  /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipPreview.appex" || true
   /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipFinderSync.appex" || true
   "$lsregister" -u "$destination/Contents/Helpers/PangoZipWorker.app" || true
   "$lsregister" -u "$destination" || true

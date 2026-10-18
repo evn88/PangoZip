@@ -31,6 +31,7 @@ guard Bundle(url: app)?.bundleIdentifier == "app.pangozip.desktop" else {
 let registrar =
   "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 let worker = app.appendingPathComponent("Contents/Helpers/PangoZipWorker.app")
+let previewURL = app.appendingPathComponent("Contents/PlugIns/PangoZipPreview.appex")
 let extensionURL = app.appendingPathComponent("Contents/PlugIns/PangoZipFinderSync.appex")
 
 // Не прерываем редактирование или операцию с архивом при удалении.
@@ -54,6 +55,7 @@ guard running.terminationStatus == 0 else {
 let executables = [
   app.appendingPathComponent("Contents/MacOS/PangoZip").path,
   worker.appendingPathComponent("Contents/MacOS/PangoZip").path,
+  previewURL.appendingPathComponent("Contents/MacOS/PangoZipPreview").path,
 ]
 if processes.contains(where: { executables.contains($0.command) }) {
   refuse(
@@ -63,6 +65,10 @@ if processes.contains(where: { executables.contains($0.command) }) {
 }
 
 do {
+  if FileManager.default.fileExists(atPath: previewURL.path) {
+    try run("/usr/bin/pluginkit", ["-e", "ignore", "-i", "app.pangozip.desktop.preview"])
+    try run("/usr/bin/pluginkit", ["-r", previewURL.path], required: false)
+  }
   try run("/usr/bin/pluginkit", ["-e", "ignore", "-i", "app.pangozip.desktop.finder"])
   try run("/usr/bin/pluginkit", ["-r", extensionURL.path], required: false)
   for process in processes
@@ -85,6 +91,10 @@ do {
   if FileManager.default.fileExists(atPath: app.path) {
     try? run(registrar, ["-f", app.path])
     try? run(registrar, ["-f", worker.path])
+    if FileManager.default.fileExists(atPath: previewURL.path) {
+      try? run("/usr/bin/pluginkit", ["-a", previewURL.path])
+      try? run("/usr/bin/pluginkit", ["-e", "use", "-i", "app.pangozip.desktop.preview"])
+    }
     try? run("/usr/bin/pluginkit", ["-a", extensionURL.path])
     try? run("/usr/bin/pluginkit", ["-e", "use", "-i", "app.pangozip.desktop.finder"])
   }

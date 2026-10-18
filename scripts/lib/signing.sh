@@ -32,6 +32,7 @@ verify_distribution_app() {
     "$app/Contents/Helpers/PangoZipWorker.app" \
     "$app/Contents/Helpers/PangoZipUninstall" \
     "$app/Contents/PlugIns/PangoZipFinderSync.appex" \
+    "$app/Contents/PlugIns/PangoZipPreview.appex" \
     "$app"; do
     codesign --verify --strict "$component"
     details="$(codesign --display --verbose=4 "$component" 2>&1)"

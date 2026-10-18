@@ -92,19 +92,20 @@ printf 'NEW DMG' > "$PANGOZIP_DMG_DIRECTORY/PangoZip-0.6.0-arm64.dmg"
         return [json.loads(line) for line in self.trace.read_text().splitlines()] if self.trace.exists() else []
 
     def test_developer_id_signs_inside_out_with_runtime_timestamp_and_extension_entitlements(self):
-        """Проверяет все шесть подписей и ограничивает sandbox расширением Finder."""
+        """Проверяет подписи контейнера, расширений и системного предпросмотра."""
         result = self.run_script("sign-app.sh", str(self.app))
         self.assertEqual(result.returncode, 0, result.stderr)
         signatures = [args for args in self.commands() if args[:2] == ["codesign", "--force"]]
-        self.assertEqual(len(signatures), 6)
+        self.assertEqual(len(signatures), 7)
         for args in signatures:
             self.assertIn("--timestamp", args)
             self.assertEqual(args[args.index("--options") + 1], "runtime")
         self.assertTrue(signatures[0][-1].endswith("Resources/Engine/7zz"))
         self.assertEqual(signatures[-1][-1], str(self.app))
         entitlements = [args for args in signatures if "--entitlements" in args]
-        self.assertEqual(len(entitlements), 1)
+        self.assertEqual(len(entitlements), 2)
         self.assertTrue(entitlements[0][-1].endswith(".appex"))
+        self.assertTrue(entitlements[1][-1].endswith("PangoZipPreview.appex"))
 
     def test_ad_hoc_signing_does_not_request_timestamp_or_service(self):
         """Локальная подпись не требует сети и Developer ID."""

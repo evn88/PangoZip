@@ -40,6 +40,8 @@ struct ArchiveSettingsView: View {
     TabView {
       compressionSettings
         .tabItem { Label(L10n.tr("Архивация"), systemImage: "archivebox") }
+      ArchiveAssociationsView()
+        .tabItem { Label(L10n.tr("Типы архивов"), systemImage: "square.and.arrow.down") }
       finderSettings
         .tabItem { Label("Finder", systemImage: "folder") }
       applicationSettings

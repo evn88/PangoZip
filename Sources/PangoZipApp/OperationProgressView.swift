@@ -26,77 +26,54 @@ struct OperationProgressView: View {
       value.elapsedSeconds
       + (finished ? 0 : max(0, date.timeIntervalSince(value.updatedAt)))
     let determinate = value.phase != .preparing
-    return VStack(alignment: .leading, spacing: 9) {
+    return VStack(alignment: .leading, spacing: 5) {
       if determinate, let fraction = value.fraction {
         ProgressView(value: fraction, total: 1).progressViewStyle(.linear)
       } else {
         ProgressView().progressViewStyle(.linear)
       }
-
-      HStack(spacing: 8) {
+      HStack(spacing: 12) {
         Text(ProgressFormatting.phaseTitle(value.phase))
-          .lineLimit(1)
-        Spacer(minLength: 4)
-        if let fraction = value.fraction, value.phase != .preparing {
+        if let fraction = value.fraction, determinate {
           Text("\(Int((fraction * 100).rounded(.down)))%")
-            .monospacedDigit()
-        } else {
-          Text("—").monospacedDigit()
+            .foregroundStyle(.primary)
+        }
+        if let total = value.totalBytes, total > 0 {
+          Text(
+            ProgressFormatting.processedBytes(
+              value.processedBytes, total: total, estimated: value.bytesAreEstimated)
+          )
+          .help(L10n.tr("Обработано"))
+        }
+        if let total = value.totalFiles, total > 0 {
+          Label(
+            ProgressFormatting.files(completed: value.completedFiles, total: total),
+            systemImage: "doc"
+          )
+          .help(L10n.tr("Файлы"))
+        }
+        Spacer(minLength: 4)
+        if let speed = value.bytesPerSecond, speed > 0, value.phase != .finalizing {
+          Text(ProgressFormatting.speed(speed)).help(L10n.tr("Средняя скорость"))
+        }
+        Label(ProgressFormatting.time(shownElapsed), systemImage: "clock")
+          .help(L10n.tr("Прошло"))
+        if value.remainingSeconds != nil, value.phase != .finalizing {
+          Text(ProgressFormatting.eta(value.remainingSeconds, phase: value.phase))
+            .help(L10n.tr("Осталось на этапе"))
         }
       }
-      .font(.caption).foregroundStyle(.secondary)
+      .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+      .lineLimit(1)
       .accessibilityElement(children: .combine)
-
-      if value.phase != .preparing {
-        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 5) {
-          GridRow {
-            metric(
-              L10n.tr("Обработано"),
-              ProgressFormatting.processedBytes(
-                value.processedBytes, total: value.totalBytes, estimated: value.bytesAreEstimated))
-            metric(L10n.tr("Средняя скорость"), ProgressFormatting.speed(value.bytesPerSecond))
-          }
-          GridRow {
-            metric(
-              L10n.tr("Файлы"),
-              ProgressFormatting.files(
-                completed: value.completedFiles, total: value.totalFiles))
-            metric(L10n.tr("Прошло"), ProgressFormatting.time(shownElapsed))
-          }
-          GridRow {
-            metric(L10n.tr("Размер архива"), ProgressFormatting.bytes(value.outputBytes))
-            metric(
-              L10n.tr("Осталось на этапе"),
-              ProgressFormatting.eta(
-                value.remainingSeconds, phase: value.phase))
-          }
-        }
-        .font(.caption)
-      } else {
-        Text(L10n.tr("Прошло  %1$@", String(describing: ProgressFormatting.time(shownElapsed))))
-          .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-      }
-
-      if value.phase != .preparing, let file = value.currentFile, !file.isEmpty {
-        Text(file)
-          .font(.caption2).foregroundStyle(.secondary)
-          .lineLimit(1).truncationMode(.middle)
-          .help(file)
-          .accessibilityLabel(L10n.tr("Текущий файл: %1$@", String(describing: file)))
+      if let file = value.currentFile, !file.isEmpty {
+        Text(file).font(.caption2).foregroundStyle(.tertiary)
+          .lineLimit(1).truncationMode(.middle).help(file)
       }
     }
     .accessibilityElement(children: .contain)
   }
 
-  /// Объединяет подпись и значение для чтения VoiceOver без потери выравнивания чисел.
-  private func metric(_ label: String, _ value: String) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(label).foregroundStyle(.secondary)
-      Text(value).foregroundStyle(.primary).monospacedDigit().lineLimit(1)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .accessibilityElement(children: .combine)
-  }
 }
 
 enum ProgressFormatting {

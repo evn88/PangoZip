@@ -171,10 +171,15 @@ public actor ArchiveService {
   }
 
   /// Сохраняет только зарегистрированные рабочие копии, которые не изменились за время транзакции.
-  public func save(_ edits: [ArchiveEdit], in session: ArchiveSession, password: String = "")
+  public func save(
+    _ edits: [ArchiveEdit], in session: ArchiveSession, password: String = "",
+    retainingWorkingCopies: Bool = false
+  )
     async throws -> ArchiveSession
   {
-    try await mutate(.save(edits), session: session, password: password)
+    try await mutate(
+      .save(edits), session: session, password: password,
+      retainingWorkingCopies: retainingWorkingCopies)
   }
 
   /// Удаляет данные сеанса, если для него не зарегистрирована блокирующая операция.
@@ -192,7 +197,10 @@ public actor ArchiveService {
   }
 
   /// Меняет копию на том же томе и проверяет результат перед согласованной заменой оригинала.
-  private func mutate(_ mutation: Mutation, session: ArchiveSession, password: String) async throws
+  private func mutate(
+    _ mutation: Mutation, session: ArchiveSession, password: String,
+    retainingWorkingCopies: Bool = false
+  ) async throws
     -> ArchiveSession
   {
     let state = try checkedState(session)
@@ -271,7 +279,7 @@ public actor ArchiveService {
       }
       for edit in edits {
         guard edit.sessionID == session.id, state.edits[edit.id] == edit,
-          state.entries[edit.entry.path] == edit.entry
+          state.entries[edit.entry.path] != nil
         else { throw ArchiveError.archiveChanged }
         let signature = try FileFingerprint(edit.fileURL)
         guard signature.type == .typeRegular else { throw ArchiveError.unsupportedEntry }
@@ -345,7 +353,7 @@ public actor ArchiveService {
     updated.descriptor = descriptor
     updated.entries = newEntries
     updated.cache.removeAll()
-    for edit in savedEdits {
+    for edit in savedEdits where !retainingWorkingCopies {
       try? manager.removeItem(at: edit.fileURL.deletingLastPathComponent())
       updated.edits.removeValue(forKey: edit.id)
     }

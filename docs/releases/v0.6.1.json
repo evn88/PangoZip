@@ -1,0 +1,18 @@
+{
+  "en": [
+    "Preview ZIP, 7z and RAR archives with Space in Finder, then extract selected items or the entire archive into a named folder.",
+    "Choose from 30 persistent table columns, including folder counts and additional archive metadata. Defaults are Name, Size, Kind, Compression and Modified.",
+    "Automatically save working-copy changes back into the archive after saving in an external editor, including repeated saves.",
+    "Fix the 99% stall when dragging an empty folder to Finder and preserve working copies when saving is cancelled.",
+    "Use a compact progress panel, an icon-only Extract button and a system Share Archive button.",
+    "Choose default archive file associations in Settings."
+  ],
+  "ru": [
+    "Предпросмотр ZIP, 7z и RAR по пробелу в Finder с извлечением выбранных объектов или всего архива в одноимённую папку.",
+    "30 настраиваемых колонок с сохранением выбора, счётчиками вложенных объектов и дополнительными метаданными. По умолчанию: имя, размер, тип, сжатие, дата изменения.",
+    "Автоматическая запись изменений в архив после сохранения файла во внешнем редакторе, включая повторные сохранения.",
+    "Исправлено зависание на 99% при перетаскивании пустой папки в Finder; отмена сохранения не удаляет рабочие копии.",
+    "Компактная панель прогресса, кнопка извлечения без текста и системная кнопка «Поделиться архивом».",
+    "Выбор приложения по умолчанию для типов архивов в настройках."
+  ]
+}

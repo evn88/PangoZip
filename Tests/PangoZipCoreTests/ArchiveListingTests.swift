@@ -3,6 +3,58 @@ import XCTest
 @testable import PangoZipCore
 
 final class ArchiveListingTests: XCTestCase {
+  func testAdditionalMetadataPreservesTechnicalFieldsWithoutDuplicatingExistingValues() throws {
+    let entry = try XCTUnwrap(
+      ArchiveListing.parse(
+        """
+        Path = docs/link
+        Size = 5
+        Packed Size = 4
+        Folder = -
+        Created = 2026-10-09 08:00:00
+        Modified = 2026-10-10 12:30:45
+        Mode = lrwxrwxrwx
+        User = alice
+        Group = staff
+        Encrypted = +
+        CRC = ABCDEF12
+        Method = LZMA2
+        Accessed = 2026-10-11 10:20:30
+        Attributes = A lrwxrwxrwx
+        Host OS = Unix
+        Version = 20
+        Volume Index = 0
+        Offset = 32
+        Block = 0
+        Symbolic Link = ../target
+        Hard Link = docs/target
+        Comment = note = value
+        User ID = 501
+        Group ID = 20
+        Characteristics = UTF8
+        Empty =
+        Password = hidden
+
+        """.replacingOccurrences(of: "Empty =\n", with: "Empty = \n")
+      ).first)
+    XCTAssertEqual(
+      entry.additionalMetadata,
+      [
+        "Accessed": "2026-10-11 10:20:30", "Attributes": "A lrwxrwxrwx",
+        "Host OS": "Unix", "Version": "20", "Volume Index": "0", "Offset": "32", "Block": "0",
+        "Symbolic Link": "../target", "Hard Link": "docs/target", "Comment": "note = value",
+        "User ID": "501", "Group ID": "20", "Characteristics": "UTF8",
+      ])
+    XCTAssertTrue(entry.isSymbolicLink)
+    XCTAssertEqual(entry.owner, "alice")
+    let roots = try ArchiveListing.tree(from: [entry])
+    XCTAssertEqual(
+      roots.first?.children?.first?.entry?.additionalMetadata, entry.additionalMetadata)
+    XCTAssertEqual(roots.first?.entry?.additionalMetadata, [:])
+    let missing = try XCTUnwrap(ArchiveListing.parse("Path = missing\nSize = 0\n\n").first)
+    XCTAssertEqual(missing.additionalMetadata, [:])
+  }
+
   func testPackedSizeIsNotInventedForMissingOrBlockBasedValues() throws {
     let entries = try ArchiveListing.parse(
       """

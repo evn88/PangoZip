@@ -30,6 +30,21 @@ cp Resources/Icons/AppIcon.icns "$extension/Contents/Resources/AppIcon.icns"
 cp FinderExtension/Info.plist "$extension/Contents/Info.plist"
 cp -R Sources/PangoZipCore/Resources/*.lproj "$extension/Contents/Resources/"
 xcrun swiftc -swift-version 6 -O -parse-as-library -application-extension   -target "$(uname -m)-apple-macos26.0" -module-name PangoZipFinderSync   -Xlinker -e -Xlinker _NSExtensionMain   Sources/PangoZipCore/Localization.swift Sources/PangoZipCore/FinderRequest.swift Sources/PangoZipCore/FinderInstallation.swift FinderExtension/FinderSync.swift   -o "$extension/Contents/MacOS/PangoZipFinderSync"
+preview="$app/Contents/PlugIns/PangoZipPreview.appex"
+mkdir -p "$preview/Contents/MacOS" "$preview/Contents/Resources"
+cp QuickLookExtension/Info.plist "$preview/Contents/Info.plist"
+# Версия расширения всегда совпадает с контейнером, включая локальную сборку релиза.
+for key in CFBundleShortVersionString CFBundleVersion; do
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$app/Contents/Info.plist")"
+  /usr/libexec/PlistBuddy -c "Set :$key $value" "$preview/Contents/Info.plist"
+done
+cp LICENSE THIRD_PARTY_NOTICES.md "$preview/Contents/Resources/"
+cp -R Sources/PangoZipCore/Resources/*.lproj "$preview/Contents/Resources/"
+xcrun swiftc -swift-version 6 -O -whole-module-optimization -parse-as-library -application-extension \
+  -I Sources/CLibArchive -target "$(uname -m)-apple-macos26.0" -module-name PangoZipPreview \
+  -Xlinker -e -Xlinker _NSExtensionMain \
+  Sources/PangoZipCore/*.swift QuickLookExtension/*.swift \
+  -o "$preview/Contents/MacOS/PangoZipPreview"
 worker="$app/Contents/Helpers/PangoZipWorker.app"
 mkdir -p "$worker/Contents/MacOS" "$worker/Contents/Resources"
 cp "$app/Contents/MacOS/PangoZip" "$worker/Contents/MacOS/PangoZip"

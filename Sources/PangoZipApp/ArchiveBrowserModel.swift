@@ -16,6 +16,7 @@ final class ArchiveBrowserModel: ObservableObject {
     case add([URL], String)
     case delete([String])
     case save
+    case autosave([ArchiveEdit])
     case create([URL], String)
     case extract([URL])
     case export([String], URL)
@@ -49,6 +50,10 @@ final class ArchiveBrowserModel: ObservableObject {
   @Published private(set) var searchFocusToken = UUID()
 
   private let service: ArchiveService
+  private var autosaveTask: Task<Void, Never>?
+  private var savedCopies: [UUID: WorkingCopySnapshot] = [:]
+  private var observedCopies: [UUID: WorkingCopySnapshot] = [:]
+  private var failedCopies: [UUID: WorkingCopySnapshot] = [:]
   private var actionTask: Task<Void, Never>?
   private var previewTask: Task<Void, Never>?
   private var retiredPreviewTasks: [Task<Void, Never>] = []
@@ -363,7 +368,48 @@ final class ArchiveBrowserModel: ObservableObject {
     start(.external(entry))
   }
 
-  /// Создаёт отдельную рабочую копию, которую пользователь затем явно сохраняет в архив.
+  /// Следит за адресом файла, поэтому атомарное сохранение редактора не теряет наблюдение.
+  func watchWorkingCopy(_ edit: ArchiveEdit) throws {
+    guard !activeEdits.contains(where: { $0.id == edit.id }) else { return }
+    let snapshot = try WorkingCopySnapshot(edit.fileURL)
+    activeEdits.append(edit)
+    savedCopies[edit.id] = snapshot
+    observedCopies[edit.id] = snapshot
+    guard autosaveTask == nil else { return }
+    autosaveTask = Task { [weak self] in
+      while !Task.isCancelled {
+        do { try await Task.sleep(for: .seconds(1)) } catch { return }
+        guard let self else { return }
+        await self.autosaveChangedCopies()
+      }
+    }
+  }
+
+  /// Два одинаковых снимка подряд дают редактору закончить запись перед транзакцией архива.
+  func autosaveChangedCopies() async {
+    guard canModify else { return }
+    var changed: [ArchiveEdit] = []
+    for edit in activeEdits {
+      guard let snapshot = try? WorkingCopySnapshot(edit.fileURL) else { continue }
+      if snapshot != savedCopies[edit.id], snapshot == observedCopies[edit.id],
+        snapshot != failedCopies[edit.id]
+      {
+        changed.append(edit)
+      }
+      observedCopies[edit.id] = snapshot
+    }
+    if !changed.isEmpty { start(.autosave(changed)) }
+  }
+
+  private func stopWatchingCopies() {
+    autosaveTask?.cancel()
+    autosaveTask = nil
+    savedCopies.removeAll()
+    observedCopies.removeAll()
+    failedCopies.removeAll()
+  }
+
+  /// Создаёт рабочую копию и автоматически сохраняет изменения редактора в архив.
   func editSelected() {
     guard canModify, canOpenSelection, let entry = selectedEntry else { return }
     start(.edit(entry))
@@ -611,7 +657,7 @@ final class ArchiveBrowserModel: ObservableObject {
       case .edit(let entry):
         guard let session, session.canModify else { return }
         let edit = try await service.beginEditing(entry, in: session, password: password)
-        if !activeEdits.contains(where: { $0.id == edit.id }) { activeEdits.append(edit) }
+        try watchWorkingCopy(edit)
         try Task.checkCancellation()
         if selectedPath == entry.path { openInWorkspace(edit.fileURL) }
       case .add(let urls, let directory):
@@ -624,10 +670,9 @@ final class ArchiveBrowserModel: ObservableObject {
         await settlePreviews()
         await apply(try await service.delete(paths, from: session, password: password))
       case .save:
-        guard let session, !activeEdits.isEmpty else { return }
-        await settlePreviews()
-        await apply(try await service.save(activeEdits, in: session, password: password))
-        activeEdits.removeAll()
+        try await persistWorkingCopies(activeEdits, retainingWorkingCopies: false)
+      case .autosave(let edits):
+        try await persistWorkingCopies(edits, retainingWorkingCopies: true)
       }
       failedOperation = nil
     } catch is CancellationError {
@@ -647,6 +692,35 @@ final class ArchiveBrowserModel: ObservableObject {
       operationMessage = nil
       errorMessage = error.localizedDescription
       if session == nil { loadState = .failed }
+    }
+  }
+
+  private func persistWorkingCopies(_ edits: [ArchiveEdit], retainingWorkingCopies: Bool)
+    async throws
+  {
+    guard let session, !edits.isEmpty else { return }
+    let snapshots = try Dictionary(
+      uniqueKeysWithValues: edits.map {
+        ($0.id, try WorkingCopySnapshot($0.fileURL))
+      })
+    await settlePreviews()
+    operationMessage = L10n.tr("Автоматическое сохранение в архив…")
+    do {
+      let updated = try await service.save(
+        edits, in: session, password: password, retainingWorkingCopies: retainingWorkingCopies)
+      await apply(updated)
+      for (id, snapshot) in snapshots {
+        savedCopies[id] = snapshot
+        failedCopies[id] = nil
+      }
+      if !retainingWorkingCopies {
+        activeEdits.removeAll { edit in edits.contains { $0.id == edit.id } }
+        if activeEdits.isEmpty { stopWatchingCopies() }
+      }
+      operationMessage = L10n.tr("Изменения сохранены в архив")
+    } catch {
+      for (id, snapshot) in snapshots { failedCopies[id] = snapshot }
+      throw error
     }
   }
 
@@ -764,9 +838,16 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  func saveWorkingCopiesBeforeClosing() async -> Bool {
+    await perform(.save)
+    return !Task.isCancelled && activeEdits.isEmpty
+  }
+
   /// Продолжает закрытие только после сохранения копий или явного отказа от сохранения.
   private func confirmWorkingCopies() async -> Bool {
-    guard !activeEdits.isEmpty else { return true }
+    guard
+      activeEdits.contains(where: { (try? WorkingCopySnapshot($0.fileURL)) != savedCopies[$0.id] })
+    else { return true }
     let alert = NSAlert()
     alert.messageText = L10n.tr("Сохранить рабочие копии в архив?")
     alert.informativeText =
@@ -778,8 +859,7 @@ final class ArchiveBrowserModel: ObservableObject {
     alert.addButton(withTitle: L10n.tr("Отмена"))
     switch alert.runModal() {
     case .alertFirstButtonReturn:
-      await perform(.save)
-      return activeEdits.isEmpty
+      return await saveWorkingCopiesBeforeClosing()
     case .alertSecondButtonReturn:
       return true
     default:
@@ -792,6 +872,7 @@ final class ArchiveBrowserModel: ObservableObject {
     await settlePreviews()
     guard !Task.isCancelled, await confirmWorkingCopies() else { return false }
     await settlePreviews()
+    guard !Task.isCancelled else { return false }
     do {
       if let session { try await service.close(session) }
     } catch {
@@ -801,6 +882,7 @@ final class ArchiveBrowserModel: ObservableObject {
     await replaceSession(nil)
     operationMessage = nil
     activeEdits.removeAll()
+    stopWatchingCopies()
     selectedPaths = []
     searchText = ""
     pendingFinderFiles = []
@@ -828,6 +910,7 @@ final class ArchiveBrowserModel: ObservableObject {
     await settlePreviews()
     guard await confirmWorkingCopies() else { return false }
     await settlePreviews()
+    guard !Task.isCancelled else { return false }
     do {
       if let session { try await service.close(session) }
     } catch {
@@ -837,6 +920,7 @@ final class ArchiveBrowserModel: ObservableObject {
     await replaceSession(nil)
     operationMessage = nil
     activeEdits.removeAll()
+    stopWatchingCopies()
     selectedPaths = []
     searchText = ""
     pendingFinderFiles = []

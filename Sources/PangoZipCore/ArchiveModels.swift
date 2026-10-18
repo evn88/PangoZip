@@ -15,13 +15,14 @@ public struct ArchiveEntry: Identifiable, Hashable, Sendable {
   public let checksum: String?
   public let method: String?
   public let packedSize: UInt64?
+  public let additionalMetadata: [String: String]
 
   /// Сохраняет метаданные записи; безопасность пути проверяет парсер перед использованием.
   public init(
     path: String, size: UInt64 = 0, isDirectory: Bool = false, isSymbolicLink: Bool = false,
     createdAt: Date? = nil, modifiedAt: Date? = nil, permissions: String? = nil,
     owner: String? = nil, group: String? = nil, isEncrypted: Bool = false, checksum: String? = nil,
-    method: String? = nil, packedSize: UInt64? = nil
+    method: String? = nil, packedSize: UInt64? = nil, additionalMetadata: [String: String] = [:]
   ) {
     self.path = path
     self.size = size
@@ -36,6 +37,7 @@ public struct ArchiveEntry: Identifiable, Hashable, Sendable {
     self.checksum = checksum
     self.method = method
     self.packedSize = packedSize
+    self.additionalMetadata = additionalMetadata
   }
 }
 

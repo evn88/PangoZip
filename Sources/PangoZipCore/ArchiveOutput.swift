@@ -2,20 +2,12 @@ import Darwin
 import Foundation
 
 enum ArchiveOutput {
-  /// Публикует готовый объект через согласованное переименование и никогда не заменяет существующий.
+  /// Получатель File Promise уже согласовал запись; повторная координация создаёт взаимное ожидание.
   static func publishExact(_ source: URL, to destination: URL) throws {
     try Task.checkCancellation()
-    var coordinationError: NSError?
-    var writeError: Error?
-    NSFileCoordinator().coordinate(
-      writingItemAt: destination, options: .forReplacing, error: &coordinationError
-    ) { url in
-      if renamex_np(source.path, url.path, UInt32(RENAME_EXCL)) != 0 {
-        writeError = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-      }
+    if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) != 0 {
+      throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
-    if let coordinationError { throw coordinationError }
-    if let writeError { throw writeError }
   }
 
   // RENAME_EXCL не позволяет перезаписать объект, появившийся после проверки имени.

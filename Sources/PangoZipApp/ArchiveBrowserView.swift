@@ -39,7 +39,7 @@ struct ArchiveBrowserView: View {
       ToolbarSpacer(.fixed)
       ToolbarItem(placement: .automatic) {
         Button(L10n.tr("Извлечь…"), systemImage: "arrow.up.bin", action: model.extractSelected)
-          .labelStyle(.titleAndIcon)
+          .labelStyle(.iconOnly)
           .help(L10n.tr("Извлечь выбранные файлы и папки (⌘⇧E)"))
           .disabled(!model.canAct || model.selectedPaths.isEmpty)
       }
@@ -72,9 +72,20 @@ struct ArchiveBrowserView: View {
           action: model.saveWorkingCopies
         )
         .labelStyle(.iconOnly)
-        .help(L10n.tr("Сначала сохраните файл в редакторе, затем нажмите ⌘S здесь"))
+        .help(L10n.tr("Сохранить рабочие копии сейчас"))
         .disabled(!model.canModify || model.activeEdits.isEmpty)
       }
+      ToolbarItem(placement: .automatic) {
+        if let url = model.session?.url {
+          ShareLink(item: url) {
+            Label(L10n.tr("Поделиться архивом"), systemImage: "square.and.arrow.up")
+          }
+          .labelStyle(.iconOnly)
+          .help(L10n.tr("Поделиться архивом"))
+          .disabled(!model.canAct)
+        }
+      }
+      ToolbarItem(placement: .automatic) { ArchiveColumnsMenu() }
       ToolbarSpacer(.flexible)
       ToolbarItem(placement: .automatic) {
         Button(
@@ -171,8 +182,11 @@ struct ArchiveBrowserView: View {
               .font(.caption).foregroundStyle(.secondary).monospacedDigit()
           }
           if model.activeEdits.contains(where: { $0.entry.path == entry.path }) {
-            Text(L10n.tr("Есть рабочая копия: сохраните файл в редакторе, затем нажмите ⌘S здесь."))
-              .font(.caption).foregroundStyle(.secondary)
+            Text(
+              L10n.tr(
+                "Изменения автоматически сохраняются в архив после сохранения файла в редакторе.")
+            )
+            .font(.caption).foregroundStyle(.secondary)
           }
           if !entry.isDirectory {
             DisclosureGroup(L10n.tr("Сведения"), isExpanded: $showsMetadata) {
@@ -235,7 +249,7 @@ struct ArchiveBrowserView: View {
   private var statusBar: some View {
     HStack(spacing: 14) {
       if model.isBusy || model.isExporting || model.isClosing {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
           HStack {
             if model.operationProgress == nil { ProgressView().controlSize(.small) }
             Text(
@@ -249,7 +263,7 @@ struct ArchiveBrowserView: View {
               model.isClosing)
           }
           if let progress = model.operationProgress {
-            OperationProgressView(progress: progress).frame(maxWidth: 620, alignment: .leading)
+            OperationProgressView(progress: progress)
           }
         }
       } else if let message = model.errorMessage {
@@ -265,14 +279,13 @@ struct ArchiveBrowserView: View {
       } else {
         Text(L10n.tr("Готово"))
       }
-      Spacer()
+      if !model.isBusy && !model.isExporting && !model.isClosing { Spacer() }
       if !model.activeEdits.isEmpty {
-        Text(
-          L10n.tr(
-            "Рабочих копий: %1$@. Для записи в архив нажмите ⌘S.",
-            String(describing: model.activeEdits.count))
-        )
-        .foregroundStyle(.tint)
+        Image(systemName: "pencil.circle")
+          .foregroundStyle(.tint)
+          .help(
+            L10n.tr(
+              "Изменения автоматически сохраняются в архив после сохранения файла в редакторе."))
       }
     }
     .font(.caption).foregroundStyle(.secondary)
