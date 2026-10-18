@@ -15,6 +15,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+BUNDLE_FILES = ("Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist",
+                "QuickLookExtension/Info.plist")
 VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 
 
@@ -26,10 +28,10 @@ def version_from_tag(tag):
 
 
 def validate_version(tag, root=ROOT):
-    """Сверяет версию и номер сборки у приложения, worker и Finder Extension."""
+    """Сверяет версию и номер сборки у приложения, worker, Finder и Quick Look."""
     version = version_from_tag(tag)
     builds = set()
-    for name in ["Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist"]:
+    for name in BUNDLE_FILES:
         with (root / name).open("rb") as source:
             info = plistlib.load(source)
         if info.get("CFBundleShortVersionString") != version:

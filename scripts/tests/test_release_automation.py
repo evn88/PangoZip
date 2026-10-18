@@ -66,7 +66,8 @@ class ReleaseAutomationTests(unittest.TestCase):
 
     def test_bundle_versions_and_build_numbers_must_match(self):
         """Релиз с несогласованными версиями отклоняется до сборки."""
-        files = ["Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist"]
+        files = ["Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist",
+                 "QuickLookExtension/Info.plist"]
         for name in files:
             path = self.directory / name
             path.parent.mkdir(exist_ok=True)
@@ -110,6 +111,23 @@ class ReleaseAutomationTests(unittest.TestCase):
         with patch.object(publisher, "api", return_value={"sha": COMMIT}) as api, \
              patch.object(publisher.subprocess, "check_output", return_value=json.dumps([[{
                  "tag_name": self.tag, "draft": False, "prerelease": False}]])):
+            with self.assertRaises(ValueError):
+                publisher.publish(self.directory, "evn88/PangoZip", self.tag)
+            self.assertEqual(api.call_count, 1)
+
+    def test_completed_publication_retry_does_not_replace_assets_or_latest(self):
+        """Повтор после успешного PATCH не перезагружает файлы и не откатывает Latest."""
+        release = {"tag_name": self.tag, "draft": False, "prerelease": False,
+                   "html_url": "https://github.com/evn88/PangoZip/releases/tag/v0.7.0",
+                   "assets": [{"name": name, "state": "uploaded", "size": (self.directory / name).stat().st_size,
+                               "digest": "sha256:" + digest} for name, digest in self.manifest["assets"].items()]}
+        with patch.object(publisher, "api", return_value={"sha": COMMIT}) as api, \
+             patch.object(publisher.subprocess, "check_output", return_value=json.dumps([[release]])):
+            publisher.publish(self.directory, "evn88/PangoZip", self.tag)
+            self.assertEqual(api.call_count, 1)
+        release["assets"][0]["digest"] = "sha256:" + "0" * 64
+        with patch.object(publisher, "api", return_value={"sha": COMMIT}) as api, \
+             patch.object(publisher.subprocess, "check_output", return_value=json.dumps([[release]])):
             with self.assertRaises(ValueError):
                 publisher.publish(self.directory, "evn88/PangoZip", self.tag)
             self.assertEqual(api.call_count, 1)

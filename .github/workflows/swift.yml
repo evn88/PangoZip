@@ -4,18 +4,20 @@
 name: Swift
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+
+permissions:
+  contents: read
 
 jobs:
   build:
 
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 30
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
     - name: Build
       run: swift build -v
     - name: Run tests
