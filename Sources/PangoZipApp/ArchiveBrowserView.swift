@@ -27,17 +27,8 @@ struct ArchiveBrowserView: View {
     )
     .searchFocused($searchFocused)
     .toolbar {
-      archiveActionsToolbar
-      ToolbarSpacer(.fixed)
-      extractionToolbar
-      ToolbarSpacer(.fixed)
-      modificationToolbar
-      ToolbarSpacer(.fixed)
-      editorToolbar
-      sharingToolbar
-      ToolbarItem(placement: .automatic) { ArchiveColumnsMenu() }
-      ToolbarSpacer(.flexible)
-      previewToolbar
+      primaryToolbar
+      secondaryToolbar
     }
     .onExitCommand { model.cancelCurrentOperation() }
     .onChange(of: model.searchFocusToken) { _, _ in searchFocused = true }
@@ -50,6 +41,25 @@ struct ArchiveBrowserView: View {
           .padding(8).allowsHitTesting(false)
       }
     }
+  }
+
+  @ToolbarContentBuilder
+  private var primaryToolbar: some ToolbarContent {
+    archiveActionsToolbar
+    ToolbarSpacer(.fixed)
+    extractionToolbar
+    ToolbarSpacer(.fixed)
+    modificationToolbar
+    ToolbarSpacer(.fixed)
+    editorToolbar
+  }
+
+  @ToolbarContentBuilder
+  private var secondaryToolbar: some ToolbarContent {
+    sharingToolbar
+    ToolbarItem(placement: .automatic) { ArchiveColumnsMenu() }
+    ToolbarSpacer(.flexible)
+    previewToolbar
   }
 
   @ToolbarContentBuilder
