@@ -30,6 +30,8 @@ Concurrency-группа сериализует выпуски. Во время 
 
 Нужен секрет `PANGOZIP_SPARKLE_PRIVATE_KEY`, соответствующий `SUPublicEDKey` приложения. PAT не нужен. Workflow явно запрашивает `contents: write` только для доверенных заданий на `main`. Защита main может требовать pull request: workflow не пишет в эту ветку и не обходит branch protection. Правила тегов должны разрешать GITHUB_TOKEN создавать релизные теги.
 
+Если правила main требуют CodeQL, включите **Settings → Code security → CodeQL analysis → Default setup** для Swift, Python и GitHub Actions. Сначала должен успешно завершиться первоначальный анализ main, затем анализ pull request. Одно правило защиты без настроенного анализа блокирует слияние сообщением «Waiting for Code Scanning results». Default setup хранится в настройках GitHub; отдельного CodeQL workflow в репозитории нет.
+
 Локальные тесты сценария используют временные bare-репозитории и проверяют гонки, повторные запуски, отсутствие одиночного тега при отказе push и согласованность версий:
 
 ```sh
