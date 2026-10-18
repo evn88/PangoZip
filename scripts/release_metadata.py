@@ -2,12 +2,17 @@
 """Проверяет версию тега и формирует описание релиза на английском и русском."""
 
 import argparse
+import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import plistlib
 import re
+import shutil
 import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
@@ -121,6 +126,75 @@ shasum -a 256 -c {filename}.sha256
 """
 
 
+def validate_update_feed(directory, tag, build=None):
+    """Отклоняет неподписанную ленту и ссылку, длину или версии не от этого выпуска."""
+    version = version_from_tag(tag)
+    dmg = directory / f"PangoZip-{version}-arm64.dmg"
+    data = (directory / "appcast.xml").read_bytes()
+    signing = re.search(rb"<!-- sparkle-signatures:\nedSignature: ([A-Za-z0-9+/]{86}==)\nlength: ([0-9]+)\n-->\n$", data)
+    if signing is None or int(signing[2]) != signing.start():
+        raise ValueError("Update feed must have a Sparkle Ed25519 signature")
+    items = ET.fromstring(data[:signing.start()]).findall("channel/item")
+    if len(items) != 1:
+        raise ValueError("Update feed must contain exactly one release")
+    item = items[0]
+    namespace = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+    enclosure = item.find("enclosure")
+    if enclosure is None or enclosure.get("url") != f"https://github.com/evn88/PangoZip/releases/download/{tag}/{dmg.name}":
+        raise ValueError("Update feed download URL does not match the release")
+    signature = enclosure.get(namespace + "edSignature", "")
+    if not re.fullmatch(r"[A-Za-z0-9+/]{86}==", signature):
+        raise ValueError("Update archive must have an Ed25519 signature matching the app's key")
+    if enclosure.get("length") != str(dmg.stat().st_size):
+        raise ValueError("Update archive length does not match the feed")
+    if item.findtext(namespace + "shortVersionString") != version:
+        raise ValueError("Update feed version does not match the release")
+    if build is not None and item.findtext(namespace + "version") != build:
+        raise ValueError("Update feed build does not match the application")
+    return signature
+
+
+def generate_update_feed(tag, directory, root=ROOT):
+    """Проверяет ключ приложения и подписывает архив и ленту официальным инструментом Sparkle."""
+    version_from_tag(tag)
+    tool = root / ".build/artifacts/sparkle/Sparkle/bin/generate_appcast"
+    environment = dict(os.environ)
+    secret = environment.pop("PANGOZIP_SPARKLE_PRIVATE_KEY", None)
+    if environment.get("GITHUB_ACTIONS") == "true" and not secret:
+        raise ValueError("Configure the PANGOZIP_SPARKLE_PRIVATE_KEY repository secret before releasing.")
+    if secret:
+        secret = secret.strip()
+        try:
+            valid_secret = len(base64.b64decode(secret, validate=True)) in [32, 64, 96]
+        except ValueError:
+            valid_secret = False
+        if not valid_secret:
+            raise ValueError("PANGOZIP_SPARKLE_PRIVATE_KEY is not a valid exported Sparkle key")
+    command = [str(tool), "--download-url-prefix", f"https://github.com/evn88/PangoZip/releases/download/{tag}/",
+               "--link", f"https://github.com/evn88/PangoZip/releases/tag/{tag}",
+               "--maximum-deltas", "0", "--maximum-versions", "1", "--embed-release-notes"]
+    command += ["--ed-key-file", "-"] if secret else ["--account", "app.pangozip.desktop"]
+    # Отдельная папка исключает прежние DMG и не даёт генератору перемещать старые релизы.
+    with tempfile.TemporaryDirectory(prefix=".update-feed-", dir=directory) as temporary:
+        staging = Path(temporary)
+        dmg = directory / f"PangoZip-{version_from_tag(tag)}-arm64.dmg"
+        shutil.copy2(dmg, staging / dmg.name)
+        notes = dmg.with_suffix(".md")
+        if notes.exists():
+            shutil.copy2(notes, staging / notes.name)
+        subprocess.run([*command, str(staging)], input=secret, env=environment, check=True, text=True, timeout=300)
+        shutil.copy2(staging / "appcast.xml", directory / "appcast.xml")
+    with (root / "Resources/Info.plist").open("rb") as source:
+        build = plistlib.load(source)["CFBundleVersion"]
+    signature = validate_update_feed(directory, tag, build)
+    verifier = str(tool.with_name("sign_update"))
+    credentials = ["--ed-key-file", "-"] if secret else ["--account", "app.pangozip.desktop"]
+    for file, arguments in [(directory / "appcast.xml", []),
+                            (directory / f"PangoZip-{version_from_tag(tag)}-arm64.dmg", [signature])]:
+        subprocess.run([verifier, *credentials, "--verify", str(file), *arguments],
+                       input=secret, env=environment, check=True, text=True, timeout=60)
+
+
 def write_metadata(tag, mode, root=ROOT):
     """Сохраняет описание, контрольную сумму и манифест для отдельного задания публикации."""
     version = validate_version(tag, root)
@@ -133,9 +207,13 @@ def write_metadata(tag, mode, root=ROOT):
     checksum.write_text(f"{digest}  {dmg.name}\n")
     changes_path = root / f"docs/releases/{tag}.json"
     changes = json.loads(changes_path.read_text()) if changes_path.exists() else None
-    (directory / "release-notes.md").write_text(render_notes(tag, mode, repository, commit, changes))
+    notes = render_notes(tag, mode, repository, commit, changes)
+    (directory / "release-notes.md").write_text(notes)
+    dmg.with_suffix(".md").write_text(notes)
+    generate_update_feed(tag, directory, root)
     manifest = {"tag": tag, "version": version, "commit": commit, "signing": mode,
-                "assets": {dmg.name: digest, checksum.name: hashlib.sha256(checksum.read_bytes()).hexdigest()}}
+                "assets": {dmg.name: digest, checksum.name: hashlib.sha256(checksum.read_bytes()).hexdigest(),
+                           "appcast.xml": hashlib.sha256((directory / "appcast.xml").read_bytes()).hexdigest()}}
     (directory / "release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 

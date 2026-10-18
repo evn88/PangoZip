@@ -19,7 +19,12 @@ app="$build_staging/PangoZip.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin_dir/PangoZip" "$app/Contents/MacOS/PangoZip"
 cp Resources/Info.plist "$app/Contents/Info.plist"
+mkdir -p "$app/Contents/Frameworks"
+# ditto сохраняет обязательные для framework символические ссылки и права исполнения.
+ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
+  "$app/Contents/Frameworks/Sparkle.framework"
 cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+cp .build/artifacts/sparkle/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt"
 cp Resources/Icons/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp -R Resources/Engine "$app/Contents/Resources/"
 cp -R Sources/PangoZipCore/Resources/*.lproj "$app/Contents/Resources/"

@@ -23,6 +23,10 @@ PangoZip запускает официальный `7zz` отдельным пр
 
 Документация для проверки: [официальная лицензия 7-Zip](https://www.7-zip.org/license.txt), [Developer FAQ](https://www.7-zip.org/faq.html#developer_faq), исходные `DOC/License.txt`, `DOC/copying.txt` и `DOC/unRarLicense.txt` в архиве 26.04. Для поставляемого 7zz применяются условия его собственного `Resources/Engine/License.txt`, а не только сводка на сайте.
 
+## Sparkle 2.10.0
+
+Для проверки, загрузки и безопасной установки обновлений используется [Sparkle](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.0). Точные версии пакета и бинарного артефакта зафиксированы Swift Package Manager. Лицензия MIT и уведомления всех компонентов из официального дистрибутива сохраняются в `Contents/Resources/Sparkle-LICENSE.txt` приложения.
+
 ## Системные компоненты Apple и иконка
 
 Расширение предпросмотра архивов Quick Look использует системную `libarchive.2` внутри своего процесса. Библиотека поставляется macOS, её бинарник не копируется в приложение. Основной движок приложения остаётся официальным 7zz.

@@ -6,11 +6,22 @@ let package = Package(
   defaultLocalization: "en",
   platforms: [.macOS(.v26)],
   products: [.executable(name: "PangoZip", targets: ["PangoZipApp"])],
+  dependencies: [
+    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+  ],
   targets: [
     .systemLibrary(name: "CLibArchive"),
     .target(
       name: "PangoZipCore", dependencies: ["CLibArchive"], resources: [.process("Resources")]),
-    .executableTarget(name: "PangoZipApp", dependencies: ["PangoZipCore"]),
+    .executableTarget(
+      name: "PangoZipApp",
+      dependencies: ["PangoZipCore", .product(name: "Sparkle", package: "Sparkle")],
+      linkerSettings: [
+        .unsafeFlags([
+          "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+          "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks",
+        ])
+      ]),
     .target(
       name: "PangoZipPreview", dependencies: ["PangoZipCore"], path: "QuickLookExtension",
       exclude: ["Info.plist", "Entitlements.plist"]),

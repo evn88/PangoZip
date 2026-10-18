@@ -21,15 +21,20 @@ struct ArchiveCommands: Commands {
         .disabled(model.session == nil && !model.isBusy || model.isClosing)
     }
     CommandMenu(L10n.tr("Архив")) {
+      Button(L10n.tr("Откатить последнее изменение архива"), action: model.undoLastChange)
+        .keyboardShortcut("z", modifiers: [.command, .option])
+        .disabled(!model.canUndoLastChange)
+      Divider()
+
       Button(L10n.tr("Добавить файлы и папки…"), action: model.chooseFilesToAdd)
         .keyboardShortcut("a", modifiers: [.command, .shift])
-        .disabled(!model.canModify)
+        .disabled(!model.canQueueModifications)
       Button(L10n.tr("Извлечь выбранное…"), action: model.extractSelected)
         .keyboardShortcut("e", modifiers: [.command, .shift])
-        .disabled(!model.canAct || model.selectedPaths.isEmpty)
+        .disabled(!model.canQueueOperations || model.selectedPaths.isEmpty)
       Button(L10n.tr("Удалить выбранное…"), action: model.deleteSelected)
         .keyboardShortcut(.delete, modifiers: .command)
-        .disabled(!model.canModify || model.selectedPaths.isEmpty)
+        .disabled(!model.canQueueModifications || model.selectedPaths.isEmpty)
       Divider()
       Button(L10n.tr("Открыть выбранный файл"), action: model.openSelectedExternally)
         .keyboardShortcut(.return, modifiers: .command)

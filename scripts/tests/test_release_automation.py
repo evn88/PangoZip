@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Проверяет описание, версии и границы автоматической публикации без GitHub-запросов."""
 
+import base64
 import hashlib
 import importlib.util
 import json
@@ -12,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release_metadata import render_notes, validate_version, version_from_tag
+from release_metadata import generate_update_feed, render_notes, validate_update_feed, validate_version, version_from_tag
 
 spec = importlib.util.spec_from_file_location("publisher", Path(__file__).resolve().parents[1] / "publish-release.py")
 publisher = importlib.util.module_from_spec(spec)
@@ -37,8 +38,20 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.manifest = {"tag": self.tag, "version": "0.7.0", "commit": COMMIT, "signing": "ad-hoc",
                          "assets": {self.dmg.name: self.digest,
                                     self.checksum.name: hashlib.sha256(self.checksum.read_bytes()).hexdigest()}}
+        self.signature = base64.b64encode(b"s" * 64).decode()
+        self.feed_content = (f'<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item>'
+                             f'<sparkle:version>12</sparkle:version><sparkle:shortVersionString>0.7.0</sparkle:shortVersionString>'
+                             f'<enclosure url="https://github.com/evn88/PangoZip/releases/download/{self.tag}/{self.dmg.name}" '
+                             f'length="3" sparkle:edSignature="{self.signature}"/></item></channel></rss>\n').encode()
+        self.write_feed(self.feed_content)
         self.write_manifest()
         (self.directory / "release-notes.md").write_text(render_notes(self.tag, "ad-hoc", "evn88/PangoZip", COMMIT))
+
+    def write_feed(self, content):
+        """Создаёт структуру подписанной ленты; криптографию отдельно проверяет официальный инструмент."""
+        feed = self.directory / "appcast.xml"
+        feed.write_bytes(content + f"<!-- sparkle-signatures:\nedSignature: {self.signature}\nlength: {len(content)}\n-->\n".encode())
+        self.manifest["assets"][feed.name] = hashlib.sha256(feed.read_bytes()).hexdigest()
 
     def write_manifest(self):
         """Сохраняет текущий тестовый манифест."""
@@ -121,8 +134,8 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertTrue(calls[1][2]["draft"])
         self.assertFalse(any(method == "PATCH" for _, method, _ in calls))
 
-    def test_latest_is_set_only_after_verifying_both_uploaded_assets(self):
-        """Успешный путь публикует два проверенных файла с явной отметкой Latest."""
+    def test_latest_is_set_only_after_verifying_all_uploaded_assets(self):
+        """Успешный путь публикует DMG, checksum и подписанную ленту с явной отметкой Latest."""
         calls = []
 
         def api(endpoint, method="GET", payload=None, **kwargs):
@@ -147,6 +160,40 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertFalse(publication[0]["draft"])
         self.assertFalse(publication[0]["prerelease"])
         self.assertEqual(publication[0]["make_latest"], "true")
+
+    def test_feed_rejects_missing_signature_foreign_url_length_and_version(self):
+        """Даже пересчитанный SHA не разрешает ленту для другого архива или версии."""
+        variants = [self.feed_content.replace(b"sparkle:edSignature", b"sparkle:unused"),
+                    self.feed_content.replace(b"github.com", b"example.com"),
+                    self.feed_content.replace(b'length="3"', b'length="4"'),
+                    self.feed_content.replace(b">0.7.0<", b">0.6.1<")]
+        for content in variants:
+            with self.subTest(content=content):
+                self.write_feed(content)
+                self.write_manifest()
+                with self.assertRaises(ValueError):
+                    publisher.validate_artifacts(self.directory, self.tag)
+        (self.directory / "appcast.xml").write_bytes(self.feed_content)
+        with self.assertRaises(ValueError):
+            validate_update_feed(self.directory, self.tag)
+
+    def test_feed_uses_incremented_bundle_build(self):
+        """Проверяет машинную версию отдельно от отображаемого SemVer."""
+        validate_update_feed(self.directory, self.tag, "12")
+        with self.assertRaises(ValueError):
+            validate_update_feed(self.directory, self.tag, "11")
+
+    def test_ci_refuses_missing_or_invalid_private_key_without_printing_it(self):
+        """Публикация не переключается на другой ключ и не раскрывает некорректный секрет."""
+        for secret in [None, "not-a-valid-private-secret"]:
+            environment = {"GITHUB_ACTIONS": "true"}
+            if secret:
+                environment["PANGOZIP_SPARKLE_PRIVATE_KEY"] = secret
+            with patch("release_metadata.os.environ", environment), patch("release_metadata.subprocess.run") as run:
+                with self.assertRaises(ValueError) as error:
+                    generate_update_feed(self.tag, self.directory)
+                self.assertNotIn(secret or "None", str(error.exception))
+                run.assert_not_called()
 
 
 if __name__ == "__main__":

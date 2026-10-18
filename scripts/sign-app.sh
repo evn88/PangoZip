@@ -12,6 +12,17 @@ app="$1"
 source scripts/lib/signing.sh
 configure_signing
 # Подписываем изнутри наружу; подпись контейнера не заменяет подписи вложенного кода.
+framework="$app/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$framework" ]]; then
+  for component in \
+    "$framework/Versions/B/Autoupdate" \
+    "$framework/Versions/B/Updater.app" \
+    "$framework/Versions/B/XPCServices/Downloader.xpc" \
+    "$framework/Versions/B/XPCServices/Installer.xpc" \
+    "$framework"; do
+    codesign "${signing_arguments[@]}" --preserve-metadata=entitlements "$component"
+  done
+fi
 for component in \
   "$app/Contents/Resources/Engine/7zz" \
   "$app/Contents/Helpers/PangoZipWorker.app/Contents/Resources/Engine/7zz" \

@@ -8,7 +8,7 @@ on:
       tag:
         description: 'Version to validate against current sources (dry run, no publication)'
         required: true
-        default: 'v0.6.1'
+        default: 'v0.7.0'
 
 permissions:
   contents: read
@@ -58,7 +58,6 @@ jobs:
           PANGOZIP_NOTARY_PROFILE: PangoZip-CI
         run: |
           scripts/notarize-release.sh
-          python3 scripts/release_metadata.py prepare "$RELEASE_TAG" --signing notarized
       - name: Build ad hoc DMG
         if: env.NOTARIZE != 'true'
         env:
@@ -66,7 +65,12 @@ jobs:
         run: |
           scripts/build-app.sh release
           scripts/package-dmg.sh --skip-build
-          python3 scripts/release_metadata.py prepare "$RELEASE_TAG" --signing ad-hoc
+      - name: Sign update feed and prepare release metadata
+        env:
+          PANGOZIP_SPARKLE_PRIVATE_KEY: ${{ secrets.PANGOZIP_SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ "$NOTARIZE" == true ]]; then signing_mode=notarized; else signing_mode=ad-hoc; fi
+          python3 scripts/release_metadata.py prepare "$RELEASE_TAG" --signing "$signing_mode"
       - name: Upload verified release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -74,6 +78,7 @@ jobs:
           path: |
             build/*.dmg
             build/*.dmg.sha256
+            build/appcast.xml
             build/release-notes.md
             build/release-manifest.json
           if-no-files-found: error
@@ -113,7 +118,7 @@ jobs:
         with:
           name: release-bundle
           path: release-bundle
-      - name: Publish release with both assets as Latest
+      - name: Publish release with verified assets and signed update feed as Latest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

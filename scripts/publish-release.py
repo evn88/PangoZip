@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 
-from release_metadata import version_from_tag
+from release_metadata import validate_update_feed, version_from_tag
 
 
 def api(endpoint, method="GET", payload=None, file=None, binary=False):
@@ -34,13 +34,14 @@ def validate_artifacts(directory, tag):
         raise ValueError("Invalid source commit")
     if manifest.get("signing") not in ["ad-hoc", "notarized"]:
         raise ValueError("Invalid signing mode")
-    if set(manifest.get("assets", {})) != {dmg, dmg + ".sha256"}:
+    if set(manifest.get("assets", {})) != {dmg, dmg + ".sha256", "appcast.xml"}:
         raise ValueError("Unexpected release assets")
     for name, digest in manifest["assets"].items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
             raise ValueError(f"Checksum mismatch: {name}")
     if (directory / (dmg + ".sha256")).read_text() != f"{manifest['assets'][dmg]}  {dmg}\n":
         raise ValueError("Invalid checksum file")
+    validate_update_feed(directory, tag)
     notes = (directory / "release-notes.md").read_text()
     if "## ENG\n" not in notes or "## RUS\n" not in notes:
         raise ValueError("Both English and Russian release notes are required")

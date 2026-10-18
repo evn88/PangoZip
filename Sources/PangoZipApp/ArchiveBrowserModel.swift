@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class ArchiveBrowserModel: ObservableObject {
   enum LoadState: Equatable { case idle, loading, loaded, failed }
-  private enum Operation {
+  fileprivate enum Operation {
     case open(URL)
     case preview(ArchiveEntry)
     case external(ArchiveEntry)
@@ -17,6 +17,7 @@ final class ArchiveBrowserModel: ObservableObject {
     case delete([String])
     case save
     case autosave([ArchiveEdit])
+    case undo
     case create([URL], String)
     case extract([URL])
     case export([String], URL)
@@ -26,6 +27,52 @@ final class ArchiveBrowserModel: ObservableObject {
     case open(URL, String)
     case files([URL])
     case finder(FinderRequest)
+  }
+
+  struct QueuedOperation: Identifiable {
+    let id = UUID()
+    let title: String
+    fileprivate let operation: Operation
+    fileprivate let sessionID: UUID
+  }
+  @Published private(set) var queuedOperations: [QueuedOperation] = []
+  @Published private(set) var isQueuePaused = false
+  @Published var isUpdatePending = false
+  @Published private(set) var hasUndo = false
+
+  func enqueueExtraction(paths: [String], to directory: URL) {
+    guard !paths.isEmpty else { return }
+    enqueue(
+      .export(paths, directory), title: L10n.tr("Извлечь…") + " " + paths.joined(separator: ", "))
+  }
+
+  func removeQueuedOperation(_ id: UUID) {
+    queuedOperations.removeAll { $0.id == id }
+    if queuedOperations.isEmpty {
+      isQueuePaused = false
+      drainIncomingRequests()
+    }
+  }
+
+  func clearQueuedOperations() {
+    queuedOperations.removeAll()
+    isQueuePaused = false
+    drainIncomingRequests()
+  }
+
+  func resumeQueuedOperations() {
+    guard canAct else { return }
+    isQueuePaused = false
+    failedOperation = nil
+    errorMessage = nil
+    drainIncomingRequests()
+  }
+
+  private func enqueue(_ operation: Operation, title: String) {
+    guard canQueueOperations, let session else { return }
+    queuedOperations.append(
+      QueuedOperation(title: title, operation: operation, sessionID: session.id))
+    drainIncomingRequests()
   }
 
   @Published private(set) var session: ArchiveSession?
@@ -54,6 +101,7 @@ final class ArchiveBrowserModel: ObservableObject {
   private var savedCopies: [UUID: WorkingCopySnapshot] = [:]
   private var observedCopies: [UUID: WorkingCopySnapshot] = [:]
   private var failedCopies: [UUID: WorkingCopySnapshot] = [:]
+  private var acceptsQueuedOperations = false
   private var actionTask: Task<Void, Never>?
   private var previewTask: Task<Void, Never>?
   private var retiredPreviewTasks: [Task<Void, Never>] = []
@@ -83,9 +131,18 @@ final class ArchiveBrowserModel: ObservableObject {
     return ArchiveItemDetails(entry: entry)
   }
   var canAct: Bool {
-    !isBusy && !isExporting && !isClosing && !isPasswordPromptPresented && activePanel == nil
+    !isUpdatePending && !isBusy && !isExporting && !isClosing && !isPasswordPromptPresented
+      && activePanel == nil
   }
+  var canQueueOperations: Bool {
+    !isUpdatePending && !isClosing && !isExporting && !isPasswordPromptPresented
+      && activePanel == nil && session != nil && (!isBusy || acceptsQueuedOperations)
+  }
+  var canQueueModifications: Bool { canQueueOperations && session?.canModify == true }
   var canModify: Bool { canAct && session?.canModify == true }
+  var canUndoLastChange: Bool {
+    canModify && hasUndo && activeEdits.isEmpty && queuedOperations.isEmpty
+  }
   var canOpenSelection: Bool {
     canAct && selectedEntry.map { !$0.isDirectory && !$0.isSymbolicLink } == true
   }
@@ -118,7 +175,7 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// При занятости сохраняет запрос в очереди; смена архива требует решения о рабочих копиях.
   func open(_ url: URL, password suppliedPassword: String = "") {
-    guard canAct else {
+    guard canAct, queuedOperations.isEmpty else {
       incomingRequests.append(.open(url, suppliedPassword))
       return
     }
@@ -186,13 +243,13 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Добавляет объекты только в изменяемый сеанс после подтверждения возможной замены.
   func addDroppedFiles(_ urls: [URL], directory: String = "") {
-    guard canModify, !urls.isEmpty, confirmAdding() else { return }
-    start(.add(urls, directory))
+    guard canQueueModifications, !urls.isEmpty, confirmAdding() else { return }
+    enqueue(.add(urls, directory), title: L10n.tr("Добавить файлы и папки…"))
   }
 
   /// Фиксирует выделение до показа панели и извлекает без перезаписи существующих объектов.
   func extractSelected() {
-    guard canAct, session != nil, !selectedPaths.isEmpty else { return }
+    guard canQueueOperations, !selectedPaths.isEmpty else { return }
     let paths = selectedPaths.sorted()
     let chooser = NSOpenPanel()
     chooser.canChooseDirectories = true
@@ -208,7 +265,7 @@ final class ArchiveBrowserModel: ObservableObject {
         guard let self else { return }
         self.activePanel = nil
         if response == .OK, let directory = chooser.url {
-          self.start(.export(paths, directory))
+          self.enqueueExtraction(paths: paths, to: directory)
         } else {
           self.drainIncomingRequests()
         }
@@ -317,7 +374,7 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Запоминает папку вставки до выбора файлов и повторно проверяет возможность записи.
   func chooseFilesToAdd() {
-    guard canModify else { return }
+    guard canQueueModifications else { return }
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = true
@@ -329,18 +386,18 @@ final class ArchiveBrowserModel: ObservableObject {
       Task { @MainActor in
         guard let self else { return }
         self.activePanel = nil
-        guard response == .OK, self.canModify, self.confirmAdding() else {
+        guard response == .OK, self.canQueueModifications, self.confirmAdding() else {
           self.drainIncomingRequests()
           return
         }
-        self.start(.add(panel.urls, directory))
+        self.enqueue(.add(panel.urls, directory), title: L10n.tr("Добавить файлы и папки…"))
       }
     }
   }
 
   /// Не удаляет объекты с активными рабочими копиями, включая вложенные файлы.
   func deleteSelected() {
-    guard canModify, !selectedPaths.isEmpty else { return }
+    guard canQueueModifications, !selectedPaths.isEmpty else { return }
     let alert = NSAlert()
     alert.messageText = L10n.tr("Удалить выбранные объекты из архива?")
     alert.informativeText =
@@ -359,7 +416,8 @@ final class ArchiveBrowserModel: ObservableObject {
         "Сначала сохраните рабочие копии или закройте архив, выбрав «Не сохранять».")
       return
     }
-    start(.delete(paths))
+    enqueue(
+      .delete(paths), title: L10n.tr("Удалить выбранное…") + " " + paths.joined(separator: ", "))
   }
 
   /// Открывает только один обычный файл; временная копия живёт до закрытия сеанса.
@@ -387,7 +445,7 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Два одинаковых снимка подряд дают редактору закончить запись перед транзакцией архива.
   func autosaveChangedCopies() async {
-    guard canModify else { return }
+    guard canModify, queuedOperations.isEmpty, !isQueuePaused else { return }
     var changed: [ArchiveEdit] = []
     for edit in activeEdits {
       guard let snapshot = try? WorkingCopySnapshot(edit.fileURL) else { continue }
@@ -419,6 +477,11 @@ final class ArchiveBrowserModel: ObservableObject {
   func saveWorkingCopies() {
     guard canModify, !activeEdits.isEmpty else { return }
     start(.save)
+  }
+
+  func undoLastChange() {
+    guard canUndoLastChange else { return }
+    start(.undo)
   }
 
   /// Скрытие панели отменяет материализацию, а повторный показ использует текущее выделение.
@@ -544,14 +607,18 @@ final class ArchiveBrowserModel: ObservableObject {
   private func receiveProgress(_ value: ArchiveProgress) { operationProgress = value }
 
   /// Сериализует пользовательские операции и после завершения продолжает очередь запросов.
-  private func run(_ body: @escaping @MainActor () async -> Void) {
+  private func run(
+    acceptingQueuedOperations: Bool = false, _ body: @escaping @MainActor () async -> Void
+  ) {
     guard !isBusy, !isClosing else { return }
+    acceptsQueuedOperations = acceptingQueuedOperations
     isBusy = true
     operationProgress = nil
     actionTask = Task { [weak self] in
       await body()
       self?.operationProgress = nil
       self?.isBusy = false
+      self?.acceptsQueuedOperations = false
       self?.actionTask = nil
       if self?.errorMessage == nil { self?.selectionChanged() }
       self?.drainIncomingRequests()
@@ -560,7 +627,15 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Извлекает один запрос за раз; запущенное действие само продолжит обработку очереди.
   private func drainIncomingRequests() {
-    guard canAct, !incomingRequests.isEmpty else { return }
+    guard canAct else { return }
+    while !queuedOperations.isEmpty {
+      guard !isQueuePaused else { return }
+      let next = queuedOperations.removeFirst()
+      guard next.sessionID == session?.id else { continue }
+      run(acceptingQueuedOperations: true) { await self.perform(next.operation) }
+      return
+    }
+    guard !incomingRequests.isEmpty else { return }
     let request = incomingRequests.removeFirst()
     switch request {
     case .open(let url, let suppliedPassword): open(url, password: suppliedPassword)
@@ -572,7 +647,7 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Запускает операцию только когда панель, пароль и экспорт не удерживают сеанс.
   private func start(_ operation: Operation) {
     guard canAct else { return }
-    run { await self.perform(operation) }
+    run(acceptingQueuedOperations: true) { await self.perform(operation) }
   }
 
   /// Сохраняет остаток пакетной операции для повтора после запроса пароля.
@@ -633,19 +708,10 @@ final class ArchiveBrowserModel: ObservableObject {
       case .export(let paths, let directory):
         guard let session else { throw ArchiveError.sessionExpired }
         await settlePreviews()
-        let roots = try ArchiveSelection.topLevelPaths(paths, entries: session.entries)
-        var results: [URL] = []
-        defer { if !results.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(results) } }
-        for (index, path) in roots.enumerated() {
-          retryOperation = .export(Array(roots[index...]), directory)
-          operationMessage = L10n.tr("Извлекаем: %1$@", String(describing: path))
-          let destination = directory.appendingPathComponent(
-            String(path.split(separator: "/").last!))
-          results.append(
-            try await service.exportItem(
-              path, from: session, to: destination, password: password, chooseUniqueName: true,
-              progress: progressHandler))
-        }
+        operationMessage = L10n.tr("Извлечение…")
+        let results = try await service.exportSelection(
+          paths, from: session, to: directory, password: password, progress: progressHandler)
+        NSWorkspace.shared.activateFileViewerSelecting(results)
         operationMessage = L10n.tr("Извлечено объектов: %1$@", String(describing: results.count))
       case .preview:
         return
@@ -673,6 +739,17 @@ final class ArchiveBrowserModel: ObservableObject {
         try await persistWorkingCopies(activeEdits, retainingWorkingCopies: false)
       case .autosave(let edits):
         try await persistWorkingCopies(edits, retainingWorkingCopies: true)
+      case .undo:
+        guard let session else { throw ArchiveError.sessionExpired }
+        await settlePreviews()
+        operationMessage = L10n.tr("Откат последнего изменения…")
+        await apply(try await service.undoLastChange(in: session, password: password))
+        operationMessage = L10n.tr("Последнее изменение отменено")
+      }
+      if let session {
+        hasUndo = (try? await service.canUndo(session)) ?? false
+      } else {
+        hasUndo = false
       }
       failedOperation = nil
     } catch is CancellationError {
@@ -691,6 +768,7 @@ final class ArchiveBrowserModel: ObservableObject {
       failedOperation = retryOperation
       operationMessage = nil
       errorMessage = error.localizedDescription
+      if !queuedOperations.isEmpty { isQueuePaused = true }
       if session == nil { loadState = .failed }
     }
   }
@@ -727,6 +805,8 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Удаляет устаревшие пути выделения после изменения содержимого архива.
   func apply(_ refreshed: ArchiveSession) async {
     await replaceSession(refreshed)
+    let available = (try? await service.canUndo(refreshed)) ?? false
+    if session?.id == refreshed.id { hasUndo = available }
     let validPaths = Set(refreshed.entries.map(\.path)).union(allPaths(refreshed.roots))
     selectedPaths.formIntersection(validPaths)
     selectionChanged()
@@ -746,6 +826,7 @@ final class ArchiveBrowserModel: ObservableObject {
     folderCalculation = nil
     folderPublication = nil
     session = refreshed
+    if refreshed == nil { hasUndo = false }
     itemDetailsByPath = [:]
     itemDetailsRevision &+= 1
     areFolderDetailsLoading = refreshed != nil
@@ -897,6 +978,7 @@ final class ArchiveBrowserModel: ObservableObject {
   private func shutdown(terminate: Bool) async -> Bool {
     guard !isClosing else { return false }
     isClosing = true
+    clearQueuedOperations()
     var didClose = false
     defer {
       isClosing = false
