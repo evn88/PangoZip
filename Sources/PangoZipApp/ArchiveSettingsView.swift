@@ -31,6 +31,7 @@ enum ArchivePreferences {
 
 struct ArchiveSettingsView: View {
   @ObservedObject var integration: FinderIntegrationModel
+  var updater: ApplicationUpdater? = nil
   @AppStorage("compressionFormat") private var format = "zip"
   @AppStorage("compressionLevel") private var level = 5
   @AppStorage("compressionSolid") private var solid = true
@@ -38,6 +39,11 @@ struct ArchiveSettingsView: View {
 
   var body: some View {
     TabView {
+      if let updater {
+        ApplicationUpdatesView(updater: updater)
+          .tabItem { Label(L10n.tr("Обновления"), systemImage: "arrow.down.circle") }
+      }
+
       compressionSettings
         .tabItem { Label(L10n.tr("Архивация"), systemImage: "archivebox") }
       ArchiveAssociationsView()

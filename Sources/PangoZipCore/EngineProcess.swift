@@ -8,7 +8,8 @@ struct EngineProcess: Sendable {
   /// Передаёт прогресс асинхронно; отмена дожидается завершения процесса перед возвратом ошибки.
   func run(
     arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL? = nil,
-    progress: (@Sendable (Double) async -> Void)? = nil
+    progress: (@Sendable (Double) async -> Void)? = nil,
+    validateOutput: (@Sendable () throws -> Void)? = nil
   ) async throws {
     let (updates, continuation) = AsyncStream<Double>.makeStream(
       bufferingPolicy: .bufferingNewest(8))
@@ -22,7 +23,7 @@ struct EngineProcess: Sendable {
       defer { continuation.finish() }
       try self.runBlocking(
         arguments: arguments, outputURL: outputURL, limit: limit,
-        workingDirectory: workingDirectory, progress: relay)
+        workingDirectory: workingDirectory, progress: relay, validateOutput: validateOutput)
     }
     try await withTaskCancellationHandler {
       for await value in updates {
@@ -39,7 +40,7 @@ struct EngineProcess: Sendable {
   /// Запускает движок без оболочки и ограничивает время, stdout и stderr на одном потоке.
   private func runBlocking(
     arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL?,
-    progress: (@Sendable (Double) -> Void)?
+    progress: (@Sendable (Double) -> Void)?, validateOutput: (@Sendable () throws -> Void)?
   ) throws {
     try Task.checkCancellation()
     let manager = FileManager.default
@@ -72,12 +73,17 @@ struct EngineProcess: Sendable {
     process.environment = environment
     try process.run()
     let deadline = Date().addingTimeInterval(timeout)
+    var lastValidation = Date.distantPast
     do {
       while process.isRunning {
         try Task.checkCancellation()
         guard Date() < deadline else { throw ArchiveError.timedOut }
         guard try fileSize(outputURL) <= limit, try fileSize(errorsURL) <= 1_048_576 else {
           throw ArchiveError.outputLimit
+        }
+        if Date().timeIntervalSince(lastValidation) >= 0.1 {
+          try validateOutput?()
+          lastValidation = Date()
         }
         if let progress {
           let data = try progressReader.read(upToCount: 65_536) ?? Data()
@@ -92,6 +98,7 @@ struct EngineProcess: Sendable {
         }
       }
       try Task.checkCancellation()
+      try validateOutput?()
       guard try fileSize(outputURL) <= limit, try fileSize(errorsURL) <= 1_048_576 else {
         throw ArchiveError.outputLimit
       }

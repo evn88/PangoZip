@@ -1,4 +1,5 @@
 import AppKit
+import PangoZipCore
 import SwiftUI
 
 @main
@@ -7,6 +8,7 @@ struct PangoZipApp: App {
   private let isFinderWorker = ApplicationMode.isFinderWorker
   @StateObject private var worker = FinderOperationModel()
   @StateObject private var model = ArchiveBrowserModel()
+  @State private var updater = ApplicationUpdater()
   @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
 
   /// Переносит прежние настройки до создания интерфейса и запуска операций Finder.
@@ -28,23 +30,57 @@ struct PangoZipApp: App {
       } else {
         ArchiveBrowserView(model: model, integration: appDelegate.finderIntegration)
           .frame(minWidth: 1100, minHeight: 620)
-          .background(WindowLifecycleBridge(prepareClose: { await model.requestTermination() }))
+          .background(WindowLifecycleBridge(prepareClose: prepareForClosing))
           .onAppear {
-            appDelegate.prepareTermination = { await model.requestTermination() }
+            appDelegate.prepareTermination = prepareForClosing
+            updater.start(
+              isBusy: { !model.canAct || !model.queuedOperations.isEmpty },
+              prepareForInstallation: {
+                model.isUpdatePending = true
+                let ready = await prepareForClosing()
+                if !ready { model.isUpdatePending = false }
+                return ready
+              })
             appDelegate.services.configure(
               openArchive: { model.open($0) }, addFiles: model.receiveFinderFiles,
               finderRequest: model.receiveFinderRequest)
             DispatchQueue.main.async { Self.adjustCloseShortcut(NSApp.mainMenu) }
+          }
+          .onChange(of: updater.isInstalling) { _, installing in
+            if !installing { model.isUpdatePending = false }
           }
       }
     }
     .defaultSize(width: isFinderWorker ? 560 : 1480, height: isFinderWorker ? 330 : 820)
     .windowResizability(isFinderWorker ? .contentSize : .contentMinSize)
     .restorationBehavior(isFinderWorker ? .disabled : .automatic)
-    .commands { ArchiveCommands(model: model) }
-    Settings {
-      if !isFinderWorker { ArchiveSettingsView(integration: appDelegate.finderIntegration) }
+    .commands {
+      ArchiveCommands(model: model)
+      CommandGroup(after: .appInfo) {
+        if !isFinderWorker {
+          Button(L10n.tr("Проверить обновления…"), action: updater.checkForUpdates)
+            .disabled(!updater.canCheckForUpdates || updater.isInstalling)
+        }
+      }
     }
+    Settings {
+      if !isFinderWorker {
+        ArchiveSettingsView(integration: appDelegate.finderIntegration, updater: updater)
+      }
+    }
+  }
+
+  private func prepareForClosing() async -> Bool {
+    if updater.isUpdatePending && ApplicationUpdater.hasBlockingProcesses {
+      let alert = NSAlert()
+      alert.messageText = L10n.tr("Обновление ожидает завершения работы")
+      alert.informativeText = L10n.tr(
+        "Дождитесь завершения фоновых операций с архивами и повторите выход.")
+      alert.addButton(withTitle: L10n.tr("OK"))
+      alert.runModal()
+      return false
+    }
+    return await model.requestTermination()
   }
 
   /// Освобождает ⌘W для закрытия архива, оставляя закрытие окна на ⌘⇧W.

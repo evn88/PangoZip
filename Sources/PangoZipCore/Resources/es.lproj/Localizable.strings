@@ -266,3 +266,22 @@
 "ID пользователя" = "ID de usuario";
 "ID группы" = "ID de grupo";
 "Другие метаданные" = "Otros metadatos";
+
+"Очередь операций" = "Cola de operaciones";
+"Нет ожидающих операций" = "No hay operaciones pendientes";
+"Убрать из очереди" = "Eliminar de la cola";
+"Очистить очередь" = "Vaciar cola";
+"Продолжить очередь" = "Reanudar cola";
+"Откатить последнее изменение архива" = "Deshacer el último cambio del archivo";
+"Сначала завершите редактирование командой «Сохранить в архив»." = "Termina de editar primero con «Guardar en el archivo».";
+"Откат последнего изменения…" = "Deshaciendo el último cambio…";
+"Последнее изменение отменено" = "Se deshizo el último cambio";
+"Обновления" = "Actualizaciones";
+"Автоматически проверять обновления" = "Buscar actualizaciones automáticamente";
+"Проверить обновления…" = "Buscar actualizaciones…";
+"Новые версии загружаются из GitHub Releases. Перед установкой PangoZip проверяет цифровую подпись и предлагает перезапуск." = "Las nuevas versiones se descargan desde GitHub Releases. Antes de instalar, PangoZip verifica la firma digital y solicita reiniciar.";
+"Установка обновления…" = "Instalando actualización…";
+"Обновление ожидает завершения операций Finder" = "Actualización en espera de operaciones de Finder";
+"Дождитесь завершения фоновых операций с архивами и повторите выход." = "Espera a que terminen las operaciones en segundo plano con los archivos y vuelve a intentar salir.";
+"Обновление ожидает завершения работы" = "La actualización está esperando";
+"Перед обновлением завершите операции Finder и закройте другие окна PangoZip." = "Antes de actualizar, termine las operaciones del Finder y cierre las otras ventanas de PangoZip.";

@@ -107,6 +107,20 @@ printf 'NEW DMG' > "$PANGOZIP_DMG_DIRECTORY/PangoZip-0.6.0-arm64.dmg"
         self.assertTrue(entitlements[0][-1].endswith(".appex"))
         self.assertTrue(entitlements[1][-1].endswith("PangoZipPreview.appex"))
 
+    def test_sparkle_nested_helpers_are_signed_before_worker_and_container(self):
+        """Подпись Sparkle сохраняет sandbox entitlements XPC и идёт изнутри наружу."""
+        framework = self.app / "Contents/Frameworks/Sparkle.framework"
+        framework.mkdir(parents=True)
+        result = self.run_script("sign-app.sh", str(self.app))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        signatures = [args for args in self.commands() if args[:2] == ["codesign", "--force"]]
+        self.assertEqual(len(signatures), 12)
+        self.assertTrue(signatures[0][-1].endswith("/Autoupdate"))
+        self.assertEqual(signatures[4][-1], str(framework))
+        self.assertEqual(signatures[-1][-1], str(self.app))
+        for args in signatures[:5]:
+            self.assertIn("--preserve-metadata=entitlements", args)
+
     def test_ad_hoc_signing_does_not_request_timestamp_or_service(self):
         """Локальная подпись не требует сети и Developer ID."""
         result = self.run_script("sign-app.sh", str(self.app), PANGOZIP_SIGNING_IDENTITY="-")

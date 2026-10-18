@@ -27,7 +27,10 @@ final class LocalizationTests: XCTestCase {
     let languages = [
       "en", "ru", "sr-Latn", "de", "fr", "es", "it", "pt", "pl", "uk", "tr", "zh-Hans", "ja", "ko",
     ]
-    XCTAssertEqual(Set(L10n.bundle.localizations), Set(languages))
+    // SwiftPM может приводить BCP-47 к нижнему регистру при упаковке ресурсов.
+    XCTAssertEqual(
+      Set(L10n.bundle.localizations.map { $0.lowercased() }), Set(languages.map { $0.lowercased() })
+    )
     let english = try catalog("en")
     XCTAssertGreaterThan(english.count, 200)
     let expression = try NSRegularExpression(pattern: #"%\d+\$@"#)

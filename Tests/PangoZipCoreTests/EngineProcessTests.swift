@@ -98,6 +98,27 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(values, [0.35])
   }
 
+  /// Превышение размера на диске останавливает batch до выхода процесса и публикации данных.
+  func testExtractionManifestStopsOversizedDiskOutputWhileEngineIsRunning() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let contents = directory.appendingPathComponent("contents")
+    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: false)
+    let script = try makeScript(
+      "printf 'too long' > contents/file; exec /bin/sleep 10", in: directory)
+    let manifest = try ArchiveExtractionManifest(
+      entries: [ArchiveEntry(path: "file", size: 1)], maximumBytes: 1)
+    let started = Date()
+    do {
+      try await EngineProcess(executableURL: script, timeout: 15).run(
+        arguments: [], outputURL: directory.appendingPathComponent("out"), limit: 100,
+        workingDirectory: directory,
+        validateOutput: { try manifest.validate(contents, complete: false) })
+      XCTFail("Expected disk output limit")
+    } catch { XCTAssertEqual(error as? ArchiveError, .outputLimit) }
+    XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+  }
+
   /// Выделяет временный каталог для изолированного процесса движка.
   private func makeDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

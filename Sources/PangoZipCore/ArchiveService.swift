@@ -1,9 +1,12 @@
+import Darwin
 import Foundation
 
 public actor ArchiveService {
   private struct Descriptor: Sendable {
     let format: String
     let canModify: Bool
+    let isMultipart: Bool
+    let volumeCount: Int
     let entries: [ArchiveEntry]
   }
 
@@ -22,14 +25,23 @@ public actor ArchiveService {
     }
   }
 
+  private struct UndoState: Sendable {
+    let url: URL
+    let fingerprint: FileFingerprint
+    let digest: Data
+    let descriptor: Descriptor
+  }
+
   private struct SessionState: Sendable {
     let url: URL
     var fingerprint: FileFingerprint
+    var digest: Data?
     var descriptor: Descriptor
     let encryption: EncryptionPolicy
     var entries: [String: ArchiveEntry]
     var cache: [String: URL] = [:]
     var edits: [UUID: ArchiveEdit] = [:]
+    var undo: UndoState?
   }
 
   private enum Mutation: Sendable {
@@ -85,7 +97,7 @@ public actor ArchiveService {
   public func materialize(_ entry: ArchiveEntry, in session: ArchiveSession, password: String = "")
     async throws -> URL
   {
-    let state = try checkedState(session)
+    let state = try await checkedState(session)
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
     guard state.entries[entry.path] == entry else { throw ArchiveError.sessionExpired }
     guard !entry.isDirectory, !entry.isSymbolicLink else { throw ArchiveError.unsupportedEntry }
@@ -108,8 +120,8 @@ public actor ArchiveService {
         ],
         outputURL: output, limit: previewLimit)
       try Task.checkCancellation()
-      let latest = try checkedState(session)
-      guard latest.fingerprint == state.fingerprint else { throw ArchiveError.archiveChanged }
+      let latest = try await checkedState(session)
+      guard latest.digest == state.digest else { throw ArchiveError.archiveChanged }
       let attributes = try FileManager.default.attributesOfItem(atPath: output.path)
       guard (attributes[.size] as? NSNumber)?.uint64Value == entry.size else {
         throw ArchiveError.extractionMismatch
@@ -127,7 +139,7 @@ public actor ArchiveService {
   public func beginEditing(_ entry: ArchiveEntry, in session: ArchiveSession, password: String = "")
     async throws -> ArchiveEdit
   {
-    let state = try checkedState(session)
+    let state = try await checkedState(session)
     guard state.descriptor.canModify else { throw ArchiveError.readOnlyArchive }
     if let existing = state.edits.values.first(where: { $0.entry.path == entry.path }) {
       return existing
@@ -139,7 +151,7 @@ public actor ArchiveService {
       String(entry.path.split(separator: "/").last!))
     do {
       try await StagedFiles.copy(source, to: destination)
-      let latest = try checkedState(session)
+      let latest = try await checkedState(session)
       // mutate сохраняет снимок состояния; новую правку нельзя регистрировать до его завершения.
       guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
       guard latest.entries[entry.path] == entry else { throw ArchiveError.archiveChanged }
@@ -182,6 +194,49 @@ public actor ArchiveService {
       retainingWorkingCopies: retainingWorkingCopies)
   }
 
+  /// История доступна один раз, когда внешние редакторы больше не могут сохранить старую копию.
+  public func canUndo(_ session: ArchiveSession) async throws -> Bool {
+    let state = try await checkedState(session)
+    return state.undo != nil && state.edits.isEmpty && !busy.contains(session.id)
+  }
+
+  /// Восстанавливает последний снимок только поверх неизменившегося архива и проверяет целостность.
+  public func undoLastChange(in session: ArchiveSession, password: String = "") async throws
+    -> ArchiveSession
+  {
+    let state = try await checkedState(session)
+    guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
+    guard state.edits.isEmpty else { throw ArchiveError.activeEdits }
+    guard let undo = state.undo else { throw ArchiveError.invalidOperation }
+    _ = try await ArchiveContentDigest.validate(
+      undo.url, fingerprint: undo.fingerprint, digest: undo.digest)
+    busy.insert(session.id)
+    defer { busy.remove(session.id) }
+    let transaction = try workspace.transactionDirectory(nextTo: state.url)
+    defer { try? workspace.removeTransaction(transaction) }
+    let working = transaction.appendingPathComponent("restore." + undo.descriptor.format)
+    try await Self.copyArchive(undo.url, to: working)
+    try await verify(working, passwordArguments: ["-p" + password], in: transaction)
+    let descriptor = try await readArchive(working, password: password, in: transaction)
+    guard descriptor.entries == undo.descriptor.entries else {
+      throw ArchiveError.extractionMismatch
+    }
+    try Task.checkCancellation()
+    let validated = try await checkedState(session)
+    try replaceOriginal(validated, with: working)
+    var updated = state
+    updated.fingerprint = try FileFingerprint(state.url)
+    updated.digest = undo.digest
+    updated.descriptor = undo.descriptor
+    updated.entries = Dictionary(
+      uniqueKeysWithValues: undo.descriptor.entries.map { ($0.path, $0) })
+    updated.cache.removeAll()
+    updated.undo = nil
+    sessions[session.id] = updated
+    try? FileManager.default.removeItem(at: undo.url)
+    return try snapshot(id: session.id, state: updated)
+  }
+
   /// Удаляет данные сеанса, если для него не зарегистрирована блокирующая операция.
   public func close(_ session: ArchiveSession) throws {
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
@@ -203,7 +258,7 @@ public actor ArchiveService {
   ) async throws
     -> ArchiveSession
   {
-    let state = try checkedState(session)
+    let state = try await checkedState(session)
     guard state.descriptor.canModify else { throw ArchiveError.readOnlyArchive }
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
     let encrypted = state.encryption.enabled
@@ -218,10 +273,9 @@ public actor ArchiveService {
     try manager.createDirectory(
       at: inputs, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     // Копия архива сохраняет системные атрибуты; оригинал до commit не изменяется.
-    let copyTask = Task.detached { try FileManager.default.copyItem(at: state.url, to: working) }
-    try await copyTask.value
+    try await Self.copyArchive(state.url, to: working)
     try Task.checkCancellation()
-    _ = try checkedState(session)
+    _ = try await checkedState(session)
     let passwordArguments =
       (encrypted || (state.descriptor.format == "7z" && !password.isEmpty)) ? ["-p" + password] : []
     if encrypted {
@@ -327,13 +381,47 @@ public actor ArchiveService {
         else { throw ArchiveError.extractionMismatch }
       }
     }
-    for edit in savedEdits {
-      guard try editFingerprints[edit.id] == FileFingerprint(edit.fileURL) else {
-        throw ArchiveError.editedFileChanged
-      }
-    }
     try Task.checkCancellation()
-    _ = try checkedState(session)
+    _ = try await checkedState(session)
+    let undoURL = try workspace.sessionDirectory(session.id).appendingPathComponent(
+      "undo-" + UUID().uuidString + "." + state.descriptor.format)
+    var retainedUndo = false
+    defer { if !retainedUndo { try? manager.removeItem(at: undoURL) } }
+    try await Self.copyArchive(state.url, to: undoURL)
+    let undoDigest: Data
+    if let digest = state.digest {
+      undoDigest = digest
+    } else {
+      undoDigest = try await ArchiveContentDigest.hash(undoURL)
+    }
+    let undo = UndoState(
+      url: undoURL, fingerprint: try FileFingerprint(undoURL), digest: undoDigest,
+      descriptor: state.descriptor)
+    let digest = try await ArchiveContentDigest.hash(working)
+    try Task.checkCancellation()
+    let validated = try await checkedState(session)
+    try replaceOriginal(validated, with: working, editFingerprints: editFingerprints)
+    var updated = state
+    updated.fingerprint = try FileFingerprint(state.url)
+    updated.digest = digest
+    updated.descriptor = descriptor
+    updated.entries = newEntries
+    updated.cache.removeAll()
+    updated.undo = undo
+    for edit in savedEdits where !retainingWorkingCopies {
+      try? manager.removeItem(at: edit.fileURL.deletingLastPathComponent())
+      updated.edits.removeValue(forKey: edit.id)
+    }
+    sessions[session.id] = updated
+    retainedUndo = true
+    if let previous = state.undo { try? manager.removeItem(at: previous.url) }
+    return try snapshot(id: session.id, state: updated)
+  }
+
+  /// Согласованная замена сравнивает fingerprint непосредственно перед атомарной публикацией.
+  private func replaceOriginal(
+    _ state: SessionState, with working: URL, editFingerprints: [UUID: FileFingerprint] = [:]
+  ) throws {
     var coordinationError: NSError?
     var replacementError: Error?
     NSFileCoordinator().coordinate(
@@ -343,22 +431,55 @@ public actor ArchiveService {
         guard try state.fingerprint == FileFingerprint(url) else {
           throw ArchiveError.archiveChanged
         }
+        for (id, fingerprint) in editFingerprints {
+          guard let edit = state.edits[id], try fingerprint == FileFingerprint(edit.fileURL) else {
+            throw ArchiveError.editedFileChanged
+          }
+        }
         _ = try FileManager.default.replaceItemAt(url, withItemAt: working)
       } catch { replacementError = error }
     }
     if let coordinationError { throw coordinationError }
     if let replacementError { throw replacementError }
-    var updated = state
-    updated.fingerprint = try FileFingerprint(state.url)
-    updated.descriptor = descriptor
-    updated.entries = newEntries
-    updated.cache.removeAll()
-    for edit in savedEdits where !retainingWorkingCopies {
-      try? manager.removeItem(at: edit.fileURL.deletingLastPathComponent())
-      updated.edits.removeValue(forKey: edit.id)
+  }
+
+  /// Независимые данные исключают касание ctime оригинала при удалении APFS-клона снимка.
+  private static func copyArchive(_ source: URL, to destination: URL) async throws {
+    let task = Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
+      let before = try FileFingerprint(source)
+      guard before.type == .typeRegular else { throw ArchiveError.invalidArchive }
+      try FileManager.default.createDirectory(
+        at: destination.deletingLastPathComponent(), withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700])
+      let inputFD = Darwin.open(source.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+      guard inputFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+      defer { Darwin.close(inputFD) }
+      let outputFD = Darwin.open(
+        destination.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+      guard outputFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+      defer { Darwin.close(outputFD) }
+      let input = FileHandle(fileDescriptor: inputFD, closeOnDealloc: false)
+      let output = FileHandle(fileDescriptor: outputFD, closeOnDealloc: false)
+      while let data = try input.read(upToCount: 256 * 1024), !data.isEmpty {
+        try Task.checkCancellation()
+        try output.write(contentsOf: data)
+      }
+      // COPYFILE_METADATA сохраняет quarantine, остальные xattr и ACL, не клонируя данные.
+      guard fcopyfile(inputFD, outputFD, nil, copyfile_flags_t(COPYFILE_METADATA)) == 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+      }
+      try Task.checkCancellation()
+      guard try before == FileFingerprint(source),
+        try FileFingerprint(destination).type == .typeRegular
+      else { throw ArchiveError.archiveChanged }
     }
-    sessions[session.id] = updated
-    return try snapshot(id: session.id, state: updated)
+    try await withTaskCancellationHandler {
+      try await task.value
+      try Task.checkCancellation()
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   /// Проверяет целостность движком и удаляет временный журнал независимо от результата.
@@ -401,6 +522,9 @@ public actor ArchiveService {
     _ = try ArchiveListing.tree(from: entries)
     return Descriptor(
       format: format, canModify: ["zip", "7z", "tar"].contains(format) && !multipart && !stub,
+      isMultipart: multipart,
+      volumeCount: lines.first(where: { $0.hasPrefix("Volumes = ") })
+        .flatMap { Int($0.dropFirst(10)) } ?? 1,
       entries: entries)
   }
 
@@ -413,14 +537,22 @@ public actor ArchiveService {
   }
 
   /// Подтверждает принадлежность сеанса и неизменность исходного файла перед продолжением операции.
-  private func checkedState(_ session: ArchiveSession) throws -> SessionState {
+  private func checkedState(_ session: ArchiveSession) async throws -> SessionState {
     guard let state = sessions[session.id], state.url == session.url else {
       throw ArchiveError.sessionExpired
     }
-    guard try state.fingerprint == FileFingerprint(state.url) else {
-      throw ArchiveError.archiveChanged
+    let validated = try await ArchiveContentDigest.validate(
+      state.url, fingerprint: state.fingerprint, digest: state.digest)
+    guard var latest = sessions[session.id], latest.url == session.url else {
+      throw ArchiveError.sessionExpired
     }
-    return state
+    guard latest.digest == state.digest,
+      latest.fingerprint == state.fingerprint || latest.fingerprint == validated,
+      try validated == FileFingerprint(state.url)
+    else { throw ArchiveError.archiveChanged }
+    latest.fingerprint = validated
+    sessions[session.id] = latest
+    return latest
   }
 
   /// Проверяет доступность движка перед каждым запуском, сохраняя заданный предел времени.
@@ -556,7 +688,7 @@ extension ArchiveService {
       sessions.removeValue(forKey: session.id)
       try? workspace.removeSession(session.id)
     }
-    let state = try checkedState(session)
+    let state = try await checkedState(session)
     let parent = directory ?? url.deletingLastPathComponent()
     guard parent.isFileURL else { throw ArchiveError.invalidOperation }
     let destination = parent.appendingPathComponent(FinderSelection.extractionName(for: url))
@@ -591,21 +723,7 @@ extension ArchiveService {
       descriptor = try await readArchive(source, password: password, in: transaction)
       guard descriptor.format == "tar" else { throw ArchiveError.invalidArchive }
     }
-    var total: UInt64 = 0
-    var normalized: [String: String] = [:]
-    for entry in descriptor.entries {
-      guard !entry.isSymbolicLink else { throw ArchiveError.unsupportedExtraction }
-      let sum = total.addingReportingOverflow(entry.size)
-      guard !sum.overflow, sum.partialValue <= maximumBytes else { throw ArchiveError.outputLimit }
-      total = sum.partialValue
-      let parts = entry.path.split(separator: "/")
-      for index in 1...parts.count {
-        let path = parts.prefix(index).joined(separator: "/")
-        let key = path.precomposedStringWithCanonicalMapping.lowercased()
-        if let existing = normalized[key], existing != path { throw ArchiveError.duplicatePath }
-        normalized[key] = path
-      }
-    }
+    _ = try ArchiveExtractionManifest(entries: descriptor.entries, maximumBytes: maximumBytes)
     let workload = try ArchiveWorkload(entries: descriptor.entries)
     let extractionStart = verificationStart + 0.1
     let verificationBase = verificationStart
@@ -617,58 +735,14 @@ extension ArchiveService {
       progress: reporter.engine(
         phase: .verifying, from: verificationBase, to: extractionStart,
         totalBytes: workload.bytes, totalFiles: workload.files, outputURL: url))
-    var completedWeight = 0.0
-    var completedBytes: UInt64 = 0
-    var completedFiles = 0
-    let totalWeight = descriptor.entries.filter { !$0.isDirectory }.reduce(0.0) {
-      $0 + max(1, Double($1.size))
-    }
-    await reporter.report(
-      phase: .extracting, fraction: extractionStart, processedBytes: 0,
-      totalBytes: workload.bytes, completedFiles: 0, totalFiles: workload.files, outputURL: url)
-    for entry in descriptor.entries {
-      try Task.checkCancellation()
-      let target = output.appendingPathComponent(entry.path)
-      try FileManager.default.createDirectory(
-        at: entry.isDirectory ? target : target.deletingLastPathComponent(),
-        withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-      if !entry.isDirectory {
-        let weight = max(1, Double(entry.size))
-        let start = completedWeight
-        await reporter.report(
-          phase: .extracting,
-          fraction: extractionStart + start / totalWeight * (0.99 - extractionStart),
-          processedBytes: completedBytes, totalBytes: workload.bytes,
-          completedFiles: completedFiles, totalFiles: workload.files, currentFile: entry.path)
-        try await extractFile(
-          entry, from: source, to: target, password: password,
-          progress: reporter.engine(
-            phase: .extracting,
-            from: extractionStart + start / totalWeight * (0.99 - extractionStart),
-            to: extractionStart + (start + weight) / totalWeight * (0.99 - extractionStart),
-            totalBytes: workload.bytes, baseBytes: completedBytes, itemBytes: entry.size,
-            completedFiles: completedFiles, totalFiles: workload.files, currentFile: entry.path))
-        completedWeight += weight
-        completedBytes += entry.size
-        completedFiles += 1
-        try Quarantine.copy(from: url, to: target)
-      }
-    }
+    try await extractEntries(
+      descriptor.entries, from: source, archiveDescriptor: descriptor, to: output,
+      in: transaction, password: password, quarantineSource: url, maximumBytes: maximumBytes,
+      reporter: reporter, start: extractionStart)
     await reporter.report(
       phase: .finalizing, fraction: 0.99, processedBytes: workload.bytes,
       totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
-    // Атрибуты папок устанавливаются после записи дочерних файлов.
-    for entry in descriptor.entries.sorted(by: { $0.path.count > $1.path.count }) {
-      var attributes: [FileAttributeKey: Any] = [:]
-      if let modified = entry.modifiedAt { attributes[.modificationDate] = modified }
-      if let created = entry.createdAt { attributes[.creationDate] = created }
-      if let mode = entry.permissions, let permissions = Self.permissions(from: mode) {
-        attributes[.posixPermissions] = permissions
-      }
-      try FileManager.default.setAttributes(
-        attributes, ofItemAtPath: output.appendingPathComponent(entry.path).path)
-    }
-    _ = try checkedState(session)
+    _ = try await checkedState(session)
     try Task.checkCancellation()
     if createsSubfolder {
       let result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: true)
@@ -699,7 +773,7 @@ extension ArchiveService {
     }
     let directory = try workspace.sessionDirectory(session.id)
     try await verify(url, passwordArguments: ["-p" + password], in: directory)
-    _ = try checkedState(session)
+    _ = try await checkedState(session)
   }
 
   /// Извлекает ровно одну запись через stdout и требует совпадения фактического и заявленного размера.
@@ -721,18 +795,52 @@ extension ArchiveService {
 }
 
 extension ArchiveService {
-  /// Исключает вложенные выбранные пути и последовательно экспортирует корни под свободными именами.
+  /// Извлекает всю выборку одним запуском и публикует только проверенные корни.
   public func exportSelection(
-    _ paths: [String], from session: ArchiveSession, to directory: URL, password: String = ""
+    _ paths: [String], from session: ArchiveSession, to directory: URL, password: String = "",
+    maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
+    progress: ArchiveProgressHandler? = nil
   ) async throws -> [URL] {
-    let roots = try ArchiveSelection.topLevelPaths(paths, entries: session.entries)
+    let reporter = ArchiveProgressReporter(progress)
+    await reporter.report(phase: .preparing)
+    let state = try await checkedState(session)
+    guard directory.isFileURL else { throw ArchiveError.invalidOperation }
+    guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
+    let roots = try ArchiveSelection.topLevelPaths(paths, entries: state.descriptor.entries)
+    let entries = state.descriptor.entries.filter { entry in
+      roots.contains { entry.path == $0 || entry.path.hasPrefix($0 + "/") }
+    }
+    _ = try ArchiveExtractionManifest(entries: entries, maximumBytes: maximumBytes)
+    busy.insert(session.id)
+    defer { busy.remove(session.id) }
+    let transaction = try workspace.transactionDirectory(
+      nextTo: directory.appendingPathComponent("selection"))
+    defer { try? workspace.removeTransaction(transaction) }
+    let output = transaction.appendingPathComponent("contents")
+    try await extractEntries(
+      entries, from: state.url, archiveDescriptor: state.descriptor, to: output,
+      in: transaction, password: password, quarantineSource: state.url,
+      maximumBytes: maximumBytes, reporter: reporter, start: 0)
+    let workload = try ArchiveWorkload(entries: entries)
+    await reporter.report(
+      phase: .finalizing, fraction: 0.99, processedBytes: workload.bytes,
+      totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
+    try Task.checkCancellation()
+    _ = try await checkedState(session)
     var results: [URL] = []
     for path in roots {
       let proposed = directory.appendingPathComponent(String(path.split(separator: "/").last!))
+      guard proposed.standardizedFileURL != state.url.standardizedFileURL else {
+        throw ArchiveError.invalidOperation
+      }
       results.append(
-        try await exportItem(
-          path, from: session, to: proposed, password: password, chooseUniqueName: true))
+        try ArchiveOutput.publish(
+          output.appendingPathComponent(path), proposed: proposed,
+          isDirectory: state.entries[path]?.isDirectory != false))
     }
+    await reporter.report(
+      phase: .finalizing, fraction: 1, processedBytes: workload.bytes,
+      totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     return results
   }
 
@@ -744,12 +852,12 @@ extension ArchiveService {
   ) async throws -> URL {
     let reporter = ArchiveProgressReporter(progress)
     await reporter.report(phase: .preparing)
-    let state = try checkedState(session)
+    let state = try await checkedState(session)
     guard !busy.contains(session.id), destination.isFileURL else {
       throw ArchiveError.invalidOperation
     }
     let entries = try ArchiveSelection.entries(for: path, in: state.descriptor.entries)
-    let isDirectory = state.entries[path]?.isDirectory == true || state.entries[path] == nil
+    let isDirectory = state.entries[path]?.isDirectory != false
     guard destination.standardizedFileURL != state.url.standardizedFileURL else {
       throw ArchiveError.invalidOperation
     }
@@ -757,85 +865,18 @@ extension ArchiveService {
     defer { busy.remove(session.id) }
     let transaction = try workspace.transactionDirectory(nextTo: destination)
     defer { try? workspace.removeTransaction(transaction) }
-    let output = transaction.appendingPathComponent("export")
-    var total: UInt64 = 0
-    var normalized: [String: String] = [:]
-    for entry in entries {
-      guard !entry.isSymbolicLink else { throw ArchiveError.unsupportedExtraction }
-      let sum = total.addingReportingOverflow(entry.size)
-      guard !sum.overflow, sum.partialValue <= maximumBytes else { throw ArchiveError.outputLimit }
-      total = sum.partialValue
-      let parts = entry.path.split(separator: "/")
-      for index in 1...parts.count {
-        let name = parts.prefix(index).joined(separator: "/")
-        let key = name.precomposedStringWithCanonicalMapping.lowercased()
-        if let previous = normalized[key], previous != name { throw ArchiveError.duplicatePath }
-        normalized[key] = name
-      }
-    }
+    let contents = transaction.appendingPathComponent("contents")
+    try await extractEntries(
+      entries, from: state.url, archiveDescriptor: state.descriptor, to: contents,
+      in: transaction, password: password, quarantineSource: state.url,
+      maximumBytes: maximumBytes, reporter: reporter, start: 0)
+    let output = contents.appendingPathComponent(path)
     let workload = try ArchiveWorkload(entries: entries)
-    let manager = FileManager.default
-    if isDirectory {
-      try manager.createDirectory(
-        at: output, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-    }
-    var completedWeight = 0.0
-    var completedBytes: UInt64 = 0
-    var completedFiles = 0
-    let totalWeight = entries.filter { !$0.isDirectory }.reduce(0.0) {
-      $0 + max(1, Double($1.size))
-    }
-    await reporter.report(
-      phase: .extracting, fraction: 0, processedBytes: 0, totalBytes: workload.bytes,
-      completedFiles: 0, totalFiles: workload.files)
-    for entry in entries {
-      let relative = entry.path == path ? "" : String(entry.path.dropFirst(path.count + 1))
-      let target = relative.isEmpty ? output : output.appendingPathComponent(relative)
-      if entry.isDirectory {
-        try manager.createDirectory(
-          at: target, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-      } else {
-        try manager.createDirectory(
-          at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
-          attributes: [.posixPermissions: 0o700])
-        let weight = max(1, Double(entry.size))
-        let start = completedWeight
-        await reporter.report(
-          phase: .extracting, fraction: start / totalWeight * 0.99,
-          processedBytes: completedBytes, totalBytes: workload.bytes,
-          completedFiles: completedFiles, totalFiles: workload.files, currentFile: entry.path)
-        try await extractFile(
-          entry, from: state.url, to: target, password: password,
-          progress: reporter.engine(
-            phase: .extracting, from: start / totalWeight * 0.99,
-            to: (start + weight) / totalWeight * 0.99, totalBytes: workload.bytes,
-            baseBytes: completedBytes, itemBytes: entry.size, completedFiles: completedFiles,
-            totalFiles: workload.files, currentFile: entry.path))
-        completedWeight += weight
-        completedBytes += entry.size
-        completedFiles += 1
-        try Quarantine.copy(from: state.url, to: target)
-      }
-    }
-    for entry in entries.sorted(by: { $0.path.count > $1.path.count }) {
-      let relative = entry.path == path ? "" : String(entry.path.dropFirst(path.count + 1))
-      let target = relative.isEmpty ? output : output.appendingPathComponent(relative)
-      var attributes: [FileAttributeKey: Any] = [:]
-      if let date = entry.modifiedAt { attributes[.modificationDate] = date }
-      if let date = entry.createdAt { attributes[.creationDate] = date }
-      if let mode = entry.permissions, let value = Self.permissions(from: mode) {
-        attributes[.posixPermissions] = value
-      }
-      try manager.setAttributes(attributes, ofItemAtPath: target.path)
-    }
-    try Quarantine.copy(from: state.url, to: output)
-    try Task.checkCancellation()
-    _ = try checkedState(session)
     await reporter.report(
       phase: .finalizing, fraction: 0.99, processedBytes: workload.bytes,
       totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     try Task.checkCancellation()
-    _ = try checkedState(session)
+    _ = try await checkedState(session)
     let result: URL
     if chooseUniqueName {
       result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: isDirectory)
@@ -847,5 +888,108 @@ extension ArchiveService {
       phase: .finalizing, fraction: 1, processedBytes: workload.bytes,
       totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
     return result
+  }
+
+  /// Числовые части имеют однозначные имена; остальные схемы остаются на потоковом извлечении.
+  private func snapshotVolumes(for archive: URL, descriptor: Descriptor) throws -> [URL]? {
+    guard descriptor.isMultipart else { return [archive] }
+    let suffix = archive.pathExtension
+    guard descriptor.format == "split", !suffix.isEmpty, suffix.count <= 8,
+      suffix.allSatisfy({ $0.isASCII && $0.isNumber }), Int(suffix) == 1
+    else { return nil }
+    guard descriptor.volumeCount > 1, descriptor.volumeCount <= 10_000 else {
+      throw ArchiveError.outputLimit
+    }
+    let stem = archive.deletingPathExtension()
+    return (1...descriptor.volumeCount).map { index in
+      let value = String(index)
+      let padding = String(repeating: "0", count: max(0, suffix.count - value.count))
+      return stem.appendingPathExtension(padding + value)
+    }
+  }
+
+  /// Стабильная копия исключает замену архива между проверкой путей и записью движком в staging.
+  private func extractEntries(
+    _ entries: [ArchiveEntry], from archive: URL, archiveDescriptor: Descriptor, to output: URL,
+    in transaction: URL, password: String, quarantineSource: URL, maximumBytes: UInt64,
+    reporter: ArchiveProgressReporter, start: Double
+  ) async throws {
+    let manifest = try ArchiveExtractionManifest(entries: entries, maximumBytes: maximumBytes)
+    let manager = FileManager.default
+    try manager.createDirectory(
+      at: output, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    let workload = try ArchiveWorkload(entries: entries)
+    if !entries.isEmpty {
+      await reporter.report(
+        phase: .extracting, fraction: start, processedBytes: 0, totalBytes: workload.bytes,
+        completedFiles: 0, totalFiles: workload.files,
+        currentFile: (entries.first(where: { !$0.isDirectory && $0.size > 0 })
+          ?? entries.first(where: { !$0.isDirectory }))?.path)
+      if let volumes = try snapshotVolumes(for: archive, descriptor: archiveDescriptor) {
+        let snapshotDirectory = transaction.appendingPathComponent("source-" + UUID().uuidString)
+        let source = snapshotDirectory.appendingPathComponent(archive.lastPathComponent)
+        for volume in volumes {
+          try await Self.copyArchive(
+            volume, to: snapshotDirectory.appendingPathComponent(volume.lastPathComponent))
+        }
+        let descriptor = try await readArchive(source, password: password, in: transaction)
+        guard descriptor.entries == archiveDescriptor.entries else {
+          throw ArchiveError.archiveChanged
+        }
+        let list = transaction.appendingPathComponent("extract.list")
+        // 7zz снимает только внешнюю пару кавычек, сохраняя пробелы и внутренние кавычки имени.
+        try Data((entries.map { "\"" + $0.path + "\"" }.joined(separator: "\n") + "\n").utf8)
+          .write(to: list)
+        try await runner().run(
+          arguments: [
+            "x", "-spd", "-ssc", "-r-", "-y", "-bso0", "-scsUTF-8", "-p" + password,
+            "-bsp2", "-i@" + list.path, "-o" + output.path, "--", source.path,
+          ], outputURL: transaction.appendingPathComponent("extract.log"), limit: 32 * 1024 * 1024,
+          progress: reporter.engine(
+            phase: .extracting, from: start, to: 0.98, totalBytes: workload.bytes,
+            totalFiles: workload.files),
+          validateOutput: { try manifest.validate(output, complete: false) })
+      } else {
+        // shortcut: неизвестные схемы multipart читаются через stdout; batch требует точного списка томов.
+        var completedBytes: UInt64 = 0
+        var completedFiles = 0
+        for entry in entries {
+          try Task.checkCancellation()
+          let target = output.appendingPathComponent(entry.path)
+          try manager.createDirectory(
+            at: entry.isDirectory ? target : target.deletingLastPathComponent(),
+            withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+          if !entry.isDirectory {
+            let lower = start + Double(completedFiles) / Double(workload.files) * (0.98 - start)
+            let upper = start + Double(completedFiles + 1) / Double(workload.files) * (0.98 - start)
+            try await extractFile(
+              entry, from: archive, to: target, password: password,
+              progress: reporter.engine(
+                phase: .extracting, from: lower, to: upper, totalBytes: workload.bytes,
+                baseBytes: completedBytes, itemBytes: entry.size, completedFiles: completedFiles,
+                totalFiles: workload.files, currentFile: entry.path))
+            completedBytes += entry.size
+            completedFiles += 1
+          }
+        }
+      }
+    }
+    try manifest.validate(output, complete: true)
+    for path in manifest.paths.keys {
+      try Task.checkCancellation()
+      try Quarantine.copy(from: quarantineSource, to: output.appendingPathComponent(path))
+    }
+    for entry in entries.sorted(by: { $0.path.count > $1.path.count }) {
+      try Task.checkCancellation()
+      let target = output.appendingPathComponent(entry.path)
+      var attributes: [FileAttributeKey: Any] = [:]
+      if let date = entry.modifiedAt { attributes[.modificationDate] = date }
+      if let date = entry.createdAt { attributes[.creationDate] = date }
+      if let mode = entry.permissions, let value = Self.permissions(from: mode) {
+        attributes[.posixPermissions] = value
+      }
+      try manager.setAttributes(attributes, ofItemAtPath: target.path)
+    }
+    try Quarantine.copy(from: quarantineSource, to: output)
   }
 }

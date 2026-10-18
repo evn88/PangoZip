@@ -266,3 +266,22 @@
 "ID пользователя" = "ID utilisateur";
 "ID группы" = "ID groupe";
 "Другие метаданные" = "Autres métadonnées";
+
+"Очередь операций" = "File des opérations";
+"Нет ожидающих операций" = "Aucune opération en attente";
+"Убрать из очереди" = "Retirer de la file";
+"Очистить очередь" = "Vider la file";
+"Продолжить очередь" = "Reprendre la file";
+"Откатить последнее изменение архива" = "Annuler la dernière modification de l’archive";
+"Сначала завершите редактирование командой «Сохранить в архив»." = "Terminez d’abord la modification avec « Enregistrer dans l’archive ».";
+"Откат последнего изменения…" = "Annulation de la dernière modification…";
+"Последнее изменение отменено" = "Dernière modification annulée";
+"Обновления" = "Mises à jour";
+"Автоматически проверять обновления" = "Rechercher automatiquement les mises à jour";
+"Проверить обновления…" = "Rechercher des mises à jour…";
+"Новые версии загружаются из GitHub Releases. Перед установкой PangoZip проверяет цифровую подпись и предлагает перезапуск." = "Les nouvelles versions sont téléchargées depuis GitHub Releases. Avant l’installation, PangoZip vérifie la signature numérique et propose de redémarrer.";
+"Установка обновления…" = "Installation de la mise à jour…";
+"Обновление ожидает завершения операций Finder" = "Mise à jour en attente des opérations du Finder";
+"Дождитесь завершения фоновых операций с архивами и повторите выход." = "Attendez la fin des opérations d’archive en arrière-plan, puis réessayez de quitter.";
+"Обновление ожидает завершения работы" = "La mise à jour est en attente";
+"Перед обновлением завершите операции Finder и закройте другие окна PangoZip." = "Avant la mise à jour, terminez les opérations du Finder et fermez les autres fenêtres PangoZip.";

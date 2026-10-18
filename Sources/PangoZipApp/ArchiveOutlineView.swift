@@ -364,7 +364,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
           L10n.tr("Редактировать файл"), #selector(editFile),
           enabled: model.canModify && model.canOpenSelection, key: "e")
         add(
-          L10n.tr("Извлечь выбранное…"), #selector(extractFiles), enabled: model.canAct, key: "e",
+          L10n.tr("Извлечь выбранное…"), #selector(extractFiles), enabled: model.canQueueOperations,
+          key: "e",
           modifiers: [.command, .shift])
         add(L10n.tr("Копировать путь в архиве"), #selector(copyPaths), enabled: true)
         menu.addItem(.separator())
@@ -377,7 +378,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
         }
       }
       add(
-        L10n.tr("Добавить файлы и папки…"), #selector(addFiles), enabled: model.canModify, key: "a",
+        L10n.tr("Добавить файлы и папки…"), #selector(addFiles),
+        enabled: model.canQueueModifications, key: "a",
         modifiers: [.command, .shift])
       add(
         L10n.tr("Сохранить изменения в архив"), #selector(saveFiles),
@@ -385,7 +387,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
       if !model.selectedPaths.isEmpty {
         menu.addItem(.separator())
         add(
-          L10n.tr("Удалить из архива…"), #selector(deleteFiles), enabled: model.canModify,
+          L10n.tr("Удалить из архива…"), #selector(deleteFiles),
+          enabled: model.canQueueModifications,
           key: "\u{8}")
       }
       return menu
@@ -465,7 +468,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       _ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
       proposedChildIndex index: Int
     ) -> NSDragOperation {
-      guard parent.model.canModify,
+      guard parent.model.canQueueModifications,
         !(info.draggingSource as? NSOutlineView === outlineView),
         info.draggingPasteboard.canReadObject(
           forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
@@ -483,7 +486,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
       _ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?,
       childIndex index: Int
     ) -> Bool {
-      guard parent.model.canModify,
+      guard parent.model.canQueueModifications,
         let urls = info.draggingPasteboard.readObjects(
           forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
         !urls.isEmpty

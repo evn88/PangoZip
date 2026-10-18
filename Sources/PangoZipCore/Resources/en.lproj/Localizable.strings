@@ -266,3 +266,22 @@
 "ID пользователя" = "User ID";
 "ID группы" = "Group ID";
 "Другие метаданные" = "Other Metadata";
+
+"Очередь операций" = "Operation Queue";
+"Нет ожидающих операций" = "No pending operations";
+"Убрать из очереди" = "Remove from Queue";
+"Очистить очередь" = "Clear Queue";
+"Продолжить очередь" = "Resume Queue";
+"Откатить последнее изменение архива" = "Undo Last Archive Change";
+"Сначала завершите редактирование командой «Сохранить в архив»." = "Finish editing first by choosing “Save to Archive”.";
+"Откат последнего изменения…" = "Undoing Last Change…";
+"Последнее изменение отменено" = "Last Change Undone";
+"Обновления" = "Updates";
+"Автоматически проверять обновления" = "Automatically Check for Updates";
+"Проверить обновления…" = "Check for Updates…";
+"Новые версии загружаются из GitHub Releases. Перед установкой PangoZip проверяет цифровую подпись и предлагает перезапуск." = "New versions are downloaded from GitHub Releases. PangoZip verifies the digital signature before installation and asks you to restart.";
+"Установка обновления…" = "Installing Update…";
+"Обновление ожидает завершения операций Finder" = "Update Waiting for Finder Operations";
+"Дождитесь завершения фоновых операций с архивами и повторите выход." = "Wait for background archive operations to finish, then try quitting again.";
+"Обновление ожидает завершения работы" = "Update Is Waiting";
+"Перед обновлением завершите операции Finder и закройте другие окна PangoZip." = "Before updating, finish Finder operations and close other PangoZip windows.";

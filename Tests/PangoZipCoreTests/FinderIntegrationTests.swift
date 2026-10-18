@@ -97,6 +97,30 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
       })
   }
 
+  /// Повторное удаление приватных снимков не меняет метаданные оригинала и не ломает новый сеанс.
+  func testRepeatedExtractionLeavesOriginalFingerprintUnchanged() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = ArchiveService(executableURL: engine)
+    for format in ["zip", "7z"] {
+      let archive = try await service.createArchive(
+        from: [root.appendingPathComponent("docs")],
+        proposedURL: root.appendingPathComponent("repeat." + format), format: format)
+      try await service.testArchive(archive)
+      let original = try FileFingerprint(archive)
+      let bytes = try Data(contentsOf: archive)
+      for _ in 0..<12 {
+        let output = try await service.extractArchive(archive)
+        XCTAssertEqual(
+          try String(contentsOf: output.appendingPathComponent("docs/text.txt"), encoding: .utf8),
+          "document")
+        XCTAssertEqual(try FileFingerprint(archive), original)
+        XCTAssertEqual(try Data(contentsOf: archive), bytes)
+      }
+    }
+    await service.cleanup()
+  }
+
   /// Проверяет распаковку TAR и повтор запроса пароля для зашифрованного архива.
   func testExtractsCompressedTarAndEncryptedArchiveWithPasswordRetry() async throws {
     let root = try fixture()

@@ -1,0 +1,16 @@
+{
+  "en": [
+    "Extract ordinary archives and selected folders in one 7-Zip process, with staged output validation and preserved quarantine metadata.",
+    "Queue extraction, addition and deletion operations in the archive window. Remove waiting jobs or resume the queue after an error.",
+    "Undo the last archive change within the current session, with protection against external changes and unsaved editor copies.",
+    "Check for updates from GitHub Releases using Sparkle, signed update feeds and Ed25519-verified packages. Installation waits for archive operations and protects other running instances.",
+    "This is the first version with an updater. Install it manually once to receive future signed updates through the app."
+  ],
+  "ru": [
+    "Извлечение обычных архивов и выбранных папок одним запуском 7-Zip с проверкой временного результата и сохранением quarantine.",
+    "Очередь извлечения, добавления и удаления в окне архива: удаление ожидающих задач и продолжение после ошибки.",
+    "Откат последнего изменения архива в текущем сеансе с защитой от внешних изменений и несохранённых рабочих копий.",
+    "Проверка обновлений из GitHub Releases через Sparkle: подписанная лента и проверка пакетов Ed25519. Установка учитывает архивные операции и другие экземпляры приложения.",
+    "Это первая версия с механизмом обновления. Установите её вручную один раз, чтобы получать следующие подписанные версии через приложение."
+  ]
+}

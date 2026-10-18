@@ -26,14 +26,24 @@ verify_distribution_app() {
     echo "Not a PangoZip application bundle." >&2; return 1;
   }
   codesign --verify --deep --strict "$app"
-  for component in \
-    "$app/Contents/Resources/Engine/7zz" \
-    "$app/Contents/Helpers/PangoZipWorker.app/Contents/Resources/Engine/7zz" \
-    "$app/Contents/Helpers/PangoZipWorker.app" \
-    "$app/Contents/Helpers/PangoZipUninstall" \
-    "$app/Contents/PlugIns/PangoZipFinderSync.appex" \
-    "$app/Contents/PlugIns/PangoZipPreview.appex" \
-    "$app"; do
+  local -a components=(
+    "$app/Contents/Resources/Engine/7zz"
+    "$app/Contents/Helpers/PangoZipWorker.app/Contents/Resources/Engine/7zz"
+    "$app/Contents/Helpers/PangoZipWorker.app"
+    "$app/Contents/Helpers/PangoZipUninstall"
+    "$app/Contents/PlugIns/PangoZipFinderSync.appex"
+    "$app/Contents/PlugIns/PangoZipPreview.appex"
+    "$app")
+  local framework="$app/Contents/Frameworks/Sparkle.framework"
+  if [[ -d "$framework" ]]; then
+    components+=(
+      "$framework/Versions/B/Autoupdate"
+      "$framework/Versions/B/Updater.app"
+      "$framework/Versions/B/XPCServices/Downloader.xpc"
+      "$framework/Versions/B/XPCServices/Installer.xpc"
+      "$framework")
+  fi
+  for component in "${components[@]}"; do
     codesign --verify --strict "$component"
     details="$(codesign --display --verbose=4 "$component" 2>&1)"
     [[ "$details" == *"Authority=$signing_identity"* && "$details" == *'Timestamp='* && "$details" == *'(runtime)'* ]] || {

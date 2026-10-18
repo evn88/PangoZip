@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 
-from release_metadata import version_from_tag
+from release_metadata import validate_update_feed, version_from_tag
 
 
 def api(endpoint, method="GET", payload=None, file=None, binary=False):
@@ -34,17 +34,30 @@ def validate_artifacts(directory, tag):
         raise ValueError("Invalid source commit")
     if manifest.get("signing") not in ["ad-hoc", "notarized"]:
         raise ValueError("Invalid signing mode")
-    if set(manifest.get("assets", {})) != {dmg, dmg + ".sha256"}:
+    if set(manifest.get("assets", {})) != {dmg, dmg + ".sha256", "appcast.xml"}:
         raise ValueError("Unexpected release assets")
     for name, digest in manifest["assets"].items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
             raise ValueError(f"Checksum mismatch: {name}")
     if (directory / (dmg + ".sha256")).read_text() != f"{manifest['assets'][dmg]}  {dmg}\n":
         raise ValueError("Invalid checksum file")
+    validate_update_feed(directory, tag)
     notes = (directory / "release-notes.md").read_text()
     if "## ENG\n" not in notes or "## RUS\n" not in notes:
         raise ValueError("Both English and Russian release notes are required")
     return manifest, notes
+
+
+def verify_uploaded(release, manifest, directory):
+    assets = release.get("assets", [])
+    if {asset["name"] for asset in assets} != set(manifest["assets"]) or len(assets) != len(manifest["assets"]):
+        raise ValueError("Published asset set does not match this build")
+    for asset in assets:
+        name = asset["name"]
+        if asset["state"] != "uploaded" or asset["size"] != (directory / name).stat().st_size:
+            raise ValueError(f"Incomplete upload: {name}")
+        if asset.get("digest") != "sha256:" + manifest["assets"][name]:
+            raise ValueError(f"Uploaded asset digest mismatch: {name}")
 
 
 def publish(directory, repository, tag):
@@ -61,7 +74,9 @@ def publish(directory, repository, tag):
     releases = [release for page in releases for release in page]
     existing = next((release for release in releases if release["tag_name"] == tag), None)
     if existing and not existing["draft"]:
-        raise ValueError("This tag already has a published release; its assets will not be overwritten")
+        verify_uploaded(existing, manifest, directory)
+        print(existing["html_url"])
+        return
     current = tuple(map(int, manifest["version"].split(".")))
     for release in releases:
         if not release["draft"] and not release["prerelease"]:
@@ -84,14 +99,7 @@ def publish(directory, repository, tag):
         api(f"https://uploads.github.com/{base}/releases/{release_id}/assets?name={name}",
             "POST", file=directory / name, binary=True)
     uploaded = api(f"{base}/releases/{release_id}")
-    if {asset["name"] for asset in uploaded["assets"]} != expected:
-        raise ValueError("Not all release assets were uploaded")
-    for asset in uploaded["assets"]:
-        name = asset["name"]
-        if asset["state"] != "uploaded" or asset["size"] != (directory / name).stat().st_size:
-            raise ValueError(f"Incomplete upload: {name}")
-        if asset.get("digest") != "sha256:" + manifest["assets"][name]:
-            raise ValueError(f"Uploaded asset digest mismatch: {name}")
+    verify_uploaded(uploaded, manifest, directory)
     if api(f"{base}/commits/{tag}")["sha"] != manifest["commit"]:
         raise ValueError("Remote tag changed during asset upload")
     api(f"{base}/releases/{release_id}", "PATCH", {
