@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PangoZipCore
 import XCTest
@@ -201,6 +202,92 @@ final class NestedArchiveTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(try Data(contentsOf: extracted), Data("updated".utf8))
     let closed = await model.requestTermination()
     XCTAssertTrue(closed)
+  }
+
+  @MainActor
+  func testCancelledClosingAndReplacementKeepNestedSessionWithDirtyParent() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("note.txt")
+    try Data("original".utf8).write(to: file)
+    let service = ArchiveService(executableURL: engine)
+    let childArchive = try await service.createArchive(
+      from: [file], proposedURL: root.appendingPathComponent("child.zip"), format: "zip")
+    let archive = try await service.createArchive(
+      from: [file, childArchive], proposedURL: root.appendingPathComponent("parent.zip"),
+      format: "zip")
+    let original = try Data(contentsOf: archive)
+    let model = ArchiveBrowserModel(service: service)
+    model.togglePreview()
+    model.open(archive, password: "parent-password")
+    try await waitUntil { !model.isBusy }
+    let parent = try XCTUnwrap(model.session)
+    let edit = try await service.beginEditing(
+      try XCTUnwrap(parent.entries.first { $0.path == "note.txt" }), in: parent)
+    try model.watchWorkingCopy(edit)
+    model.selectedPaths = ["child.zip"]
+    model.openSelectedExternally()
+    try await waitUntil { !model.isBusy }
+    let child = try XCTUnwrap(model.session)
+    model.selectedPaths = ["note.txt"]
+    model.searchText = "note"
+    model.password = "child-password"
+    try Data("unsaved".utf8).write(to: edit.fileURL)
+
+    for replacingArchive in [false, true] {
+      let dismiss = dismissNextAlert(with: .alertThirdButtonReturn)
+      if replacingArchive {
+        model.open(archive)
+        try await waitUntil { !model.isBusy }
+      } else {
+        let closed = await model.requestTermination()
+        XCTAssertFalse(closed)
+      }
+      dismiss.invalidate()
+      XCTAssertEqual(model.session?.id, child.id)
+      XCTAssertTrue(model.isNestedArchive)
+      XCTAssertTrue(model.canNavigateBack)
+      XCTAssertEqual(model.selectedPaths, ["note.txt"])
+      XCTAssertEqual(model.searchText, "note")
+      XCTAssertEqual(model.password, "child-password")
+      XCTAssertEqual(try Data(contentsOf: archive), original)
+      XCTAssertEqual(try Data(contentsOf: edit.fileURL), Data("unsaved".utf8))
+      do {
+        let entry = try XCTUnwrap(child.entries.first)
+        let url = try await service.materialize(entry, in: child)
+        XCTAssertEqual(try Data(contentsOf: url), Data("original".utf8))
+      } catch {
+        XCTFail("Отмена не должна закрывать вложенный сеанс: \(error)")
+      }
+    }
+
+    let save = dismissNextAlert(with: .alertFirstButtonReturn)
+    let closed = await model.requestTermination()
+    save.invalidate()
+    XCTAssertTrue(closed)
+    XCTAssertNil(model.session)
+    XCTAssertFalse(model.isNestedArchive)
+    let verification = ArchiveService(executableURL: engine)
+    let saved = try await verification.open(archive)
+    let savedEntry = try XCTUnwrap(saved.entries.first { $0.path == "note.txt" })
+    let savedFile = try await verification.materialize(savedEntry, in: saved)
+    XCTAssertEqual(try Data(contentsOf: savedFile), Data("unsaved".utf8))
+    await verification.cleanup()
+  }
+
+  @MainActor
+  private func dismissNextAlert(with response: NSApplication.ModalResponse) -> Timer {
+    let timer = Timer(timeInterval: 0.01, repeats: true) { _ in
+      MainActor.assumeIsolated {
+        if NSApplication.shared.modalWindow != nil {
+          NSApplication.shared.stopModal(withCode: response)
+        }
+      }
+    }
+    RunLoop.main.add(timer, forMode: .modalPanel)
+    return timer
   }
 
   private var engine: URL {

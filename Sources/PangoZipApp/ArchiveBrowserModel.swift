@@ -980,25 +980,29 @@ final class ArchiveBrowserModel: ObservableObject {
     return !Task.isCancelled && activeEdits.isEmpty
   }
 
-  /// Продолжает закрытие только после сохранения копий или явного отказа от сохранения.
+  /// Спрашивает о копиях родителя до закрытия вложенных сеансов, чтобы отмена сохраняла навигацию.
   private func confirmWorkingCopies() async -> Bool {
-    guard
-      activeEdits.contains(where: { (try? WorkingCopySnapshot($0.fileURL)) != savedCopies[$0.id] })
-    else { return true }
+    guard !Task.isCancelled else { return false }
+    let edits = parentLocations.first?.activeEdits ?? activeEdits
+    guard edits.contains(where: { (try? WorkingCopySnapshot($0.fileURL)) != savedCopies[$0.id] })
+    else { return await restoreRoot() }
     let alert = NSAlert()
     alert.messageText = L10n.tr("Сохранить рабочие копии в архив?")
     alert.informativeText =
       L10n.tr(
         "Сначала сохраните файлы во внешнем редакторе. Рабочих копий: %1$@. При выборе «Не сохранять» они будут удалены.",
-        String(describing: activeEdits.count))
+        String(describing: edits.count))
     alert.addButton(withTitle: L10n.tr("Сохранить"))
     alert.addButton(withTitle: L10n.tr("Не сохранять"))
     alert.addButton(withTitle: L10n.tr("Отмена"))
-    switch alert.runModal() {
+    let response = alert.runModal()
+    guard !Task.isCancelled else { return false }
+    switch response {
     case .alertFirstButtonReturn:
+      guard await restoreRoot() else { return false }
       return await saveWorkingCopiesBeforeClosing()
     case .alertSecondButtonReturn:
-      return true
+      return await restoreRoot()
     default:
       return false
     }
@@ -1033,7 +1037,6 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Не сбрасывает сеанс, если пользователь отменил закрытие или очистка завершилась ошибкой.
   private func closeCurrentSession() async -> Bool {
-    guard await restoreRoot() else { return false }
     await settlePreviews()
     guard !Task.isCancelled, await confirmWorkingCopies() else { return false }
     await settlePreviews()
@@ -1073,7 +1076,6 @@ final class ArchiveBrowserModel: ObservableObject {
     isPasswordPromptPresented = false
     actionTask?.cancel()
     await actionTask?.value
-    guard await restoreRoot() else { return false }
     await settlePreviews()
     guard await confirmWorkingCopies() else { return false }
     await settlePreviews()
