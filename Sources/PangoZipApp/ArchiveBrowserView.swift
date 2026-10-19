@@ -20,7 +20,8 @@ struct ArchiveBrowserView: View {
     .navigationTitle(model.session?.url.lastPathComponent ?? "PangoZip")
     .navigationSubtitle(
       model.session.map {
-        $0.format.uppercased() + ($0.canModify ? "" : L10n.tr(" — Только чтение"))
+        $0.format.uppercased()
+          + ($0.canModify && !model.isNestedArchive ? "" : L10n.tr(" — Только чтение"))
       } ?? ""
     )
     .searchable(
@@ -68,6 +69,12 @@ struct ArchiveBrowserView: View {
   @ToolbarContentBuilder
   private var archiveActionsToolbar: some ToolbarContent {
     ToolbarItemGroup(placement: .automatic) {
+      if model.isNestedArchive {
+        Button(L10n.tr("Назад"), systemImage: "chevron.left", action: model.navigateBack)
+          .labelStyle(.iconOnly)
+          .help(L10n.tr("Назад"))
+          .disabled(!model.canNavigateBack)
+      }
       Button(L10n.tr("Открыть архив…"), systemImage: "archivebox", action: model.chooseArchive)
         .labelStyle(.iconOnly)
         .help(L10n.tr("Открыть архив (⌘O)")).disabled(!model.canAct)
@@ -298,7 +305,14 @@ struct ArchiveBrowserView: View {
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let url = model.previewURL {
-          QuickLookPreview(url: url).frame(maxWidth: .infinity, maxHeight: .infinity)
+          if FinderSelection.isArchive(url) {
+            Button(L10n.tr("Открыть архив…"), action: model.openSelectedExternally)
+              .buttonStyle(.borderedProminent)
+              .disabled(!model.canOpenSelection)
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
+          } else {
+            QuickLookPreview(url: url).frame(maxWidth: .infinity, maxHeight: .infinity)
+          }
         } else if model.isMaterializing {
           VStack(spacing: 12) {
             ProgressView()

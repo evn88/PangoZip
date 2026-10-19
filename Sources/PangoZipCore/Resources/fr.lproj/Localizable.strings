@@ -285,3 +285,4 @@
 "Дождитесь завершения фоновых операций с архивами и повторите выход." = "Attendez la fin des opérations d’archive en arrière-plan, puis réessayez de quitter.";
 "Обновление ожидает завершения работы" = "La mise à jour est en attente";
 "Перед обновлением завершите операции Finder и закройте другие окна PangoZip." = "Avant la mise à jour, terminez les opérations du Finder et fermez les autres fenêtres PangoZip.";
+"Назад" = "Retour";

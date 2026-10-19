@@ -12,6 +12,8 @@ final class ArchiveBrowserModel: ObservableObject {
     case open(URL)
     case preview(ArchiveEntry)
     case external(ArchiveEntry)
+    case nested(ArchiveEntry, String)
+    case back
     case edit(ArchiveEntry)
     case add([URL], String)
     case delete([String])
@@ -75,6 +77,15 @@ final class ArchiveBrowserModel: ObservableObject {
     drainIncomingRequests()
   }
 
+  private struct ParentLocation {
+    let session: ArchiveSession
+    let password: String
+    let selectedPaths: Set<String>
+    let searchText: String
+    let activeEdits: [ArchiveEdit]
+    let hasUndo: Bool
+  }
+  @Published private var parentLocations: [ParentLocation] = []
   @Published private(set) var session: ArchiveSession?
   @Published private(set) var itemDetailsByPath: [String: ArchiveItemDetails] = [:]
   @Published private(set) var areFolderDetailsLoading = false
@@ -138,8 +149,12 @@ final class ArchiveBrowserModel: ObservableObject {
     !isUpdatePending && !isClosing && !isExporting && !isPasswordPromptPresented
       && activePanel == nil && session != nil && (!isBusy || acceptsQueuedOperations)
   }
-  var canQueueModifications: Bool { canQueueOperations && session?.canModify == true }
-  var canModify: Bool { canAct && session?.canModify == true }
+  var canQueueModifications: Bool {
+    canQueueOperations && parentLocations.isEmpty && session?.canModify == true
+  }
+  var canModify: Bool { canAct && parentLocations.isEmpty && session?.canModify == true }
+  var isNestedArchive: Bool { !parentLocations.isEmpty }
+  var canNavigateBack: Bool { canAct && queuedOperations.isEmpty && isNestedArchive }
   var canUndoLastChange: Bool {
     canModify && hasUndo && activeEdits.isEmpty && queuedOperations.isEmpty
   }
@@ -422,8 +437,13 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Открывает только один обычный файл; временная копия живёт до закрытия сеанса.
   func openSelectedExternally() {
-    guard canOpenSelection, let entry = selectedEntry else { return }
+    guard canOpenSelection, queuedOperations.isEmpty, let entry = selectedEntry else { return }
     start(.external(entry))
+  }
+
+  func navigateBack() {
+    guard canNavigateBack else { return }
+    start(.back)
   }
 
   /// Следит за адресом файла, поэтому атомарное сохранение редактора не теряет наблюдение.
@@ -528,6 +548,7 @@ final class ArchiveBrowserModel: ObservableObject {
     promisePasswordReply?.resume(returning: nil)
     promisePasswordReply = nil
     isPasswordPromptPresented = false
+    if case .nested(_, let parentPassword) = failedOperation { password = parentPassword }
     failedOperation = nil
     errorMessage = nil
     if session == nil { loadState = .idle }
@@ -647,7 +668,12 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Запускает операцию только когда панель, пароль и экспорт не удерживают сеанс.
   private func start(_ operation: Operation) {
     guard canAct else { return }
-    run(acceptingQueuedOperations: true) { await self.perform(operation) }
+    let acceptsQueue =
+      switch operation {
+      case .external, .nested, .back: false
+      default: true
+      }
+    run(acceptingQueuedOperations: acceptsQueue) { await self.perform(operation) }
   }
 
   /// Сохраняет остаток пакетной операции для повтора после запроса пароля.
@@ -719,7 +745,35 @@ final class ArchiveBrowserModel: ObservableObject {
         guard let session else { return }
         let url = try await service.materialize(entry, in: session, password: password)
         try Task.checkCancellation()
-        if selectedPath == entry.path { openInWorkspace(url) }
+        if selectedPath == entry.path {
+          if FinderSelection.isArchive(url) {
+            let parentPassword = password
+            password = ""
+            await perform(.nested(entry, parentPassword))
+            return
+          }
+          openInWorkspace(url)
+        }
+      case .nested(let entry, let parentPassword):
+        guard let parent = session else { throw ArchiveError.sessionExpired }
+        await settlePreviews()
+        let url = try await service.materialize(entry, in: parent, password: parentPassword)
+        let child = try await service.open(url, password: password)
+        if Task.isCancelled {
+          try await service.close(child)
+          throw CancellationError()
+        }
+        parentLocations.append(
+          ParentLocation(
+            session: parent, password: parentPassword, selectedPaths: selectedPaths,
+            searchText: searchText, activeEdits: activeEdits, hasUndo: hasUndo))
+        activeEdits = []
+        selectedPaths = []
+        searchText = ""
+        await replaceSession(child)
+        loadState = .loaded
+      case .back:
+        try await restoreParent()
       case .edit(let entry):
         guard let session, session.canModify else { return }
         let edit = try await service.beginEditing(entry, in: session, password: password)
@@ -753,6 +807,7 @@ final class ArchiveBrowserModel: ObservableObject {
       }
       failedOperation = nil
     } catch is CancellationError {
+      if case .nested(_, let parentPassword) = operation { password = parentPassword }
       operationProgress = nil
       operationMessage = nil
       loadState = session == nil ? .idle : .loaded
@@ -764,6 +819,7 @@ final class ArchiveBrowserModel: ObservableObject {
       isPasswordPromptPresented = true
       if session == nil { loadState = .failed }
     } catch {
+      if case .nested(_, let parentPassword) = operation { password = parentPassword }
       operationProgress = nil
       failedOperation = retryOperation
       operationMessage = nil
@@ -924,26 +980,57 @@ final class ArchiveBrowserModel: ObservableObject {
     return !Task.isCancelled && activeEdits.isEmpty
   }
 
-  /// Продолжает закрытие только после сохранения копий или явного отказа от сохранения.
+  /// Спрашивает о копиях родителя до закрытия вложенных сеансов, чтобы отмена сохраняла навигацию.
   private func confirmWorkingCopies() async -> Bool {
-    guard
-      activeEdits.contains(where: { (try? WorkingCopySnapshot($0.fileURL)) != savedCopies[$0.id] })
-    else { return true }
+    guard !Task.isCancelled else { return false }
+    let edits = parentLocations.first?.activeEdits ?? activeEdits
+    guard edits.contains(where: { (try? WorkingCopySnapshot($0.fileURL)) != savedCopies[$0.id] })
+    else { return await restoreRoot() }
     let alert = NSAlert()
     alert.messageText = L10n.tr("Сохранить рабочие копии в архив?")
     alert.informativeText =
       L10n.tr(
         "Сначала сохраните файлы во внешнем редакторе. Рабочих копий: %1$@. При выборе «Не сохранять» они будут удалены.",
-        String(describing: activeEdits.count))
+        String(describing: edits.count))
     alert.addButton(withTitle: L10n.tr("Сохранить"))
     alert.addButton(withTitle: L10n.tr("Не сохранять"))
     alert.addButton(withTitle: L10n.tr("Отмена"))
-    switch alert.runModal() {
+    let response = alert.runModal()
+    guard !Task.isCancelled else { return false }
+    switch response {
     case .alertFirstButtonReturn:
+      guard await restoreRoot() else { return false }
       return await saveWorkingCopiesBeforeClosing()
     case .alertSecondButtonReturn:
-      return true
+      return await restoreRoot()
     default:
+      return false
+    }
+  }
+
+  /// Закрывает только дочерний сеанс: его исходный файл принадлежит родителю.
+  private func restoreParent() async throws {
+    guard let parent = parentLocations.last else { return }
+    await settlePreviews()
+    if let session { try await service.close(session) }
+    parentLocations.removeLast()
+    password = parent.password
+    activeEdits = parent.activeEdits
+    await replaceSession(parent.session)
+    selectedPaths = parent.selectedPaths
+    searchText = parent.searchText
+    hasUndo = parent.hasUndo
+    operationMessage = nil
+    loadState = .loaded
+  }
+
+  private func restoreRoot() async -> Bool {
+    if case .nested(_, let parentPassword) = failedOperation { password = parentPassword }
+    do {
+      while !parentLocations.isEmpty { try await restoreParent() }
+      return true
+    } catch {
+      errorMessage = error.localizedDescription
       return false
     }
   }
