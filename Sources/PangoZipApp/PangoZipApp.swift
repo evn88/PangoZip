@@ -5,6 +5,7 @@ import SwiftUI
 @main
 @MainActor
 struct PangoZipApp: App {
+  @Environment(\.openWindow) private var openWindow
   private let isFinderWorker = ApplicationMode.isFinderWorker
   @StateObject private var worker = FinderOperationModel()
   @StateObject private var model = ArchiveBrowserModel()
@@ -56,6 +57,11 @@ struct PangoZipApp: App {
     .restorationBehavior(isFinderWorker ? .disabled : .automatic)
     .commands {
       ArchiveCommands(model: model)
+      CommandGroup(replacing: .appInfo) {
+        if !isFinderWorker {
+          Button(L10n.tr("О программе PangoZip")) { openWindow(id: "about") }
+        }
+      }
       CommandGroup(after: .appInfo) {
         if !isFinderWorker {
           Button(L10n.tr("Проверить обновления…"), action: updater.checkForUpdates)
@@ -63,6 +69,14 @@ struct PangoZipApp: App {
         }
       }
     }
+    Window(L10n.tr("О программе PangoZip"), id: "about") {
+      if !isFinderWorker { AboutPangoZipView() }
+    }
+    .windowResizability(.contentSize)
+    .windowStyle(.hiddenTitleBar)
+    .defaultPosition(.center)
+    .defaultLaunchBehavior(.suppressed)
+    .restorationBehavior(.disabled)
     Settings {
       if !isFinderWorker {
         ArchiveSettingsView(integration: appDelegate.finderIntegration, updater: updater)
