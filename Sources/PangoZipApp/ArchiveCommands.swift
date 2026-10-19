@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ArchiveCommands: Commands {
   @ObservedObject var model: ArchiveBrowserModel
+  @FocusedValue(\.dismissAboutWindow) private var dismissAboutWindow
 
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
@@ -16,9 +17,14 @@ struct ArchiveCommands: Commands {
         .disabled(!model.canModify || model.activeEdits.isEmpty)
     }
     CommandGroup(before: .windowArrangement) {
-      Button(L10n.tr("Закрыть архив"), action: model.closeArchive)
-        .keyboardShortcut("w", modifiers: .command)
-        .disabled(model.session == nil && !model.isBusy || model.isClosing)
+      if let dismissAboutWindow {
+        Button(L10n.tr("Закрыть")) { dismissAboutWindow() }
+          .keyboardShortcut("w", modifiers: .command)
+      } else {
+        Button(L10n.tr("Закрыть архив"), action: model.closeArchive)
+          .keyboardShortcut("w", modifiers: .command)
+          .disabled(model.session == nil && !model.isBusy || model.isClosing)
+      }
     }
     CommandMenu(L10n.tr("Архив")) {
       Button(L10n.tr("Назад"), action: model.navigateBack)
