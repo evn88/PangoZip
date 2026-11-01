@@ -1,42 +1,44 @@
 # PangoZip
 
-<img src="Resources/Icons/AppIcon-master.png" width="128" alt="PangoZip — золотистый панголин">
+[English](README.md) | [Русский](README.ru.md) | [Српски](README.sr.md) | [Українська](README.uk.md)
 
-Нативный менеджер архивов для macOS: просмотр содержимого, извлечение и редактирование отдельных файлов.
+<img src="Resources/Icons/AppIcon-master.png" width="128" alt="PangoZip: a golden pangolin">
 
-Последняя версия: [скачать PangoZip](https://github.com/evn88/PangoZip/releases/latest).
+A native archive manager for macOS. Browse archive contents, extract files, and edit individual files.
 
-## Возможности
+Latest version: [download PangoZip](https://github.com/evn88/PangoZip/releases/latest).
 
-- Просмотр и извлечение ZIP, 7z, RAR, TAR и других форматов, поддерживаемых 7-Zip.
-- Создание ZIP и 7z, включая архивы с паролем.
-- Дерево файлов, поиск, настраиваемые колонки и перетаскивание между архивом и Finder.
-- Редактирование файлов во внешнем приложении с автоматическим сохранением обратно в архив.
-- Предпросмотр архивов по пробелу в Finder и команды упаковки и извлечения в его контекстном меню.
-- Извлечение нескольких архивов, очередь операций и отмена последнего изменения.
-- Автообновления из GitHub Releases и интерфейс на 14 языках.
+## Features
 
-Изменение содержимого поддерживается для ZIP, 7z и TAR. RAR, многотомные архивы и архивы с исполняемой оболочкой доступны только для чтения. Поддержка форматов в системном предпросмотре может отличаться от основного приложения: [Quick Look](docs/quick-look.md).
+- Browse and extract ZIP, 7z, RAR, TAR, and other formats supported by 7-Zip.
+- Create ZIP and 7z archives, including password-protected archives.
+- Browse a file tree, search, customize columns, and drag files between an archive and Finder.
+- Edit files in an external app and automatically save changes back to the archive.
+- Preview archives by pressing Space in Finder, and create or extract archives from its context menu.
+- Extract multiple archives, queue operations, and undo the last change.
+- Get automatic updates from GitHub Releases and use the interface in 14 languages.
 
-Для изменения файла используйте **«Редактировать» (⌘E)**. После сохранения во внешнем редакторе PangoZip обновит архив автоматически. Обычное открытие файла создаёт копию без отслеживания изменений.
+ZIP, 7z, and TAR archives can be modified. RAR, multi-volume, and self-extracting archives are read-only. Format support in system previews may differ from the main app: [Quick Look](docs/quick-look.md).
 
-Пароли не сохраняются в настройках, но могут быть видны локальным инструментам просмотра процессов.
+To modify a file, use **Edit (⌘E)**. When you save it in an external editor, PangoZip updates the archive automatically. Opening a file normally creates a copy without tracking changes.
 
-## Установка
+Passwords are not saved in preferences, but may be visible to local process inspection tools.
 
-Требуются **macOS 26+ и Apple Silicon (M1 или новее)**. Готовые сборки для Intel пока не публикуются.
+## Installation
 
-1. Скачайте файл `PangoZip-<version>-arm64.dmg` из [последнего релиза](https://github.com/evn88/PangoZip/releases/latest).
-2. Откройте образ и перетащите PangoZip в Applications.
-3. Извлеките образ и запустите приложение из Applications.
+Requires **macOS 26+ and Apple Silicon (M1 or later)**. Prebuilt Intel versions are not published yet.
 
-Если меню или предпросмотр в Finder не появились, включите расширения PangoZip в системных настройках macOS. В настройках приложения можно выбрать, какие типы архивов открывать в PangoZip.
+1. Download `PangoZip-<version>-arm64.dmg` from the [latest release](https://github.com/evn88/PangoZip/releases/latest).
+2. Open the disk image and drag PangoZip to Applications.
+3. Eject the disk image and launch the app from Applications.
 
-Сведения о подписи указаны в описании релиза. Сборки без нотариализации Apple могут блокироваться при первом запуске. Подробнее об установке и удалении: [инструкция](docs/installation.txt).
+If Finder menus or previews do not appear, enable the PangoZip extensions in macOS System Settings. You can choose which archive types open in PangoZip in the app's settings.
 
-## Разработка
+See the release description for signing details. Builds without Apple notarization may be blocked on first launch. For installation and removal details, see the [instructions](docs/installation.txt).
 
-Приложение написано на SwiftUI и AppKit. Нужны **Xcode 26+ и Swift 6.2+**. Перед изменениями прочитайте [AGENTS.md](AGENTS.md).
+## Development
+
+The app uses SwiftUI and AppKit. You need **Xcode 26+ and Swift 6.2+**. Read [AGENTS.md](AGENTS.md) before making changes.
 
 ```sh
 git clone https://github.com/evn88/PangoZip.git
@@ -45,11 +47,11 @@ cd PangoZip
 open build/PangoZip.app
 ```
 
-Можно открыть `Package.swift` в Xcode. Движок 7zz включён в репозиторий; Sparkle загружается через Swift Package Manager при первой сборке.
+You can open `Package.swift` in Xcode. The 7zz engine is included in the repository; Sparkle is downloaded through Swift Package Manager on the first build.
 
-Для проверки интеграции с Finder установите собранное приложение командой `./scripts/install-app.sh --skip-build` в `~/Applications`.
+To test Finder integration, install the built app in `~/Applications` with `./scripts/install-app.sh --skip-build`.
 
-Перед отправкой pull request в `main` выполните сборку и проверки:
+Before submitting a pull request to `main`, run the build and checks:
 
 ```sh
 swift test
@@ -58,14 +60,14 @@ python3 -m unittest discover -s scripts/tests
 ./scripts/build-app.sh
 ```
 
-Подробности: [работа с файлами](docs/file-interactions.md), [локализация](docs/localization.md), [выпуск релизов](docs/github-releases.md), [подпись и нотариализация](docs/notarization.md).
+More details: [file interactions](docs/file-interactions.md), [localization](docs/localization.md), [releases](docs/github-releases.md), [signing and notarization](docs/notarization.md).
 
-## Обратная связь
+## Feedback
 
-Ошибки и предложения — в [GitHub Issues](https://github.com/evn88/PangoZip/issues). Укажите версии PangoZip и macOS, формат архива и шаги воспроизведения. Прикладывайте только примеры без личных данных и паролей.
+Report bugs and suggest improvements in [GitHub Issues](https://github.com/evn88/PangoZip/issues). Include your PangoZip and macOS versions, archive format, and steps to reproduce the issue. Only attach examples without personal data or passwords.
 
-Поддержать разработку можно через [GitHub Sponsors](https://github.com/sponsors/evn88).
+You can support development through [GitHub Sponsors](https://github.com/sponsors/evn88).
 
-## Лицензия
+## License
 
-Собственный код и документация PangoZip — [MIT](LICENSE). Встроенные 7-Zip и Sparkle распространяются по своим лицензиям: [сторонние компоненты, исходники и условия распространения](THIRD_PARTY_NOTICES.md).
+PangoZip's own code and documentation are licensed under [MIT](LICENSE). The bundled 7-Zip and Sparkle components have their own licenses: [third-party components, sources, and distribution terms](THIRD_PARTY_NOTICES.md).
