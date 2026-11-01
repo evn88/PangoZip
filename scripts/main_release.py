@@ -105,9 +105,12 @@ def prepare(root, requested, published):
     text = readme.read_text()
     text = re.sub(r"^Скачать: .*", f"Скачать: [PangoZip {number}](https://github.com/{REPOSITORY}/releases/tag/{tag}).",
                   text, flags=re.MULTILINE)
-    text, count = re.subn(r"^(?:Текущая версия|Последняя версия): .*",
-                         f"Текущая версия: **{number} ({build})**. [Изменения {number}](https://github.com/{REPOSITORY}/releases/tag/{tag}).",
-                         text, flags=re.MULTILINE)
+    def version_line(match):
+        label, changes = (("Latest version", "Changes in") if match[1] == "Latest version"
+                          else ("Текущая версия", "Изменения"))
+        return f"{label}: **{number} ({build})**. [{changes} {number}](https://github.com/{REPOSITORY}/releases/tag/{tag})."
+    text, count = re.subn(r"^(Latest version|Текущая версия|Последняя версия): .*",
+                         version_line, text, flags=re.MULTILINE)
     if count != 1:
         raise ValueError("README current version was not found")
     readme.write_text(text)
