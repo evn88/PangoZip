@@ -6,7 +6,7 @@
 
 A native archive manager for macOS. Browse archive contents, extract files, and edit individual files.
 
-Latest version: [download PangoZip](https://github.com/evn88/PangoZip/releases/latest).
+Latest version: **0.7.6 (18)**. [Changes in 0.7.6](https://github.com/evn88/PangoZip/releases/tag/v0.7.6).
 
 ## Features
 
