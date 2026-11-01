@@ -286,3 +286,6 @@
 "Обновление ожидает завершения работы" = "La actualización está esperando";
 "Перед обновлением завершите операции Finder и закройте другие окна PangoZip." = "Antes de actualizar, termine las operaciones del Finder y cierre las otras ventanas de PangoZip.";
 "Назад" = "Atrás";
+"О программе PangoZip" = "Acerca de PangoZip";
+"Автор: %1$@" = "Autor: %1$@";
+"Версия %1$@" = "Versión %1$@";
