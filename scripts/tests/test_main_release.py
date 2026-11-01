@@ -110,6 +110,35 @@ class MainReleaseTests(unittest.TestCase):
         self.assertEqual(state["tag"], "v0.7.1")
         self.assertIn("0.7.1 (13)", (self.root / "README.md").read_text())
 
+    def test_repository_readme_supports_generated_version_in_english(self):
+        import main_release
+        readme = self.root / "README.md"
+        readme.write_text((Path(__file__).resolve().parents[2] / "README.md").read_text())
+        self.git("add", "README.md")
+        self.git("commit", "-m", "Use the repository README")
+        self.git("push", "origin", "main")
+        state = main_release.prepare(self.root, self.git("rev-parse", "HEAD"), {"v0.7.0"})
+        self.assertEqual(state["tag"], "v0.7.1")
+        expected = ("Latest version: **0.7.1 (13)**. [Changes in 0.7.1]"
+                    "(https://github.com/evn88/PangoZip/releases/tag/v0.7.1).")
+        self.assertIn(expected, readme.read_text())
+        self.assertNotIn("Текущая версия:", readme.read_text())
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertTrue(main_release.finalize(self.root, state))
+        self.assertEqual(self.git("ls-remote", "origin", "refs/tags/v0.7.1").split()[0], state["commit"])
+
+    def test_missing_readme_version_is_rejected_without_a_release_commit(self):
+        import main_release
+        (self.root / "README.md").write_text("# PangoZip\n")
+        self.git("add", "README.md")
+        self.git("commit", "-m", "Remove version line")
+        self.git("push", "origin", "main")
+        source = self.git("rev-parse", "HEAD")
+        with self.assertRaisesRegex(ValueError, "README current version was not found"):
+            main_release.prepare(self.root, source, {"v0.7.0"})
+        self.assertEqual(self.git("rev-parse", "HEAD"), source)
+        self.assertEqual(self.git("ls-remote", "origin", "refs/tags/v0.7.1"), "")
+
     def test_cli_reports_remote_error_without_token(self):
         import contextlib
         import io
