@@ -426,12 +426,14 @@ struct ArchiveOutlineView: NSViewRepresentable {
     {
       guard parent.model.canAct, let snapshot = parent.model.session, let item = item as? Item
       else { return nil }
-      if dragID == nil || dragSelection != parent.selectedPaths {
+      // Строку вне выделения AppKit перетаскивает одну, не меняя выделение.
+      let source =
+        parent.selectedPaths.contains(item.node.path) ? parent.selectedPaths : [item.node.path]
+      if dragID == nil || dragSelection != source {
         guard
-          let roots = try? ArchiveSelection.topLevelPaths(
-            Array(parent.selectedPaths), entries: snapshot.entries)
+          let roots = try? ArchiveSelection.topLevelPaths(Array(source), entries: snapshot.entries)
         else { return nil }
-        dragSelection = parent.selectedPaths
+        dragSelection = source
         dragRoots = Set(roots)
         dragID = UUID()
       }

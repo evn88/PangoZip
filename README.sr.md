@@ -8,6 +8,8 @@
 
 Најновија верзија: [преузмите PangoZip](https://github.com/evn88/PangoZip/releases/latest).
 
+Сајт: [pangozip.app](https://pangozip.app).
+
 ## Могућности
 
 - Преглед и распакивање ZIP, 7z, RAR, TAR и других формата које подржава 7-Zip.

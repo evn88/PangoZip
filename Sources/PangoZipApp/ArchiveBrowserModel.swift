@@ -429,6 +429,8 @@ final class ArchiveBrowserModel: ObservableObject {
     }) {
       errorMessage = L10n.tr(
         "Сначала сохраните рабочие копии или закройте архив, выбрав «Не сохранять».")
+      // «Повторить» под этим сообщением не должно запускать прежнюю неудачную операцию.
+      failedOperation = nil
       return
     }
     enqueue(
@@ -526,7 +528,8 @@ final class ArchiveBrowserModel: ObservableObject {
     if isExporting { isPasswordPromptPresented = false }
     dragLeases.removeAll()
     updateExportState()
-    cancelPreview()
+    // Esc без активной подготовки не должен стирать уже показанный предпросмотр.
+    cancelPreview(preservingContent: !isMaterializing)
   }
 
   /// Использует общий путь отмены, чтобы также освободить предпросмотр и экспорт.
@@ -972,6 +975,7 @@ final class ArchiveBrowserModel: ObservableObject {
   private func openInWorkspace(_ url: URL) {
     if !NSWorkspace.shared.open(url) {
       errorMessage = L10n.tr("Не удалось открыть файл во внешнем приложении.")
+      failedOperation = nil
     }
   }
 

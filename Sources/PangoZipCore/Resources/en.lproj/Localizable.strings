@@ -289,3 +289,6 @@
 "О программе PangoZip" = "About PangoZip";
 "Автор: %1$@" = "Author: %1$@";
 "Версия %1$@" = "Version %1$@";
+"Распаковать всё…" = "Extract All…";
+"Показать в Finder" = "Show in Finder";
+"Сайт PangoZip" = "PangoZip Website";

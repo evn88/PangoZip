@@ -208,10 +208,11 @@ public actor ArchiveService {
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
     guard state.edits.isEmpty else { throw ArchiveError.activeEdits }
     guard let undo = state.undo else { throw ArchiveError.invalidOperation }
-    _ = try await ArchiveContentDigest.validate(
-      undo.url, fingerprint: undo.fingerprint, digest: undo.digest)
+    // Флаг занятости ставится до первой приостановки, иначе параллельная мутация успеет начаться.
     busy.insert(session.id)
     defer { busy.remove(session.id) }
+    _ = try await ArchiveContentDigest.validate(
+      undo.url, fingerprint: undo.fingerprint, digest: undo.digest)
     let transaction = try workspace.transactionDirectory(nextTo: state.url)
     defer { try? workspace.removeTransaction(transaction) }
     let working = transaction.appendingPathComponent("restore." + undo.descriptor.format)
@@ -436,6 +437,8 @@ public actor ArchiveService {
             throw ArchiveError.editedFileChanged
           }
         }
+        // 7zz пересоздаёт рабочую копию без расширенных атрибутов оригинала.
+        try Quarantine.copy(from: url, to: working)
         _ = try FileManager.default.replaceItemAt(url, withItemAt: working)
       } catch { replacementError = error }
     }
@@ -496,6 +499,17 @@ public actor ArchiveService {
   }
 
   /// Отделяет заголовок 7zz от записей и разрешает изменение только поддерживаемых простых архивов.
+  /// xz, bzip2, zstd и lzma не хранят имя файла: 7zz выводит его из имени архива, список — нет.
+  static func namedStreamListing(_ body: String, format: String, url: URL) -> String {
+    guard ["xz", "bzip2", "zstd", "lzma"].contains(format),
+      !body.hasPrefix("Path = "), !body.contains("\nPath = ")
+    else { return body }
+    let stem = url.deletingPathExtension().lastPathComponent
+    let isShortTar = ["txz", "tbz", "tbz2", "tzst", "tlz"].contains(url.pathExtension.lowercased())
+    let name = stem.isEmpty ? url.lastPathComponent : stem + (isShortTar ? ".tar" : "")
+    return "Path = " + name + "\n" + body
+  }
+
   private func readArchive(_ url: URL, password: String, in directory: URL) async throws
     -> Descriptor
   {
@@ -518,7 +532,7 @@ public actor ArchiveService {
         || ($0.hasPrefix("Volumes = ") && $0 != "Volumes = 1")
     }
     let stub = lines.contains { $0.hasPrefix("Offset = ") && $0 != "Offset = 0" }
-    let entries = try ArchiveListing.parse(body)
+    let entries = try ArchiveListing.parse(Self.namedStreamListing(body, format: format, url: url))
     _ = try ArchiveListing.tree(from: entries)
     return Descriptor(
       format: format, canModify: ["zip", "7z", "tar"].contains(format) && !multipart && !stub,
@@ -718,7 +732,9 @@ extension ArchiveService {
         entry, from: url, to: source, password: password,
         progress: reporter.engine(
           phase: .extracting, from: 0, to: 0.1, totalBytes: entry.size, itemBytes: entry.size,
-          completedFiles: 0, totalFiles: 1, currentFile: entry.path, outputURL: url))
+          completedFiles: 0, totalFiles: 1, currentFile: entry.path, outputURL: url),
+        // gzip хранит размер по модулю 4 ГиБ; целостность потока подтверждает его CRC.
+        sizeLimit: descriptor.format == "gzip" ? maximumBytes : nil)
       verificationStart = 0.1
       descriptor = try await readArchive(source, password: password, in: transaction)
       guard descriptor.format == "tar" else { throw ArchiveError.invalidArchive }
@@ -779,7 +795,7 @@ extension ArchiveService {
   /// Извлекает ровно одну запись через stdout и требует совпадения фактического и заявленного размера.
   private func extractFile(
     _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String,
-    progress: (@Sendable (Double) async -> Void)? = nil
+    progress: (@Sendable (Double) async -> Void)? = nil, sizeLimit: UInt64? = nil
   ) async throws {
     try await runner().run(
       arguments: [
@@ -787,8 +803,8 @@ extension ArchiveService {
         "-p" + password, "--", archive.path,
         entry.path,
       ],
-      outputURL: output, limit: entry.size, progress: progress)
-    guard try FileFingerprint(output).size == entry.size else {
+      outputURL: output, limit: sizeLimit ?? entry.size, progress: progress)
+    guard try sizeLimit != nil || FileFingerprint(output).size == entry.size else {
       throw ArchiveError.extractionMismatch
     }
   }

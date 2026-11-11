@@ -112,7 +112,9 @@ struct EngineProcess: Sendable {
       defer { try? handle.close() }
       let outputData = try handle.read(upToCount: 65_536) ?? Data()
       let message = String(decoding: errorData + outputData, as: UTF8.self).lowercased()
-      if message.contains("password") || message.contains("encrypted archive") {
+      // Слово password в пути или имени файла не должно превращать повреждение в запрос пароля.
+      if ["wrong password", "enter password", "encrypted archive"].contains(where: message.contains)
+      {
         throw ArchiveError.passwordRequired
       }
       throw ArchiveError.invalidArchive

@@ -3,6 +3,9 @@ import PangoZipCore
 import SwiftUI
 
 enum SupportConfiguration {
+  /// Официальный сайт приложения со страницей загрузки.
+  static let websiteURL = URL(string: "https://pangozip.app")!
+
   static var pageURL: URL? {
     pageURL(infoDictionary: Bundle.main.infoDictionary)
   }

@@ -1,0 +1,86 @@
+{
+  "en": [
+    "Quick Look preview: search, multiple selection, folder sizes, file icons and Show in Finder.",
+    "TAR.XZ archives now open and extract.",
+    "Editing a downloaded archive keeps its quarantine mark; read-only folders extract correctly.",
+    "Added a link to the pangozip.app website."
+  ],
+  "ru": [
+    "Предпросмотр Quick Look: поиск, выбор нескольких объектов, размеры папок, иконки файлов и «Показать в Finder».",
+    "Архивы TAR.XZ теперь открываются и распаковываются.",
+    "Изменение скачанного архива сохраняет отметку карантина; папки только для чтения извлекаются корректно.",
+    "Добавлена ссылка на сайт pangozip.app."
+  ],
+  "sr-Latn": [
+    "Quick Look pregled: pretraga, izbor više stavki, veličine fascikli, ikone datoteka i „Prikaži u Finderu“.",
+    "TAR.XZ arhive se sada otvaraju i raspakuju.",
+    "Izmena preuzete arhive čuva oznaku karantina; fascikle samo za čitanje se ispravno raspakuju.",
+    "Dodata je veza ka sajtu pangozip.app."
+  ],
+  "de": [
+    "Quick-Look-Vorschau: Suche, Mehrfachauswahl, Ordnergrößen, Dateisymbole und „Im Finder anzeigen“.",
+    "TAR.XZ-Archive lassen sich jetzt öffnen und entpacken.",
+    "Beim Bearbeiten eines geladenen Archivs bleibt die Quarantäne-Markierung erhalten; schreibgeschützte Ordner werden korrekt entpackt.",
+    "Link zur Website pangozip.app hinzugefügt."
+  ],
+  "fr": [
+    "Aperçu Quick Look : recherche, sélection multiple, tailles des dossiers, icônes de fichiers et « Afficher dans le Finder ».",
+    "Les archives TAR.XZ s’ouvrent et s’extraient désormais.",
+    "La modification d’une archive téléchargée conserve sa marque de quarantaine ; les dossiers en lecture seule s’extraient correctement.",
+    "Ajout d’un lien vers le site pangozip.app."
+  ],
+  "es": [
+    "Vista previa de Quick Look: búsqueda, selección múltiple, tamaños de carpetas, iconos de archivos y «Mostrar en el Finder».",
+    "Los archivos TAR.XZ ahora se abren y se extraen.",
+    "Al editar un archivo descargado se conserva su marca de cuarentena; las carpetas de solo lectura se extraen correctamente.",
+    "Se añadió un enlace al sitio pangozip.app."
+  ],
+  "it": [
+    "Anteprima Quick Look: ricerca, selezione multipla, dimensioni delle cartelle, icone dei file e «Mostra nel Finder».",
+    "Gli archivi TAR.XZ ora si aprono e si estraggono.",
+    "La modifica di un archivio scaricato ne conserva il contrassegno di quarantena; le cartelle di sola lettura vengono estratte correttamente.",
+    "Aggiunto un link al sito pangozip.app."
+  ],
+  "pt": [
+    "Pré-visualização Quick Look: pesquisa, seleção múltipla, tamanhos das pastas, ícones de ficheiros e «Mostrar no Finder».",
+    "Os arquivos TAR.XZ agora abrem e são extraídos.",
+    "Editar um arquivo descarregado mantém a marca de quarentena; as pastas só de leitura são extraídas corretamente.",
+    "Adicionada uma ligação para o site pangozip.app."
+  ],
+  "pl": [
+    "Podgląd Quick Look: wyszukiwanie, zaznaczanie wielu obiektów, rozmiary folderów, ikony plików i „Pokaż w Finderze”.",
+    "Archiwa TAR.XZ można teraz otwierać i rozpakowywać.",
+    "Edycja pobranego archiwum zachowuje oznaczenie kwarantanny; foldery tylko do odczytu rozpakowują się poprawnie.",
+    "Dodano łącze do strony pangozip.app."
+  ],
+  "uk": [
+    "Перегляд Quick Look: пошук, вибір кількох об’єктів, розміри папок, іконки файлів і «Показати у Finder».",
+    "Архіви TAR.XZ тепер відкриваються та розпаковуються.",
+    "Зміна завантаженого архіву зберігає позначку карантину; папки лише для читання видобуваються коректно.",
+    "Додано посилання на сайт pangozip.app."
+  ],
+  "tr": [
+    "Quick Look önizlemesi: arama, çoklu seçim, klasör boyutları, dosya simgeleri ve “Finder’da Göster”.",
+    "TAR.XZ arşivleri artık açılıyor ve çıkarılıyor.",
+    "İndirilen bir arşivi düzenlemek karantina işaretini korur; salt okunur klasörler doğru şekilde çıkarılır.",
+    "pangozip.app sitesine bağlantı eklendi."
+  ],
+  "zh-Hans": [
+    "快速查看预览：搜索、多选、文件夹大小、文件图标和“在访达中显示”。",
+    "现在可以打开并解压 TAR.XZ 归档。",
+    "编辑下载的归档时会保留隔离标记；只读文件夹可正确解压。",
+    "新增 pangozip.app 网站链接。"
+  ],
+  "ja": [
+    "クイックルックのプレビュー：検索、複数選択、フォルダサイズ、ファイルアイコン、「Finderに表示」。",
+    "TAR.XZアーカイブを開いて展開できるようになりました。",
+    "ダウンロードしたアーカイブを編集しても検疫マークが保持され、読み出し専用フォルダも正しく展開されます。",
+    "pangozip.appサイトへのリンクを追加しました。"
+  ],
+  "ko": [
+    "훑어보기 미리보기: 검색, 다중 선택, 폴더 크기, 파일 아이콘, ‘Finder에서 보기’.",
+    "이제 TAR.XZ 아카이브를 열고 압축 해제할 수 있습니다.",
+    "다운로드한 아카이브를 편집해도 격리 표시가 유지되며, 읽기 전용 폴더가 올바르게 압축 해제됩니다.",
+    "pangozip.app 웹사이트 링크를 추가했습니다."
+  ]
+}

@@ -1,3 +1,4 @@
+import AppKit
 import PangoZipCore
 import SwiftUI
 
@@ -25,6 +26,9 @@ struct ArchiveCommands: Commands {
           .keyboardShortcut("w", modifiers: .command)
           .disabled(model.session == nil && !model.isBusy || model.isClosing)
       }
+    }
+    CommandGroup(replacing: .help) {
+      Button(L10n.tr("Сайт PangoZip")) { NSWorkspace.shared.open(SupportConfiguration.websiteURL) }
     }
     CommandMenu(L10n.tr("Архив")) {
       Button(L10n.tr("Назад"), action: model.navigateBack)

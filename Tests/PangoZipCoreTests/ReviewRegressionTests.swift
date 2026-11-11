@@ -35,6 +35,115 @@ final class ReviewRegressionTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Потоки без имени в списке 7zz открываются и распаковываются как обычный сжатый TAR.
+  func testNamelessCompressedStreamsOpenAndExtract() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try runEngine(["a", "-ttar", "base.tar", "File.txt"], in: root)
+    try runEngine(["a", "-txz", "base.tar.xz", "base.tar"], in: root)
+    try FileManager.default.copyItem(
+      at: root.appendingPathComponent("base.tar.xz"), to: root.appendingPathComponent("short.txz"))
+    let service = ArchiveService(executableURL: engine)
+    for name in ["base.tar.xz", "short.txz"] {
+      let archive = root.appendingPathComponent(name)
+      let session = try await service.open(archive)
+      XCTAssertEqual(session.entries.map(\.path), [name == "short.txz" ? "short.tar" : "base.tar"])
+      try await service.close(session)
+      let output = try await service.extractArchive(archive)
+      XCTAssertEqual(
+        try Data(contentsOf: output.appendingPathComponent("File.txt")), Data("original".utf8))
+    }
+    await service.cleanup()
+  }
+
+  /// Изменение архива из интернета не снимает с него quarantine.
+  func testMutationPreservesQuarantineOfOriginal() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try runEngine(["a", "sample.zip", "File.txt"], in: root)
+    let archive = root.appendingPathComponent("sample.zip")
+    let quarantine = Data("0083;12345678;Test;".utf8)
+    try quarantine.withUnsafeBytes {
+      guard setxattr(archive.path, "com.apple.quarantine", $0.baseAddress, $0.count, 0, 0) == 0
+      else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+    let service = ArchiveService(executableURL: engine)
+    let session = try await service.open(archive)
+    _ = try await service.add([root.appendingPathComponent("New.txt")], to: session)
+    var buffer = [UInt8](repeating: 0, count: 64)
+    let count = getxattr(archive.path, "com.apple.quarantine", &buffer, buffer.count, 0, 0)
+    XCTAssertEqual(Data(buffer.prefix(max(count, 0))), quarantine)
+    await service.cleanup()
+  }
+
+  /// Папка без права записи публикуется с исходными правами, а её черновик удаляется.
+  func testReadOnlyDirectoriesArePublishedAndRemoved() throws {
+    let root = try fixture()
+    defer {
+      chmod(root.appendingPathComponent("Published").path, 0o700)
+      try? FileManager.default.removeItem(at: root)
+    }
+    for name in ["Locked", "Stale"] {
+      let inner = root.appendingPathComponent(name + "/Inner")
+      try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+      try Data("x".utf8).write(to: inner.appendingPathComponent("File.txt"))
+      chmod(inner.path, 0o555)
+      chmod(root.appendingPathComponent(name).path, 0o555)
+    }
+    let published = try ArchiveOutput.publish(
+      root.appendingPathComponent("Locked"), proposed: root.appendingPathComponent("Published"),
+      isDirectory: true)
+    XCTAssertEqual(try FileFingerprint(published).type, .typeDirectory)
+    var info = stat()
+    XCTAssertEqual(lstat(published.path, &info), 0)
+    XCTAssertEqual(info.st_mode & 0o777, 0o555)
+    try TemporaryWorkspace.removeTree(root.appendingPathComponent("Stale"))
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: root.appendingPathComponent("Stale").path))
+  }
+
+  /// Новые рабочие папки носят имя PangoZip, а оставленные прежней версией Zipevra очищаются.
+  func testWorkspaceUsesCurrentNameAndRecoversLegacyTransactions() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let id = "workspace-" + UUID().uuidString
+    let legacy = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "app.zipevra.workspaces/" + id)
+    let stale = root.appendingPathComponent(".zipevra-" + id + "-" + UUID().uuidString)
+    try FileManager.default.createDirectory(
+      at: legacy.appendingPathComponent("transactions"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: false)
+    try Data().write(to: legacy.appendingPathComponent("owner.lock"))
+    try JSONEncoder().encode(["path": stale.path]).write(
+      to: legacy.appendingPathComponent("transactions/" + stale.lastPathComponent + ".json"))
+    let workspace = TemporaryWorkspace()
+    defer { workspace.cleanup() }
+    let transaction = try workspace.transactionDirectory(
+      nextTo: root.appendingPathComponent("a.zip"))
+    XCTAssertTrue(transaction.lastPathComponent.hasPrefix(".pangozip-workspace-"))
+    XCTAssertEqual(
+      workspace.root.deletingLastPathComponent().lastPathComponent, "app.pangozip.workspaces")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path))
+    try workspace.removeTransaction(transaction)
+  }
+
+  /// Слово password в имени повреждённого архива не превращает ошибку в запрос пароля.
+  func testPasswordInArchiveNameIsNotPasswordRequest() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent("my-passwords.zip")
+    try Data("PK\u{3}\u{4} broken".utf8).write(to: archive)
+    let service = ArchiveService(executableURL: engine)
+    do {
+      _ = try await service.open(archive)
+      XCTFail("Повреждённый архив не должен открываться")
+    } catch {
+      XCTAssertEqual(error as? ArchiveError, .invalidArchive)
+    }
+    await service.cleanup()
+  }
+
   /// Новая правка не должна регистрироваться между снимком и завершением другой транзакции.
   func testEditingCannotRegisterWhileMutationIsUsingSessionSnapshot() async throws {
     let root = try fixture()
