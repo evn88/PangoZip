@@ -1,86 +1,114 @@
 {
   "en": [
     "Quick Look preview: search, multiple selection, folder sizes, file icons and Show in Finder.",
+    "System files such as __MACOSX, .DS_Store and ._* are hidden in the archive list and left out of new archives (both options are in Settings).",
     "TAR.XZ, TAR.BZ2 and TAR.ZST archives, including ones created by the macOS tar tool, now open and extract.",
     "Editing a downloaded archive keeps its quarantine mark; read-only folders extract correctly.",
+    "The archive window no longer shows a stray horizontal scroll bar.",
     "Added a link to the pangozip.app website."
   ],
   "ru": [
     "Предпросмотр Quick Look: поиск, выбор нескольких объектов, размеры папок, иконки файлов и «Показать в Finder».",
+    "Служебные файлы систем (__MACOSX, .DS_Store, ._* и подобные) скрываются в списке архива и не попадают в новые архивы — обе опции есть в настройках.",
     "Архивы TAR.XZ, TAR.BZ2 и TAR.ZST, в том числе созданные утилитой tar в macOS, теперь открываются и распаковываются.",
     "Изменение скачанного архива сохраняет отметку карантина; папки только для чтения извлекаются корректно.",
+    "В окне архива больше нет лишней горизонтальной прокрутки.",
     "Добавлена ссылка на сайт pangozip.app."
   ],
   "sr-Latn": [
     "Quick Look pregled: pretraga, izbor više stavki, veličine fascikli, ikone datoteka i „Prikaži u Finderu“.",
+    "Sistemske datoteke (__MACOSX, .DS_Store, ._* i slične) skrivene su na listi arhive i ne ulaze u nove arhive — obe opcije su u podešavanjima.",
     "TAR.XZ, TAR.BZ2 i TAR.ZST arhive, uključujući one napravljene alatom tar na macOS-u, sada se otvaraju i raspakuju.",
     "Izmena preuzete arhive čuva oznaku karantina; fascikle samo za čitanje se ispravno raspakuju.",
+    "Prozor arhive više ne prikazuje suvišnu horizontalnu traku za pomeranje.",
     "Dodata je veza ka sajtu pangozip.app."
   ],
   "de": [
     "Quick-Look-Vorschau: Suche, Mehrfachauswahl, Ordnergrößen, Dateisymbole und „Im Finder anzeigen“.",
+    "Systemdateien wie __MACOSX, .DS_Store und ._* werden in der Archivliste ausgeblendet und nicht in neue Archive aufgenommen (beide Optionen in den Einstellungen).",
     "TAR.XZ-, TAR.BZ2- und TAR.ZST-Archive, auch mit dem macOS-Werkzeug tar erstellte, lassen sich jetzt öffnen und entpacken.",
     "Beim Bearbeiten eines geladenen Archivs bleibt die Quarantäne-Markierung erhalten; schreibgeschützte Ordner werden korrekt entpackt.",
+    "Das Archivfenster zeigt keine überflüssige horizontale Bildlaufleiste mehr.",
     "Link zur Website pangozip.app hinzugefügt."
   ],
   "fr": [
     "Aperçu Quick Look : recherche, sélection multiple, tailles des dossiers, icônes de fichiers et « Afficher dans le Finder ».",
+    "Les fichiers système comme __MACOSX, .DS_Store et ._* sont masqués dans la liste et exclus des nouvelles archives (deux options dans les réglages).",
     "Les archives TAR.XZ, TAR.BZ2 et TAR.ZST, y compris celles créées par l’outil tar de macOS, s’ouvrent et s’extraient désormais.",
     "La modification d’une archive téléchargée conserve sa marque de quarantaine ; les dossiers en lecture seule s’extraient correctement.",
+    "La fenêtre d’archive n’affiche plus de barre de défilement horizontale superflue.",
     "Ajout d’un lien vers le site pangozip.app."
   ],
   "es": [
     "Vista previa de Quick Look: búsqueda, selección múltiple, tamaños de carpetas, iconos de archivos y «Mostrar en el Finder».",
+    "Los archivos del sistema como __MACOSX, .DS_Store y ._* se ocultan en la lista y no se incluyen en archivos nuevos (ambas opciones están en Ajustes).",
     "Los archivos TAR.XZ, TAR.BZ2 y TAR.ZST, incluidos los creados con la herramienta tar de macOS, ahora se abren y se extraen.",
     "Al editar un archivo descargado se conserva su marca de cuarentena; las carpetas de solo lectura se extraen correctamente.",
+    "La ventana del archivo ya no muestra una barra de desplazamiento horizontal innecesaria.",
     "Se añadió un enlace al sitio pangozip.app."
   ],
   "it": [
     "Anteprima Quick Look: ricerca, selezione multipla, dimensioni delle cartelle, icone dei file e «Mostra nel Finder».",
+    "I file di sistema come __MACOSX, .DS_Store e ._* sono nascosti nell’elenco ed esclusi dai nuovi archivi (entrambe le opzioni sono nelle impostazioni).",
     "Gli archivi TAR.XZ, TAR.BZ2 e TAR.ZST, compresi quelli creati con lo strumento tar di macOS, ora si aprono e si estraggono.",
     "La modifica di un archivio scaricato ne conserva il contrassegno di quarantena; le cartelle di sola lettura vengono estratte correttamente.",
+    "La finestra dell’archivio non mostra più una barra di scorrimento orizzontale superflua.",
     "Aggiunto un link al sito pangozip.app."
   ],
   "pt": [
     "Pré-visualização Quick Look: pesquisa, seleção múltipla, tamanhos das pastas, ícones de ficheiros e «Mostrar no Finder».",
+    "Arquivos do sistema como __MACOSX, .DS_Store e ._* ficam ocultos na lista e fora dos novos arquivos compactados (ambas as opções estão nos Ajustes).",
     "Os arquivos TAR.XZ, TAR.BZ2 e TAR.ZST, incluindo os criados pela ferramenta tar do macOS, agora abrem e são extraídos.",
     "Editar um arquivo descarregado mantém a marca de quarentena; as pastas só de leitura são extraídas corretamente.",
+    "A janela do arquivo não mostra mais uma barra de rolagem horizontal desnecessária.",
     "Adicionada uma ligação para o site pangozip.app."
   ],
   "pl": [
     "Podgląd Quick Look: wyszukiwanie, zaznaczanie wielu obiektów, rozmiary folderów, ikony plików i „Pokaż w Finderze”.",
+    "Pliki systemowe, takie jak __MACOSX, .DS_Store i ._*, są ukryte na liście i pomijane w nowych archiwach (obie opcje są w ustawieniach).",
     "Archiwa TAR.XZ, TAR.BZ2 i TAR.ZST, także utworzone narzędziem tar w macOS, można teraz otwierać i rozpakowywać.",
     "Edycja pobranego archiwum zachowuje oznaczenie kwarantanny; foldery tylko do odczytu rozpakowują się poprawnie.",
+    "Okno archiwum nie pokazuje już zbędnego poziomego paska przewijania.",
     "Dodano łącze do strony pangozip.app."
   ],
   "uk": [
     "Перегляд Quick Look: пошук, вибір кількох об’єктів, розміри папок, іконки файлів і «Показати у Finder».",
+    "Службові файли систем (__MACOSX, .DS_Store, ._* та подібні) приховуються у списку архіву й не потрапляють до нових архівів — обидві опції є в налаштуваннях.",
     "Архіви TAR.XZ, TAR.BZ2 і TAR.ZST, зокрема створені утилітою tar у macOS, тепер відкриваються та розпаковуються.",
     "Зміна завантаженого архіву зберігає позначку карантину; папки лише для читання видобуваються коректно.",
+    "У вікні архіву більше немає зайвої горизонтальної прокрутки.",
     "Додано посилання на сайт pangozip.app."
   ],
   "tr": [
     "Quick Look önizlemesi: arama, çoklu seçim, klasör boyutları, dosya simgeleri ve “Finder’da Göster”.",
+    "__MACOSX, .DS_Store ve ._* gibi sistem dosyaları arşiv listesinde gizlenir ve yeni arşivlere eklenmez (iki seçenek de Ayarlar’da).",
     "macOS tar aracıyla oluşturulanlar dahil TAR.XZ, TAR.BZ2 ve TAR.ZST arşivleri artık açılıyor ve çıkarılıyor.",
     "İndirilen bir arşivi düzenlemek karantina işaretini korur; salt okunur klasörler doğru şekilde çıkarılır.",
+    "Arşiv penceresinde artık gereksiz yatay kaydırma çubuğu görünmüyor.",
     "pangozip.app sitesine bağlantı eklendi."
   ],
   "zh-Hans": [
     "快速查看预览：搜索、多选、文件夹大小、文件图标和“在访达中显示”。",
+    "__MACOSX、.DS_Store、._* 等系统文件会在归档列表中隐藏，且不会加入新归档（两个选项均在设置中）。",
     "现在可以打开并解压 TAR.XZ、TAR.BZ2 和 TAR.ZST 归档，包括用 macOS tar 工具创建的归档。",
     "编辑下载的归档时会保留隔离标记；只读文件夹可正确解压。",
+    "归档窗口不再显示多余的水平滚动条。",
     "新增 pangozip.app 网站链接。"
   ],
   "ja": [
     "クイックルックのプレビュー：検索、複数選択、フォルダサイズ、ファイルアイコン、「Finderに表示」。",
+    "__MACOSX、.DS_Store、._* などのシステムファイルはアーカイブ一覧で非表示になり、新しいアーカイブにも含まれません（どちらも設定で変更可能）。",
     "macOSのtarツールで作成したものを含め、TAR.XZ、TAR.BZ2、TAR.ZSTアーカイブを開いて展開できるようになりました。",
     "ダウンロードしたアーカイブを編集しても検疫マークが保持され、読み出し専用フォルダも正しく展開されます。",
+    "アーカイブウインドウに不要な横スクロールバーが表示されなくなりました。",
     "pangozip.appサイトへのリンクを追加しました。"
   ],
   "ko": [
     "훑어보기 미리보기: 검색, 다중 선택, 폴더 크기, 파일 아이콘, ‘Finder에서 보기’.",
+    "__MACOSX, .DS_Store, ._* 같은 시스템 파일은 아카이브 목록에서 숨겨지고 새 아카이브에 포함되지 않습니다(두 옵션 모두 설정에 있음).",
     "이제 macOS tar 도구로 만든 것을 포함해 TAR.XZ, TAR.BZ2, TAR.ZST 아카이브를 열고 압축 해제할 수 있습니다.",
     "다운로드한 아카이브를 편집해도 격리 표시가 유지되며, 읽기 전용 폴더가 올바르게 압축 해제됩니다.",
+    "아카이브 창에 불필요한 가로 스크롤 막대가 더 이상 표시되지 않습니다.",
     "pangozip.app 웹사이트 링크를 추가했습니다."
   ]
 }

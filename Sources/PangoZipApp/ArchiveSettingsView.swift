@@ -25,7 +25,14 @@ enum ArchivePreferences {
       format: defaults.string(forKey: "compressionFormat") ?? "zip",
       level: defaults.object(forKey: "compressionLevel") as? Int ?? 5,
       solid: defaults.object(forKey: "compressionSolid") as? Bool ?? true,
-      threads: defaults.integer(forKey: "compressionThreads"))
+      threads: defaults.integer(forKey: "compressionThreads"),
+      excludesSystemFiles: excludesSystemFiles)
+  }
+
+  /// Служебные файлы систем по умолчанию не попадают в создаваемые архивы.
+  static var excludesSystemFiles: Bool {
+    let defaults = UserDefaults(suiteName: "app.pangozip.desktop") ?? .standard
+    return defaults.object(forKey: "excludeSystemFiles") as? Bool ?? true
   }
 }
 
@@ -36,6 +43,8 @@ struct ArchiveSettingsView: View {
   @AppStorage("compressionLevel") private var level = 5
   @AppStorage("compressionSolid") private var solid = true
   @AppStorage("compressionThreads") private var threads = 0
+  @AppStorage("excludeSystemFiles") private var excludesSystemFiles = true
+  @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
 
   var body: some View {
     TabView {
@@ -94,6 +103,8 @@ struct ArchiveSettingsView: View {
           Text(L10n.tr("Автоматически")).tag(0)
           ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
         }
+        Toggle(L10n.tr("Не добавлять служебные файлы систем"), isOn: $excludesSystemFiles)
+          .help(L10n.tr("Пропускает .DS_Store, __MACOSX, ._*, Thumbs.db и подобные файлы."))
         Text(
           L10n.tr(
             "Это начальные параметры окна «Добавить в архив…». Быстрые команды создания ZIP и 7z используют эти настройки, меняя только формат. Готовый архив создаётся рядом с выделенными файлами; совпадающие имена получают числовой суффикс."
@@ -125,6 +136,15 @@ struct ArchiveSettingsView: View {
 
   private var applicationSettings: some View {
     Form {
+      Section(L10n.tr("Просмотр архивов")) {
+        Toggle(L10n.tr("Скрывать служебные файлы систем"), isOn: $hidesSystemFiles)
+        Text(
+          L10n.tr(
+            "Скрывает в списке __MACOSX, .DS_Store, ._*, Thumbs.db и подобные файлы. При распаковке всего архива они всё равно извлекаются."
+          )
+        )
+        .font(.caption).foregroundStyle(.secondary)
+      }
       if let supportURL = SupportConfiguration.pageURL {
         DevelopmentSupportSection(pageURL: supportURL)
       }

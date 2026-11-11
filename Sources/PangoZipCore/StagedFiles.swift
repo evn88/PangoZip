@@ -25,8 +25,12 @@ struct FileFingerprint: Equatable, Sendable {
 
 enum StagedFiles {
   /// Копирует вне исполнителя actor; отмена передаётся копированию и ожидает его завершения.
-  static func copy(_ source: URL, to destination: URL) async throws {
-    let task = Task.detached(priority: .userInitiated) { try copyBlocking(source, to: destination) }
+  static func copy(_ source: URL, to destination: URL, skippingSystemFiles: Bool = false)
+    async throws
+  {
+    let task = Task.detached(priority: .userInitiated) {
+      try copyBlocking(source, to: destination, skippingSystemFiles: skippingSystemFiles)
+    }
     try await withTaskCancellationHandler {
       try await task.value
     } onCancel: {
@@ -35,7 +39,9 @@ enum StagedFiles {
   }
 
   /// Не следует исходным ссылкам; проверяет стабильность обычных файлов и сохраняет их атрибуты.
-  private static func copyBlocking(_ source: URL, to destination: URL) throws {
+  private static func copyBlocking(
+    _ source: URL, to destination: URL, skippingSystemFiles: Bool
+  ) throws {
     try Task.checkCancellation()
     let manager = FileManager.default
     let attributes = try manager.attributesOfItem(atPath: source.path)
@@ -57,8 +63,11 @@ enum StagedFiles {
       try manager.createDirectory(
         at: destination, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
       for child in try manager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
+        if skippingSystemFiles, SystemFiles.isSystemName(child.lastPathComponent) { continue }
         try ArchiveListing.validatePath(child.lastPathComponent)
-        try copyBlocking(child, to: destination.appendingPathComponent(child.lastPathComponent))
+        try copyBlocking(
+          child, to: destination.appendingPathComponent(child.lastPathComponent),
+          skippingSystemFiles: skippingSystemFiles)
       }
     } else {
       let before = try FileFingerprint(source)

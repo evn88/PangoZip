@@ -230,6 +230,56 @@ final class ReviewRegressionTests: XCTestCase, @unchecked Sendable {
   }
 
   /// Создаёт только собственные входные файлы, чтобы транзакции не затрагивали пользовательские архивы.
+  /// Служебные имена распознаются на любом уровне, обычные файлы с похожими именами — нет.
+  func testSystemFileNamesAndTreeFilter() throws {
+    for name in ["__MACOSX", ".DS_Store", "._File.txt", "Thumbs.db", "desktop.ini", "Icon\r"] {
+      XCTAssertTrue(SystemFiles.isSystemName(name), name)
+    }
+    for name in ["File.txt", "._", ".gitignore", "MACOSX", "Icon", "DS_Store"] {
+      XCTAssertFalse(SystemFiles.isSystemName(name), name)
+    }
+    XCTAssertTrue(SystemFiles.isSystemPath("__MACOSX/Folder/File.txt"))
+    XCTAssertFalse(SystemFiles.isSystemPath("Folder/File.txt"))
+    let tree = try ArchiveListing.tree(from: [
+      ArchiveEntry(path: "Folder/File.txt", size: 1),
+      ArchiveEntry(path: "Folder/.DS_Store", size: 1),
+      ArchiveEntry(path: "__MACOSX/Folder/._File.txt", size: 1),
+    ])
+    let filtered = SystemFiles.filter(tree)
+    XCTAssertEqual(filtered.map(\.path), ["Folder"])
+    XCTAssertEqual(filtered.first?.children?.map(\.path), ["Folder/File.txt"])
+  }
+
+  /// По умолчанию служебные файлы не попадают ни в новый архив, ни в существующий при добавлении.
+  func testSystemFilesAreExcludedWhenArchiving() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent("Folder")
+    try FileManager.default.createDirectory(
+      at: folder.appendingPathComponent("__MACOSX"), withIntermediateDirectories: true)
+    for name in ["Keep.txt", ".DS_Store", "._Keep.txt", "__MACOSX/._Keep.txt"] {
+      try Data("x".utf8).write(to: folder.appendingPathComponent(name))
+    }
+    try Data("x".utf8).write(to: root.appendingPathComponent(".DS_Store"))
+    let service = ArchiveService(executableURL: engine)
+    let clean = try await service.createArchive(
+      from: [folder, root.appendingPathComponent(".DS_Store")],
+      proposedURL: root.appendingPathComponent("clean.zip"), format: "zip")
+    let session = try await service.open(clean)
+    XCTAssertEqual(session.entries.map(\.path).sorted(), ["Folder", "Folder/Keep.txt"])
+    let updated = try await service.add([folder], to: session, directory: "")
+    XCTAssertFalse(updated.entries.contains { SystemFiles.isSystemPath($0.path) })
+    try await service.close(updated)
+    let full = try await service.createArchive(
+      from: [folder], proposedURL: root.appendingPathComponent("full.zip"), format: "zip",
+      options: CompressionOptions(excludesSystemFiles: false))
+    let fullSession = try await service.open(full)
+    XCTAssertTrue(fullSession.entries.contains { $0.path == "Folder/.DS_Store" })
+    XCTAssertTrue(fullSession.entries.contains { $0.path == "Folder/__MACOSX" })
+    try await service.close(fullSession)
+    await service.cleanup()
+  }
+
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

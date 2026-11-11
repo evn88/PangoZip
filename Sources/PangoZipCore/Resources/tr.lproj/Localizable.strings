@@ -292,3 +292,8 @@
 "Распаковать всё…" = "Tümünü Çıkar…";
 "Показать в Finder" = "Finder’da Göster";
 "Сайт PangoZip" = "PangoZip Web Sitesi";
+"Не добавлять служебные файлы систем" = "Sistem dosyalarını ekleme";
+"Пропускает .DS_Store, __MACOSX, ._*, Thumbs.db и подобные файлы." = ".DS_Store, __MACOSX, ._*, Thumbs.db ve benzeri dosyaları atlar.";
+"Просмотр архивов" = "Arşiv görüntüleme";
+"Скрывать служебные файлы систем" = "Sistem dosyalarını gizle";
+"Скрывает в списке __MACOSX, .DS_Store, ._*, Thumbs.db и подобные файлы. При распаковке всего архива они всё равно извлекаются." = "Listede __MACOSX, .DS_Store, ._*, Thumbs.db ve benzeri dosyaları gizler. Arşivin tamamı çıkarılırken yine de dahil edilirler.";

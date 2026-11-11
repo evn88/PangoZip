@@ -161,11 +161,15 @@ final class ArchiveBrowserModel: ObservableObject {
   var canOpenSelection: Bool {
     canAct && selectedEntry.map { !$0.isDirectory && !$0.isSymbolicLink } == true
   }
-  var visibleRoots: [ArchiveNode] {
+  /// Служебные файлы систем (__MACOSX, .DS_Store и т. п.) скрываются только в списке, не в архиве.
+  func visibleRoots(hidingSystemFiles hides: Bool) -> [ArchiveNode] {
     guard let session else { return [] }
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !query.isEmpty else { return session.roots }
-    return session.entries.filter { $0.path.localizedCaseInsensitiveContains(query) }.map {
+    guard !query.isEmpty else { return hides ? SystemFiles.filter(session.roots) : session.roots }
+    return session.entries.filter {
+      $0.path.localizedCaseInsensitiveContains(query)
+        && !(hides && SystemFiles.isSystemPath($0.path))
+    }.map {
       ArchiveNode(path: $0.path, name: $0.path, entry: $0, children: nil)
     }
   }
@@ -787,7 +791,9 @@ final class ArchiveBrowserModel: ObservableObject {
         guard let session, session.canModify else { return }
         await settlePreviews()
         await apply(
-          try await service.add(urls, to: session, directory: directory, password: password))
+          try await service.add(
+            urls, to: session, directory: directory, password: password,
+            excludingSystemFiles: ArchivePreferences.excludesSystemFiles))
       case .delete(let paths):
         guard let session, session.canModify else { return }
         await settlePreviews()

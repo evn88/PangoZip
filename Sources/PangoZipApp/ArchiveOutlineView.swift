@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 struct ArchiveOutlineView: NSViewRepresentable {
   @ObservedObject var model: ArchiveBrowserModel
   @ObservedObject var columnSettings: ArchiveColumnSettings = .shared
-  var roots: [ArchiveNode] { model.visibleRoots }
+  @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
+  var roots: [ArchiveNode] { model.visibleRoots(hidingSystemFiles: hidesSystemFiles) }
   var sessionID: UUID? { model.session?.id }
   var selectedPaths: Set<String> {
     get { model.selectedPaths }
@@ -26,9 +27,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.allowsMultipleSelection = true
     outline.allowsEmptySelection = true
     outline.usesAlternatingRowBackgroundColors = true
-    // Как в Finder, ширину окна подстраивает колонка «Имя»: без этого таблица шире окна на
-    // несколько точек и внизу появляется лишняя горизонтальная прокрутка.
-    outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+    // Ширину окна подстраивает колонка «Имя» (fitNameColumn): автоподстройка AppKit растягивает её
+    // при первой раскладке SwiftUI и не сжимает обратно, оставляя горизонтальную прокрутку.
+    outline.columnAutoresizingStyle = .noColumnAutoresizing
     outline.autosaveExpandedItems = false
     outline.autosaveName = "ArchiveContents"
     outline.autosaveTableColumns = true
@@ -50,6 +51,10 @@ struct ArchiveOutlineView: NSViewRepresentable {
     scroll.hasHorizontalScroller = true
     scroll.autohidesScrollers = true
     scroll.documentView = outline
+    scroll.contentView.postsFrameChangedNotifications = true
+    NotificationCenter.default.addObserver(
+      context.coordinator, selector: #selector(Coordinator.visibleWidthChanged(_:)),
+      name: NSView.frameDidChangeNotification, object: scroll.contentView)
     context.coordinator.outline = outline
     context.coordinator.update(self)
     return scroll
@@ -79,7 +84,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private var expandedPaths: Set<String> = []
     private var updating = false
     private var dragID: UUID?
-    private var didFitColumns = false
+    private var fittedWidth: CGFloat?
     private var dragRoots: Set<String> = []
     private var dragSelection: Set<String> = []
     private static let dateFormatter: DateFormatter = {
@@ -110,17 +115,28 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
     }
 
+    /// Повторяет подгонку при каждом изменении видимой ширины таблицы.
+    @objc func visibleWidthChanged(_ notification: Notification) {
+      guard let clip = notification.object as? NSView, clip.frame.width != fittedWidth else {
+        return
+      }
+      fitNameColumn()
+    }
+
     /// Отдаёт колонке «Имя» свободную ширину или забирает лишнюю, чтобы таблица не была шире окна.
     private func fitNameColumn() {
       guard let outline, let clip = outline.enclosingScrollView?.contentView,
         clip.bounds.width > 0,
         let name = outline.tableColumn(withIdentifier: .init(ArchiveColumn.name.rawValue))
       else { return }
-      let visible = outline.tableColumns.filter { !$0.isHidden }
-      let others = visible.filter { $0 !== name }.reduce(0) { $0 + $1.width }
-      let spacing = outline.intercellSpacing.width * CGFloat(visible.count)
-      name.width = max(name.minWidth, clip.bounds.width - others - spacing)
-      didFitColumns = true
+      outline.tile()
+      let indexes = outline.tableColumns.indices.filter { !outline.tableColumns[$0].isHidden }
+      guard let first = indexes.first, let last = indexes.last else { return }
+      // Стиль .inset добавляет поля по краям: меряем фактический охват колонок, а не сумму ширин.
+      let leading = outline.rect(ofColumn: first).minX
+      let needed = outline.rect(ofColumn: last).maxX + leading
+      name.width = max(name.minWidth, name.width + clip.bounds.width - needed)
+      fittedWidth = clip.frame.width
     }
 
     private func applyColumnVisibility() {
@@ -134,7 +150,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
           changed = true
         }
       }
-      if changed || !didFitColumns { fitNameColumn() }
+      if changed || fittedWidth == nil { fitNameColumn() }
       let menu = NSMenu()
       menu.autoenablesItems = false
       for column in ArchiveColumn.allCases {

@@ -45,7 +45,7 @@ public actor ArchiveService {
   }
 
   private enum Mutation: Sendable {
-    case add([URL], String)
+    case add([URL], String, Bool)
     case delete([String])
     case save([ArchiveEdit])
   }
@@ -170,9 +170,11 @@ public actor ArchiveService {
 
   /// Добавляет подготовленные копии в выбранную папку через проверяемую транзакцию.
   public func add(
-    _ urls: [URL], to session: ArchiveSession, directory: String = "", password: String = ""
+    _ urls: [URL], to session: ArchiveSession, directory: String = "", password: String = "",
+    excludingSystemFiles: Bool = true
   ) async throws -> ArchiveSession {
-    try await mutate(.add(urls, directory), session: session, password: password)
+    try await mutate(
+      .add(urls, directory, excludingSystemFiles), session: session, password: password)
   }
 
   /// Удаляет выбранные записи вместе с потомками; затронутые активные правки блокируют операцию.
@@ -288,7 +290,7 @@ public actor ArchiveService {
     var editFingerprints: [UUID: FileFingerprint] = [:]
     var command = "a"
     switch mutation {
-    case .add(let urls, let destination):
+    case .add(let urls, let destination, let skipsSystemFiles):
       guard !urls.isEmpty else { throw ArchiveError.invalidOperation }
       if !destination.isEmpty {
         try ArchiveListing.validatePath(destination)
@@ -304,6 +306,7 @@ public actor ArchiveService {
         let type = try FileFingerprint(url).type
         guard path != archivePath, !(type == .typeDirectory && archivePath.hasPrefix(path + "/"))
         else { throw ArchiveError.invalidOperation }
+        if skipsSystemFiles, SystemFiles.isSystemName(url.lastPathComponent) { continue }
         let name =
           destination.isEmpty ? url.lastPathComponent : destination + "/" + url.lastPathComponent
         try ArchiveListing.validatePath(name)
@@ -312,9 +315,11 @@ public actor ArchiveService {
             $0.entry.path == name || $0.entry.path.hasPrefix(name + "/")
           })
         else { throw ArchiveError.activeEdits }
-        try await StagedFiles.copy(url, to: inputs.appendingPathComponent(name))
+        try await StagedFiles.copy(
+          url, to: inputs.appendingPathComponent(name), skippingSystemFiles: skipsSystemFiles)
         names.append(name)
       }
+      guard !names.isEmpty else { throw ArchiveError.invalidOperation }
     case .delete(let paths):
       guard !paths.isEmpty else { throw ArchiveError.invalidOperation }
       for path in paths {
@@ -664,8 +669,13 @@ extension ArchiveService {
       guard !transaction.resolvingSymlinksInPath().path.hasPrefix(resolved + "/") else {
         throw ArchiveError.invalidOperation
       }
+      if compression.excludesSystemFiles, SystemFiles.isSystemName(url.lastPathComponent) {
+        continue
+      }
       try ArchiveListing.validatePath(url.lastPathComponent)
-      try await StagedFiles.copy(url, to: inputs.appendingPathComponent(url.lastPathComponent))
+      try await StagedFiles.copy(
+        url, to: inputs.appendingPathComponent(url.lastPathComponent),
+        skippingSystemFiles: compression.excludesSystemFiles)
       names.append(url.lastPathComponent)
     }
     guard !names.isEmpty else { throw ArchiveError.invalidOperation }
