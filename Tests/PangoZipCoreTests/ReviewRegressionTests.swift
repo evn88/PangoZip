@@ -56,6 +56,53 @@ final class ReviewRegressionTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// bzip2 и zstd не хранят исходный размер: архив всё равно открывается и распаковывается.
+  func testStreamsWithoutStoredSizeOpenAndExtract() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try runEngine(["a", "-ttar", "base.tar", "File.txt"], in: root)
+    try runEngine(["a", "-tbzip2", "base.tar.bz2", "base.tar"], in: root)
+    try FileManager.default.copyItem(
+      at: root.appendingPathComponent("base.tar.bz2"), to: root.appendingPathComponent("short.tbz2")
+    )
+    // 7zz не создаёт zstd, поэтому образец собирает системный bsdtar.
+    let tar = Process()
+    tar.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+    tar.currentDirectoryURL = root
+    tar.arguments = ["--zstd", "-cf", "base.tar.zst", "File.txt"]
+    try tar.run()
+    tar.waitUntilExit()
+    XCTAssertEqual(tar.terminationStatus, 0)
+    let tarSize = try XCTUnwrap(
+      FileManager.default.attributesOfItem(atPath: root.appendingPathComponent("base.tar").path)[
+        .size] as? NSNumber
+    ).uint64Value
+    let service = ArchiveService(executableURL: engine)
+    for name in ["base.tar.bz2", "short.tbz2", "base.tar.zst"] {
+      let archive = root.appendingPathComponent(name)
+      let session = try await service.open(archive)
+      XCTAssertEqual(session.entries.map(\.path), [name == "short.tbz2" ? "short.tar" : "base.tar"])
+      if name != "base.tar.zst" { XCTAssertEqual(session.entries.first?.size, tarSize) }
+      XCTAssertGreaterThan(session.entries.first?.size ?? 0, 0)
+      try await service.close(session)
+      let output = try await service.extractArchive(archive)
+      XCTAssertEqual(
+        try Data(contentsOf: output.appendingPathComponent("File.txt")), Data("original".utf8))
+    }
+    await service.cleanup()
+  }
+
+  /// Размер берётся из итоговой строки отчёта проверки, а не из заголовка архива.
+  func testTestedStreamSizeParsing() {
+    let report =
+      "Testing archive: a.bz2\n--\nPath = a.bz2\n\nEverything is Ok\n\nSize:       6656\n"
+    XCTAssertEqual(ArchiveService.testedStreamSize(report), 6656)
+    XCTAssertNil(ArchiveService.testedStreamSize("Everything is Ok\n"))
+    XCTAssertTrue(ArchiveService.hasUnknownStreamSize("Path = a\nSize = \n", format: "bzip2"))
+    XCTAssertFalse(ArchiveService.hasUnknownStreamSize("Path = a\nSize = 5\n", format: "bzip2"))
+    XCTAssertFalse(ArchiveService.hasUnknownStreamSize("Path = a\nSize = \n", format: "zip"))
+  }
+
   /// Изменение архива из интернета не снимает с него quarantine.
   func testMutationPreservesQuarantineOfOriginal() async throws {
     let root = try fixture()

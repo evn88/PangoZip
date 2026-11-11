@@ -33,7 +33,9 @@ struct ArchiveExtractionManifest: Sendable {
   }
 
   /// lstat и ручной обход не следуют ссылкам; незаявленные файлы нельзя опубликовать.
-  func validate(_ directory: URL, complete: Bool) throws {
+  /// Возвращает фактически извлечённые пути.
+  @discardableResult
+  func validate(_ directory: URL, complete: Bool) throws -> Set<String> {
     var seen: Set<String> = []
     func visit(_ parent: URL, prefix: String) throws {
       try Task.checkCancellation()
@@ -68,6 +70,20 @@ struct ArchiveExtractionManifest: Sendable {
       }
     }
     try visit(directory, prefix: "")
-    if complete, seen != Set(paths.keys) { throw ArchiveError.extractionMismatch }
+    if complete {
+      // 7zz в macOS превращает AppleDouble «._Имя» в расширенные атрибуты соседнего «Имя».
+      let missing = Set(paths.keys).subtracting(seen).filter { path in
+        guard let entry = paths[path], !entry.isDirectory else { return true }
+        let name = (path as NSString).lastPathComponent
+        guard name.hasPrefix("._"), name.count > 2 else { return true }
+        let parent = (path as NSString).deletingLastPathComponent
+        let sibling = parent.isEmpty ? String(name.dropFirst(2)) : parent + "/" + name.dropFirst(2)
+        return !seen.contains(sibling)
+      }
+      guard missing.isEmpty, seen.isSubset(of: Set(paths.keys)) else {
+        throw ArchiveError.extractionMismatch
+      }
+    }
+    return seen
   }
 }

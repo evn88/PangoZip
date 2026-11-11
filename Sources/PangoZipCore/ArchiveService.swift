@@ -510,6 +510,18 @@ public actor ArchiveService {
     return "Path = " + name + "\n" + body
   }
 
+  /// Однофайловый поток без поля размера нельзя проверить при извлечении, пока размер не известен.
+  static func hasUnknownStreamSize(_ body: String, format: String) -> Bool {
+    ["xz", "bzip2", "zstd", "lzma"].contains(format)
+      && (body.hasPrefix("Size = \n") || body.contains("\nSize = \n"))
+  }
+
+  /// Берёт итоговый распакованный размер из отчёта `7zz t` (строка «Size: N» после проверки).
+  static func testedStreamSize(_ report: String) -> UInt64? {
+    report.components(separatedBy: "\n").last { $0.hasPrefix("Size:") }
+      .flatMap { UInt64($0.dropFirst(5).trimmingCharacters(in: .whitespaces)) }
+  }
+
   private func readArchive(_ url: URL, password: String, in directory: URL) async throws
     -> Descriptor
   {
@@ -532,7 +544,21 @@ public actor ArchiveService {
         || ($0.hasPrefix("Volumes = ") && $0 != "Volumes = 1")
     }
     let stub = lines.contains { $0.hasPrefix("Offset = ") && $0 != "Offset = 0" }
-    let entries = try ArchiveListing.parse(Self.namedStreamListing(body, format: format, url: url))
+    var named = Self.namedStreamListing(body, format: format, url: url)
+    if Self.hasUnknownStreamSize(named, format: format) {
+      // bzip2 и zstd часто не хранят исходный размер: 7zz узнаёт его только полной проверкой потока.
+      let test = directory.appendingPathComponent(UUID().uuidString + ".test")
+      defer { try? FileManager.default.removeItem(at: test) }
+      try await runner().run(
+        arguments: ["t", "-bsp0", "-bso1", "-sccUTF-8", "-p" + password, "--", url.path],
+        outputURL: test, limit: 1024 * 1024)
+      guard let report = String(data: try Data(contentsOf: test), encoding: .utf8),
+        let size = Self.testedStreamSize(report)
+      else { throw ArchiveError.malformedListing }
+      named = named.components(separatedBy: "\n").map { $0 == "Size = " ? "Size = \(size)" : $0 }
+        .joined(separator: "\n")
+    }
+    let entries = try ArchiveListing.parse(named)
     _ = try ArchiveListing.tree(from: entries)
     return Descriptor(
       format: format, canModify: ["zip", "7z", "tar"].contains(format) && !multipart && !stub,
@@ -990,12 +1016,13 @@ extension ArchiveService {
         }
       }
     }
-    try manifest.validate(output, complete: true)
-    for path in manifest.paths.keys {
+    let extracted = try manifest.validate(output, complete: true)
+    for path in extracted {
       try Task.checkCancellation()
       try Quarantine.copy(from: quarantineSource, to: output.appendingPathComponent(path))
     }
-    for entry in entries.sorted(by: { $0.path.count > $1.path.count }) {
+    for entry in entries.sorted(by: { $0.path.count > $1.path.count })
+    where extracted.contains(entry.path) {
       try Task.checkCancellation()
       let target = output.appendingPathComponent(entry.path)
       var attributes: [FileAttributeKey: Any] = [:]

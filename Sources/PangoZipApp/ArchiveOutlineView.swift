@@ -26,7 +26,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.allowsMultipleSelection = true
     outline.allowsEmptySelection = true
     outline.usesAlternatingRowBackgroundColors = true
-    outline.columnAutoresizingStyle = .noColumnAutoresizing
+    // Как в Finder, ширину окна подстраивает колонка «Имя»: без этого таблица шире окна на
+    // несколько точек и внизу появляется лишняя горизонтальная прокрутка.
+    outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
     outline.autosaveExpandedItems = false
     outline.autosaveName = "ArchiveContents"
     outline.autosaveTableColumns = true
@@ -77,6 +79,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private var expandedPaths: Set<String> = []
     private var updating = false
     private var dragID: UUID?
+    private var didFitColumns = false
     private var dragRoots: Set<String> = []
     private var dragSelection: Set<String> = []
     private static let dateFormatter: DateFormatter = {
@@ -107,12 +110,31 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
     }
 
+    /// Отдаёт колонке «Имя» свободную ширину или забирает лишнюю, чтобы таблица не была шире окна.
+    private func fitNameColumn() {
+      guard let outline, let clip = outline.enclosingScrollView?.contentView,
+        clip.bounds.width > 0,
+        let name = outline.tableColumn(withIdentifier: .init(ArchiveColumn.name.rawValue))
+      else { return }
+      let visible = outline.tableColumns.filter { !$0.isHidden }
+      let others = visible.filter { $0 !== name }.reduce(0) { $0 + $1.width }
+      let spacing = outline.intercellSpacing.width * CGFloat(visible.count)
+      name.width = max(name.minWidth, clip.bounds.width - others - spacing)
+      didFitColumns = true
+    }
+
     private func applyColumnVisibility() {
       guard let outline else { return }
+      var changed = false
       for column in outline.tableColumns {
         guard let definition = ArchiveColumn(rawValue: column.identifier.rawValue) else { continue }
-        column.isHidden = !parent.columnSettings.isVisible(definition)
+        let hidden = !parent.columnSettings.isVisible(definition)
+        if column.isHidden != hidden {
+          column.isHidden = hidden
+          changed = true
+        }
       }
+      if changed || !didFitColumns { fitNameColumn() }
       let menu = NSMenu()
       menu.autoenablesItems = false
       for column in ArchiveColumn.allCases {
