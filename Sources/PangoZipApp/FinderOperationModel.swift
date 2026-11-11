@@ -164,8 +164,9 @@ final class FinderOperationModel: ObservableObject {
       saveDelegate = nil
       guard response == .OK, let destination = chooser.url else { throw CancellationError() }
       let options = CompressionOptions(
-        format: creationFormat, level: creationLevel, solid: creationSolid, threads: creationThreads
-      )
+        format: creationFormat, level: creationLevel, solid: creationSolid,
+        threads: creationThreads,
+        excludesSystemFiles: ArchivePreferences.excludesSystemFiles)
       message = L10n.tr("Создаём %1$@…", String(describing: destination.lastPathComponent))
       defer {
         creationPassword = ""

@@ -114,7 +114,8 @@ final class ArchiveItemDetailsTests: XCTestCase, @unchecked Sendable {
     coordinator.outline = outline
     coordinator.update(view)
     func value(_ path: String) throws -> String {
-      let index = try XCTUnwrap(model.visibleRoots.firstIndex { $0.path == path })
+      let index = try XCTUnwrap(
+        model.visibleRoots(hidingSystemFiles: true).firstIndex { $0.path == path })
       let item = coordinator.outlineView(outline, child: index, ofItem: nil)
       let cell = try XCTUnwrap(
         coordinator.outlineView(outline, viewFor: column, item: item) as? NSTableCellView)

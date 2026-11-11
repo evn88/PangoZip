@@ -39,6 +39,41 @@ final class ArchivePreviewTests: XCTestCase, @unchecked Sendable {
     await model.close()
     XCTAssertNil(model.session)
   }
+  /// Множественный выбор извлекает только верхние объекты; сводка считает размеры папок.
+  @MainActor
+  func testMultipleSelectionSkipsNestedItemsAndSummaryCountsFolders() async throws {
+    XCTAssertEqual(
+      ArchivePreviewModel.topLevelPaths(["A/B/c.txt", "A", "A2/x", "A/B", "A2/x"]), ["A", "A2/x"])
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let nested = root.appendingPathComponent("Docs/Inner")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data("12345".utf8).write(to: nested.appendingPathComponent("Deep.txt"))
+    try Data("123".utf8).write(to: root.appendingPathComponent("Docs/Note.txt"))
+    try Data("1".utf8).write(to: root.appendingPathComponent("Top.txt"))
+    let archive = try await ArchiveService().createArchive(
+      from: [root.appendingPathComponent("Docs"), root.appendingPathComponent("Top.txt")],
+      proposedURL: root.appendingPathComponent("Sample.zip"), format: "zip")
+    let model = ArchivePreviewModel()
+    try await model.prepare(archive)
+    XCTAssertEqual(model.totalSize, 9)
+    XCTAssertEqual(model.folderSizes["Docs"], 8)
+    XCTAssertEqual(model.folderSizes["Docs/Inner"], 5)
+    XCTAssertFalse(model.hasEncryptedEntries)
+    let output = root.appendingPathComponent("Output")
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false)
+    let results = try await model.extract(
+      to: output, paths: ["Top.txt", "Docs/Inner/Deep.txt", "Docs"])
+    XCTAssertEqual(results.map(\.lastPathComponent), ["Docs", "Top.txt"])
+    XCTAssertEqual(
+      try String(
+        contentsOf: output.appendingPathComponent("Docs/Inner/Deep.txt"), encoding: .utf8),
+      "12345")
+    XCTAssertFalse(model.isBusy)
+    await model.close()
+    XCTAssertEqual(model.totalSize, 0)
+  }
+
   @MainActor
   func testSwitchingPreviewCancelsEarlierRequestAndClosingReleasesSession() async throws {
     _ = NSApplication.shared

@@ -129,7 +129,7 @@ final class ArchiveUndoTests: XCTestCase, @unchecked Sendable {
     XCTAssertFalse(FileManager.default.fileExists(atPath: sessionDirectory.path))
     XCTAssertFalse(
       try FileManager.default.contentsOfDirectory(atPath: root.path).contains {
-        $0.hasPrefix(".zipevra-")
+        $0.hasPrefix(".zipevra-") || $0.hasPrefix(".pangozip-")
       })
   }
 

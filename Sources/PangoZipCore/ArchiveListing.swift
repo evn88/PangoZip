@@ -67,6 +67,10 @@ public enum ArchiveListing {
         try appendEntry()
         continue
       }
+      // Итоговый счётчик предупреждений 7zz (например, о PAX-заголовках bsdtar) не является записью.
+      if fields.isEmpty, line.hasPrefix("Warnings: "), UInt64(line.dropFirst(10)) != nil {
+        continue
+      }
       guard let separator = line.range(of: " = ") else { throw ArchiveError.malformedListing }
       let key = String(line[..<separator.lowerBound])
       guard fields[key] == nil else { throw ArchiveError.malformedListing }

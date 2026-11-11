@@ -46,6 +46,14 @@ final class ArchiveBrowserLayoutTests: XCTestCase, @unchecked Sendable {
     let header = try XCTUnwrap(outline.headerView)
     let headerRect = header.convert(header.bounds, to: host)
     let rowRect = outline.convert(outline.rect(ofRow: 0), to: host)
+    let clip = try XCTUnwrap(outline.enclosingScrollView?.contentView)
+    let name = try XCTUnwrap(outline.tableColumn(withIdentifier: .init("name")))
+    // Прокрутка допустима, только когда колонки не помещаются даже при минимальной ширине «Имени».
+    if outline.frame.width > clip.bounds.width + 0.5 {
+      XCTAssertEqual(
+        name.width, name.minWidth,
+        "Лишнюю ширину должна забирать колонка «Имя», иначе внизу появляется прокрутка")
+    }
     XCTAssertTrue(host.bounds.contains(headerRect), "Заголовок должен оставаться внутри окна")
     XCTAssertTrue(host.bounds.intersects(rowRect), "Первая строка должна быть видна")
     XCTAssertLessThanOrEqual(

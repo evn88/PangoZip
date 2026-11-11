@@ -45,7 +45,7 @@ public actor ArchiveService {
   }
 
   private enum Mutation: Sendable {
-    case add([URL], String)
+    case add([URL], String, Bool)
     case delete([String])
     case save([ArchiveEdit])
   }
@@ -170,9 +170,11 @@ public actor ArchiveService {
 
   /// Добавляет подготовленные копии в выбранную папку через проверяемую транзакцию.
   public func add(
-    _ urls: [URL], to session: ArchiveSession, directory: String = "", password: String = ""
+    _ urls: [URL], to session: ArchiveSession, directory: String = "", password: String = "",
+    excludingSystemFiles: Bool = true
   ) async throws -> ArchiveSession {
-    try await mutate(.add(urls, directory), session: session, password: password)
+    try await mutate(
+      .add(urls, directory, excludingSystemFiles), session: session, password: password)
   }
 
   /// Удаляет выбранные записи вместе с потомками; затронутые активные правки блокируют операцию.
@@ -208,10 +210,11 @@ public actor ArchiveService {
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
     guard state.edits.isEmpty else { throw ArchiveError.activeEdits }
     guard let undo = state.undo else { throw ArchiveError.invalidOperation }
-    _ = try await ArchiveContentDigest.validate(
-      undo.url, fingerprint: undo.fingerprint, digest: undo.digest)
+    // Флаг занятости ставится до первой приостановки, иначе параллельная мутация успеет начаться.
     busy.insert(session.id)
     defer { busy.remove(session.id) }
+    _ = try await ArchiveContentDigest.validate(
+      undo.url, fingerprint: undo.fingerprint, digest: undo.digest)
     let transaction = try workspace.transactionDirectory(nextTo: state.url)
     defer { try? workspace.removeTransaction(transaction) }
     let working = transaction.appendingPathComponent("restore." + undo.descriptor.format)
@@ -287,7 +290,7 @@ public actor ArchiveService {
     var editFingerprints: [UUID: FileFingerprint] = [:]
     var command = "a"
     switch mutation {
-    case .add(let urls, let destination):
+    case .add(let urls, let destination, let skipsSystemFiles):
       guard !urls.isEmpty else { throw ArchiveError.invalidOperation }
       if !destination.isEmpty {
         try ArchiveListing.validatePath(destination)
@@ -303,6 +306,7 @@ public actor ArchiveService {
         let type = try FileFingerprint(url).type
         guard path != archivePath, !(type == .typeDirectory && archivePath.hasPrefix(path + "/"))
         else { throw ArchiveError.invalidOperation }
+        if skipsSystemFiles, SystemFiles.isSystemName(url.lastPathComponent) { continue }
         let name =
           destination.isEmpty ? url.lastPathComponent : destination + "/" + url.lastPathComponent
         try ArchiveListing.validatePath(name)
@@ -311,9 +315,11 @@ public actor ArchiveService {
             $0.entry.path == name || $0.entry.path.hasPrefix(name + "/")
           })
         else { throw ArchiveError.activeEdits }
-        try await StagedFiles.copy(url, to: inputs.appendingPathComponent(name))
+        try await StagedFiles.copy(
+          url, to: inputs.appendingPathComponent(name), skippingSystemFiles: skipsSystemFiles)
         names.append(name)
       }
+      guard !names.isEmpty else { throw ArchiveError.invalidOperation }
     case .delete(let paths):
       guard !paths.isEmpty else { throw ArchiveError.invalidOperation }
       for path in paths {
@@ -436,6 +442,8 @@ public actor ArchiveService {
             throw ArchiveError.editedFileChanged
           }
         }
+        // 7zz пересоздаёт рабочую копию без расширенных атрибутов оригинала.
+        try Quarantine.copy(from: url, to: working)
         _ = try FileManager.default.replaceItemAt(url, withItemAt: working)
       } catch { replacementError = error }
     }
@@ -496,6 +504,29 @@ public actor ArchiveService {
   }
 
   /// Отделяет заголовок 7zz от записей и разрешает изменение только поддерживаемых простых архивов.
+  /// xz, bzip2, zstd и lzma не хранят имя файла: 7zz выводит его из имени архива, список — нет.
+  static func namedStreamListing(_ body: String, format: String, url: URL) -> String {
+    guard ["xz", "bzip2", "zstd", "lzma"].contains(format),
+      !body.hasPrefix("Path = "), !body.contains("\nPath = ")
+    else { return body }
+    let stem = url.deletingPathExtension().lastPathComponent
+    let isShortTar = ["txz", "tbz", "tbz2", "tzst", "tlz"].contains(url.pathExtension.lowercased())
+    let name = stem.isEmpty ? url.lastPathComponent : stem + (isShortTar ? ".tar" : "")
+    return "Path = " + name + "\n" + body
+  }
+
+  /// Однофайловый поток без поля размера нельзя проверить при извлечении, пока размер не известен.
+  static func hasUnknownStreamSize(_ body: String, format: String) -> Bool {
+    ["xz", "bzip2", "zstd", "lzma"].contains(format)
+      && (body.hasPrefix("Size = \n") || body.contains("\nSize = \n"))
+  }
+
+  /// Берёт итоговый распакованный размер из отчёта `7zz t` (строка «Size: N» после проверки).
+  static func testedStreamSize(_ report: String) -> UInt64? {
+    report.components(separatedBy: "\n").last { $0.hasPrefix("Size:") }
+      .flatMap { UInt64($0.dropFirst(5).trimmingCharacters(in: .whitespaces)) }
+  }
+
   private func readArchive(_ url: URL, password: String, in directory: URL) async throws
     -> Descriptor
   {
@@ -518,7 +549,21 @@ public actor ArchiveService {
         || ($0.hasPrefix("Volumes = ") && $0 != "Volumes = 1")
     }
     let stub = lines.contains { $0.hasPrefix("Offset = ") && $0 != "Offset = 0" }
-    let entries = try ArchiveListing.parse(body)
+    var named = Self.namedStreamListing(body, format: format, url: url)
+    if Self.hasUnknownStreamSize(named, format: format) {
+      // bzip2 и zstd часто не хранят исходный размер: 7zz узнаёт его только полной проверкой потока.
+      let test = directory.appendingPathComponent(UUID().uuidString + ".test")
+      defer { try? FileManager.default.removeItem(at: test) }
+      try await runner().run(
+        arguments: ["t", "-bsp0", "-bso1", "-sccUTF-8", "-p" + password, "--", url.path],
+        outputURL: test, limit: 1024 * 1024)
+      guard let report = String(data: try Data(contentsOf: test), encoding: .utf8),
+        let size = Self.testedStreamSize(report)
+      else { throw ArchiveError.malformedListing }
+      named = named.components(separatedBy: "\n").map { $0 == "Size = " ? "Size = \(size)" : $0 }
+        .joined(separator: "\n")
+    }
+    let entries = try ArchiveListing.parse(named)
     _ = try ArchiveListing.tree(from: entries)
     return Descriptor(
       format: format, canModify: ["zip", "7z", "tar"].contains(format) && !multipart && !stub,
@@ -624,8 +669,13 @@ extension ArchiveService {
       guard !transaction.resolvingSymlinksInPath().path.hasPrefix(resolved + "/") else {
         throw ArchiveError.invalidOperation
       }
+      if compression.excludesSystemFiles, SystemFiles.isSystemName(url.lastPathComponent) {
+        continue
+      }
       try ArchiveListing.validatePath(url.lastPathComponent)
-      try await StagedFiles.copy(url, to: inputs.appendingPathComponent(url.lastPathComponent))
+      try await StagedFiles.copy(
+        url, to: inputs.appendingPathComponent(url.lastPathComponent),
+        skippingSystemFiles: compression.excludesSystemFiles)
       names.append(url.lastPathComponent)
     }
     guard !names.isEmpty else { throw ArchiveError.invalidOperation }
@@ -718,7 +768,9 @@ extension ArchiveService {
         entry, from: url, to: source, password: password,
         progress: reporter.engine(
           phase: .extracting, from: 0, to: 0.1, totalBytes: entry.size, itemBytes: entry.size,
-          completedFiles: 0, totalFiles: 1, currentFile: entry.path, outputURL: url))
+          completedFiles: 0, totalFiles: 1, currentFile: entry.path, outputURL: url),
+        // gzip хранит размер по модулю 4 ГиБ; целостность потока подтверждает его CRC.
+        sizeLimit: descriptor.format == "gzip" ? maximumBytes : nil)
       verificationStart = 0.1
       descriptor = try await readArchive(source, password: password, in: transaction)
       guard descriptor.format == "tar" else { throw ArchiveError.invalidArchive }
@@ -779,7 +831,7 @@ extension ArchiveService {
   /// Извлекает ровно одну запись через stdout и требует совпадения фактического и заявленного размера.
   private func extractFile(
     _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String,
-    progress: (@Sendable (Double) async -> Void)? = nil
+    progress: (@Sendable (Double) async -> Void)? = nil, sizeLimit: UInt64? = nil
   ) async throws {
     try await runner().run(
       arguments: [
@@ -787,8 +839,8 @@ extension ArchiveService {
         "-p" + password, "--", archive.path,
         entry.path,
       ],
-      outputURL: output, limit: entry.size, progress: progress)
-    guard try FileFingerprint(output).size == entry.size else {
+      outputURL: output, limit: sizeLimit ?? entry.size, progress: progress)
+    guard try sizeLimit != nil || FileFingerprint(output).size == entry.size else {
       throw ArchiveError.extractionMismatch
     }
   }
@@ -974,12 +1026,13 @@ extension ArchiveService {
         }
       }
     }
-    try manifest.validate(output, complete: true)
-    for path in manifest.paths.keys {
+    let extracted = try manifest.validate(output, complete: true)
+    for path in extracted {
       try Task.checkCancellation()
       try Quarantine.copy(from: quarantineSource, to: output.appendingPathComponent(path))
     }
-    for entry in entries.sorted(by: { $0.path.count > $1.path.count }) {
+    for entry in entries.sorted(by: { $0.path.count > $1.path.count })
+    where extracted.contains(entry.path) {
       try Task.checkCancellation()
       let target = output.appendingPathComponent(entry.path)
       var attributes: [FileAttributeKey: Any] = [:]

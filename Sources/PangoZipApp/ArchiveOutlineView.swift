@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 struct ArchiveOutlineView: NSViewRepresentable {
   @ObservedObject var model: ArchiveBrowserModel
   @ObservedObject var columnSettings: ArchiveColumnSettings = .shared
-  var roots: [ArchiveNode] { model.visibleRoots }
+  @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
+  var roots: [ArchiveNode] { model.visibleRoots(hidingSystemFiles: hidesSystemFiles) }
   var sessionID: UUID? { model.session?.id }
   var selectedPaths: Set<String> {
     get { model.selectedPaths }
@@ -26,6 +27,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.allowsMultipleSelection = true
     outline.allowsEmptySelection = true
     outline.usesAlternatingRowBackgroundColors = true
+    // Ширину окна подстраивает колонка «Имя» (fitNameColumn): автоподстройка AppKit растягивает её
+    // при первой раскладке SwiftUI и не сжимает обратно, оставляя горизонтальную прокрутку.
     outline.columnAutoresizingStyle = .noColumnAutoresizing
     outline.autosaveExpandedItems = false
     outline.autosaveName = "ArchiveContents"
@@ -48,6 +51,10 @@ struct ArchiveOutlineView: NSViewRepresentable {
     scroll.hasHorizontalScroller = true
     scroll.autohidesScrollers = true
     scroll.documentView = outline
+    scroll.contentView.postsFrameChangedNotifications = true
+    NotificationCenter.default.addObserver(
+      context.coordinator, selector: #selector(Coordinator.visibleWidthChanged(_:)),
+      name: NSView.frameDidChangeNotification, object: scroll.contentView)
     context.coordinator.outline = outline
     context.coordinator.update(self)
     return scroll
@@ -77,6 +84,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private var expandedPaths: Set<String> = []
     private var updating = false
     private var dragID: UUID?
+    private var fittedWidth: CGFloat?
     private var dragRoots: Set<String> = []
     private var dragSelection: Set<String> = []
     private static let dateFormatter: DateFormatter = {
@@ -107,12 +115,42 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
     }
 
+    /// Повторяет подгонку при каждом изменении видимой ширины таблицы.
+    @objc func visibleWidthChanged(_ notification: Notification) {
+      guard let clip = notification.object as? NSView, clip.frame.width != fittedWidth else {
+        return
+      }
+      fitNameColumn()
+    }
+
+    /// Отдаёт колонке «Имя» свободную ширину или забирает лишнюю, чтобы таблица не была шире окна.
+    private func fitNameColumn() {
+      guard let outline, let clip = outline.enclosingScrollView?.contentView,
+        clip.bounds.width > 0,
+        let name = outline.tableColumn(withIdentifier: .init(ArchiveColumn.name.rawValue))
+      else { return }
+      outline.tile()
+      let indexes = outline.tableColumns.indices.filter { !outline.tableColumns[$0].isHidden }
+      guard let first = indexes.first, let last = indexes.last else { return }
+      // Стиль .inset добавляет поля по краям: меряем фактический охват колонок, а не сумму ширин.
+      let leading = outline.rect(ofColumn: first).minX
+      let needed = outline.rect(ofColumn: last).maxX + leading
+      name.width = max(name.minWidth, name.width + clip.bounds.width - needed)
+      fittedWidth = clip.frame.width
+    }
+
     private func applyColumnVisibility() {
       guard let outline else { return }
+      var changed = false
       for column in outline.tableColumns {
         guard let definition = ArchiveColumn(rawValue: column.identifier.rawValue) else { continue }
-        column.isHidden = !parent.columnSettings.isVisible(definition)
+        let hidden = !parent.columnSettings.isVisible(definition)
+        if column.isHidden != hidden {
+          column.isHidden = hidden
+          changed = true
+        }
       }
+      if changed || fittedWidth == nil { fitNameColumn() }
       let menu = NSMenu()
       menu.autoenablesItems = false
       for column in ArchiveColumn.allCases {
@@ -426,12 +464,14 @@ struct ArchiveOutlineView: NSViewRepresentable {
     {
       guard parent.model.canAct, let snapshot = parent.model.session, let item = item as? Item
       else { return nil }
-      if dragID == nil || dragSelection != parent.selectedPaths {
+      // Строку вне выделения AppKit перетаскивает одну, не меняя выделение.
+      let source =
+        parent.selectedPaths.contains(item.node.path) ? parent.selectedPaths : [item.node.path]
+      if dragID == nil || dragSelection != source {
         guard
-          let roots = try? ArchiveSelection.topLevelPaths(
-            Array(parent.selectedPaths), entries: snapshot.entries)
+          let roots = try? ArchiveSelection.topLevelPaths(Array(source), entries: snapshot.entries)
         else { return nil }
-        dragSelection = parent.selectedPaths
+        dragSelection = source
         dragRoots = Set(roots)
         dragID = UUID()
       }

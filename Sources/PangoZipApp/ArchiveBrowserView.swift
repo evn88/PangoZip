@@ -8,6 +8,7 @@ struct ArchiveBrowserView: View {
   @ObservedObject var integration: FinderIntegrationModel
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var isDropTargeted = false
+  @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
   @State private var showsMetadata = false
   @State private var showsOperationQueue = false
   @FocusState private var searchFocused: Bool
@@ -216,7 +217,7 @@ struct ArchiveBrowserView: View {
     if model.session != nil {
       ArchiveOutlineView(model: model)
         .overlay {
-          if model.visibleRoots.isEmpty {
+          if model.visibleRoots(hidingSystemFiles: hidesSystemFiles).isEmpty {
             ContentUnavailableView(
               model.searchText.isEmpty ? L10n.tr("Архив пуст") : L10n.tr("Ничего не найдено"),
               systemImage: model.searchText.isEmpty ? "archivebox" : "magnifyingglass",

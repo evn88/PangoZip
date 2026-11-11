@@ -289,3 +289,11 @@
 "О программе PangoZip" = "Acerca de PangoZip";
 "Автор: %1$@" = "Autor: %1$@";
 "Версия %1$@" = "Versión %1$@";
+"Распаковать всё…" = "Extraer todo…";
+"Показать в Finder" = "Mostrar en el Finder";
+"Сайт PangoZip" = "Sitio web de PangoZip";
+"Не добавлять служебные файлы систем" = "No añadir archivos del sistema";
+"Пропускает .DS_Store, __MACOSX, ._*, Thumbs.db и подобные файлы." = "Omite .DS_Store, __MACOSX, ._*, Thumbs.db y archivos similares.";
+"Просмотр архивов" = "Vista de archivos comprimidos";
+"Скрывать служебные файлы систем" = "Ocultar archivos del sistema";
+"Скрывает в списке __MACOSX, .DS_Store, ._*, Thumbs.db и подобные файлы. При распаковке всего архива они всё равно извлекаются." = "Oculta __MACOSX, .DS_Store, ._*, Thumbs.db y archivos similares en la lista. Al extraer todo el archivo se incluyen igualmente.";

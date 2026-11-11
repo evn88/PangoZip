@@ -30,6 +30,8 @@ struct AboutPangoZipView: View {
         .font(.callout).foregroundStyle(.secondary)
       Divider()
       Text(L10n.tr("Автор: %1$@", "Egor Vershkov"))
+      Link("pangozip.app", destination: SupportConfiguration.websiteURL)
+        .help(L10n.tr("Сайт PangoZip"))
       Link("github.com/evn88", destination: URL(string: "https://github.com/evn88")!)
       if let supportURL = SupportConfiguration.pageURL {
         Link(destination: supportURL) {

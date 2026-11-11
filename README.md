@@ -8,6 +8,8 @@ A native archive manager for macOS. Browse archive contents, extract files, and 
 
 Latest version: [download PangoZip](https://github.com/evn88/PangoZip/releases/latest).
 
+Website: [pangozip.app](https://pangozip.app).
+
 ## Features
 
 - Browse and extract ZIP, 7z, RAR, TAR, and other formats supported by 7-Zip.
