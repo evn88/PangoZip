@@ -354,7 +354,7 @@ public actor ArchiveService {
       savedEdits = edits
     }
     let list = transaction.appendingPathComponent("items.list")
-    try Data((names.joined(separator: "\n") + "\n").utf8).write(to: list)
+    try Self.writeNameList(names, to: list)
     var arguments =
       [
         command, "-t" + state.descriptor.format, "-spd", "-ssc", "-snl", "-y", "-scsUTF-8", "-bsp0",
@@ -422,6 +422,12 @@ public actor ArchiveService {
     retainedUndo = true
     if let previous = state.undo { try? manager.removeItem(at: previous.url) }
     return try snapshot(id: session.id, state: updated)
+  }
+
+  /// 7zz обрезает пробелы по краям строк list-файла, поэтому каждое имя берётся в кавычки:
+  /// движок снимает только внешнюю пару, сохраняя пробелы и внутренние кавычки имени.
+  static func writeNameList(_ names: [String], to url: URL) throws {
+    try Data((names.map { "\"" + $0 + "\"" }.joined(separator: "\n") + "\n").utf8).write(to: url)
   }
 
   /// Согласованная замена сравнивает fingerprint непосредственно перед атомарной публикацией.
@@ -683,7 +689,7 @@ extension ArchiveService {
     let bytes = workload?.bytes ?? 0
     let files = workload?.files ?? 0
     let list = transaction.appendingPathComponent("items.list")
-    try Data((names.joined(separator: "\n") + "\n").utf8).write(to: list)
+    try Self.writeNameList(names, to: list)
     let working = transaction.appendingPathComponent("working." + format)
     let settings = CompressionOptions(
       format: format, level: compression.level, solid: compression.solid,
@@ -989,9 +995,7 @@ extension ArchiveService {
           throw ArchiveError.archiveChanged
         }
         let list = transaction.appendingPathComponent("extract.list")
-        // 7zz снимает только внешнюю пару кавычек, сохраняя пробелы и внутренние кавычки имени.
-        try Data((entries.map { "\"" + $0.path + "\"" }.joined(separator: "\n") + "\n").utf8)
-          .write(to: list)
+        try Self.writeNameList(entries.map(\.path), to: list)
         try await runner().run(
           arguments: [
             "x", "-spd", "-ssc", "-r-", "-y", "-bso0", "-scsUTF-8", "-p" + password,

@@ -280,6 +280,31 @@ final class ReviewRegressionTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Пробелы по краям имени не должны теряться в list-файле 7zz при создании, добавлении и удалении.
+  func testNamesWithEdgeSpacesSurviveListFiles() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent(" Папка ")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+    try Data("x".utf8).write(to: folder.appendingPathComponent("Внутри .txt"))
+    let service = ArchiveService(executableURL: engine)
+    let archive = try await service.createArchive(
+      from: [folder], proposedURL: root.appendingPathComponent("spaces.zip"), format: "zip")
+    var session = try await service.open(archive)
+    XCTAssertEqual(session.entries.map(\.path).sorted(), [" Папка ", " Папка /Внутри .txt"])
+    let added = root.appendingPathComponent("Счёт \"1\" .pdf ")
+    try Data("pdf".utf8).write(to: added)
+    session = try await service.add([added], to: session, directory: " Папка ")
+    XCTAssertTrue(session.entries.contains { $0.path == " Папка /Счёт \"1\" .pdf " })
+    session = try await service.delete([" Папка /Внутри .txt"], from: session)
+    XCTAssertEqual(session.entries.map(\.path).sorted(), [" Папка ", " Папка /Счёт \"1\" .pdf "])
+    let output = try await service.materialize(
+      XCTUnwrap(session.entries.first { $0.path.hasSuffix(".pdf ") }), in: session)
+    XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "pdf")
+    try await service.close(session)
+    await service.cleanup()
+  }
+
   private func fixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

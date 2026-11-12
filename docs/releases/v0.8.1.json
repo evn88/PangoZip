@@ -1,0 +1,16 @@
+{
+  "en": ["Fixed adding, deleting and archiving files whose names start or end with a space: the operation no longer fails with a “Could not read the archive” error."],
+  "ru": ["Исправлено добавление, удаление и упаковка файлов, имя которых начинается или заканчивается пробелом: операция больше не завершается ошибкой «Не удалось прочитать архив»."],
+  "sr-Latn": ["Ispravljeno dodavanje, brisanje i arhiviranje datoteka čije ime počinje ili se završava razmakom: operacija se više ne prekida greškom „Nije moguće pročitati arhivu“."],
+  "de": ["Hinzufügen, Löschen und Archivieren von Dateien, deren Name mit einem Leerzeichen beginnt oder endet, behoben: Der Vorgang bricht nicht mehr mit dem Fehler „Archiv konnte nicht gelesen werden“ ab."],
+  "fr": ["Correction de l’ajout, de la suppression et de l’archivage de fichiers dont le nom commence ou se termine par une espace : l’opération n’échoue plus avec l’erreur « Impossible de lire l’archive »."],
+  "es": ["Corregida la adición, eliminación y compresión de archivos cuyo nombre empieza o termina con un espacio: la operación ya no falla con el error «No se pudo leer el archivo comprimido»."],
+  "it": ["Corretti l’aggiunta, l’eliminazione e l’archiviazione di file il cui nome inizia o termina con uno spazio: l’operazione non fallisce più con l’errore «Impossibile leggere l’archivio»."],
+  "pt": ["Corrigida a adição, eliminação e arquivamento de ficheiros cujo nome começa ou termina com um espaço: a operação já não falha com o erro «Não foi possível ler o arquivo»."],
+  "pl": ["Naprawiono dodawanie, usuwanie i archiwizowanie plików, których nazwa zaczyna się lub kończy spacją: operacja nie kończy się już błędem „Nie można odczytać archiwum”."],
+  "uk": ["Виправлено додавання, видалення та пакування файлів, назва яких починається або закінчується пробілом: операція більше не завершується помилкою «Не вдалося прочитати архів»."],
+  "tr": ["Adı boşlukla başlayan veya biten dosyaların eklenmesi, silinmesi ve arşivlenmesi düzeltildi: işlem artık “Arşiv okunamadı” hatasıyla başarısız olmuyor."],
+  "zh-Hans": ["修复了添加、删除和归档名称以空格开头或结尾的文件时的问题：操作不再因“无法读取归档”错误而失败。"],
+  "ja": ["名前の先頭または末尾にスペースがあるファイルの追加、削除、アーカイブ作成を修正しました。「アーカイブを読み取れませんでした」というエラーで失敗しなくなりました。"],
+  "ko": ["이름이 공백으로 시작하거나 끝나는 파일의 추가, 삭제, 압축 문제를 수정했습니다. 더 이상 ‘아카이브를 읽을 수 없습니다’ 오류로 실패하지 않습니다."]
+}
