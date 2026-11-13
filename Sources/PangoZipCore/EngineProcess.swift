@@ -7,8 +7,8 @@ struct EngineProcess: Sendable {
 
   /// Передаёт прогресс асинхронно; отмена дожидается завершения процесса перед возвратом ошибки.
   func run(
-    arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL? = nil,
-    progress: (@Sendable (Double) async -> Void)? = nil,
+    arguments: [String], input: Data? = nil, outputURL: URL, limit: UInt64,
+    workingDirectory: URL? = nil, progress: (@Sendable (Double) async -> Void)? = nil,
     validateOutput: (@Sendable () throws -> Void)? = nil
   ) async throws {
     let (updates, continuation) = AsyncStream<Double>.makeStream(
@@ -22,7 +22,7 @@ struct EngineProcess: Sendable {
     let job = Task.detached(priority: .userInitiated) {
       defer { continuation.finish() }
       try self.runBlocking(
-        arguments: arguments, outputURL: outputURL, limit: limit,
+        arguments: arguments, input: input, outputURL: outputURL, limit: limit,
         workingDirectory: workingDirectory, progress: relay, validateOutput: validateOutput)
     }
     try await withTaskCancellationHandler {
@@ -39,7 +39,7 @@ struct EngineProcess: Sendable {
 
   /// Запускает движок без оболочки и ограничивает время, stdout и stderr на одном потоке.
   private func runBlocking(
-    arguments: [String], outputURL: URL, limit: UInt64, workingDirectory: URL?,
+    arguments: [String], input: Data?, outputURL: URL, limit: UInt64, workingDirectory: URL?,
     progress: (@Sendable (Double) -> Void)?, validateOutput: (@Sendable () throws -> Void)?
   ) throws {
     try Task.checkCancellation()
@@ -64,7 +64,19 @@ struct EngineProcess: Sendable {
     process.executableURL = executableURL
     process.arguments = arguments
     process.currentDirectoryURL = workingDirectory
-    process.standardInput = FileHandle.nullDevice
+    if let input {
+      // Данные пишутся и канал закрывается до запуска: запись не блокируется и не получает
+      // SIGPIPE, даже если движок завершится, не прочитав stdin.
+      guard input.count <= EnginePassword.maximumInputBytes else {
+        throw ArchiveError.invalidOperation
+      }
+      let pipe = Pipe()
+      try pipe.fileHandleForWriting.write(contentsOf: input)
+      try pipe.fileHandleForWriting.close()
+      process.standardInput = pipe
+    } else {
+      process.standardInput = FileHandle.nullDevice
+    }
     process.standardOutput = output
     process.standardError = errors
     var environment = ProcessInfo.processInfo.environment
@@ -111,7 +123,9 @@ struct EngineProcess: Sendable {
       let handle = try FileHandle(forReadingFrom: outputURL)
       defer { try? handle.close() }
       let outputData = try handle.read(upToCount: 65_536) ?? Data()
-      let message = String(decoding: errorData + outputData, as: UTF8.self).lowercased()
+      var message = String(decoding: errorData + outputData, as: UTF8.self).lowercased()
+      // При вводе через stdin приглашение печатается всегда; ошибку пароля выдают другие строки.
+      if input != nil { message = message.replacingOccurrences(of: "enter password:", with: "") }
       // Слово password в пути или имени файла не должно превращать повреждение в запрос пароля.
       if ["wrong password", "enter password", "encrypted archive"].contains(where: message.contains)
       {

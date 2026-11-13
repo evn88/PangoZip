@@ -113,12 +113,12 @@ public actor ArchiveService {
       at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     let output = directory.appendingPathComponent(String(entry.path.split(separator: "/").last!))
     do {
+      let secret = try EnginePassword.reading(password)
       try await runner().run(
-        arguments: [
-          "x", "-so", "-spd", "-ssc", "-y", "-bso0", "-bsp0", "-p" + password, "--", state.url.path,
-          entry.path,
+        arguments: ["x", "-so", "-spd", "-ssc", "-y", "-bso0", "-bsp0"] + secret.arguments + [
+          "--", state.url.path, entry.path,
         ],
-        outputURL: output, limit: previewLimit)
+        input: secret.input, outputURL: output, limit: previewLimit)
       try Task.checkCancellation()
       let latest = try await checkedState(session)
       guard latest.digest == state.digest else { throw ArchiveError.archiveChanged }
@@ -219,7 +219,7 @@ public actor ArchiveService {
     defer { try? workspace.removeTransaction(transaction) }
     let working = transaction.appendingPathComponent("restore." + undo.descriptor.format)
     try await Self.copyArchive(undo.url, to: working)
-    try await verify(working, passwordArguments: ["-p" + password], in: transaction)
+    try await verify(working, password: .reading(password), in: transaction)
     let descriptor = try await readArchive(working, password: password, in: transaction)
     guard descriptor.entries == undo.descriptor.entries else {
       throw ArchiveError.extractionMismatch
@@ -279,10 +279,11 @@ public actor ArchiveService {
     try await Self.copyArchive(state.url, to: working)
     try Task.checkCancellation()
     _ = try await checkedState(session)
-    let passwordArguments =
-      (encrypted || (state.descriptor.format == "7z" && !password.isEmpty)) ? ["-p" + password] : []
+    let usesPassword = encrypted || (state.descriptor.format == "7z" && !password.isEmpty)
+    let writePassword = usesPassword ? try EnginePassword.writing(password) : .none
+    let readPassword = usesPassword ? try EnginePassword.reading(password) : .none
     if encrypted {
-      try await verify(working, passwordArguments: passwordArguments, in: transaction)
+      try await verify(working, password: readPassword, in: transaction)
     }
     var names: [String] = []
     var removed: Set<String> = []
@@ -359,16 +360,17 @@ public actor ArchiveService {
       [
         command, "-t" + state.descriptor.format, "-spd", "-ssc", "-snl", "-y", "-scsUTF-8", "-bsp0",
         "-i@" + list.path,
-      ] + passwordArguments
+      ] + writePassword.arguments
     if encrypted && state.descriptor.format == "7z" { arguments.append("-mhe=on") }
     if encrypted && state.descriptor.format == "zip" {
       arguments.append("-mem=" + state.encryption.zipMethod)
     }
     arguments += ["--", working.path]
     try await runner().run(
-      arguments: arguments, outputURL: transaction.appendingPathComponent("mutation.log"),
+      arguments: arguments, input: writePassword.input,
+      outputURL: transaction.appendingPathComponent("mutation.log"),
       limit: 32 * 1024 * 1024, workingDirectory: inputs)
-    try await verify(working, passwordArguments: passwordArguments, in: transaction)
+    try await verify(working, password: readPassword, in: transaction)
     let descriptor = try await readArchive(working, password: password, in: transaction)
     let newEntries = Dictionary(uniqueKeysWithValues: descriptor.entries.map { ($0.path, $0) })
     guard descriptor.format == state.descriptor.format,
@@ -498,14 +500,16 @@ public actor ArchiveService {
 
   /// Проверяет целостность движком и удаляет временный журнал независимо от результата.
   private func verify(
-    _ url: URL, passwordArguments: [String], in directory: URL,
+    _ url: URL, password: EnginePassword, in directory: URL,
     progress: (@Sendable (Double) async -> Void)? = nil
   ) async throws {
     let output = directory.appendingPathComponent(UUID().uuidString + ".verify")
     defer { try? FileManager.default.removeItem(at: output) }
     try await runner().run(
-      arguments: ["t", progress == nil ? "-bsp0" : "-bsp2"] + passwordArguments + ["--", url.path],
-      outputURL: output,
+      arguments: ["t", progress == nil ? "-bsp0" : "-bsp2"] + password.arguments + [
+        "--", url.path,
+      ],
+      input: password.input, outputURL: output,
       limit: 32 * 1024 * 1024, progress: progress)
   }
 
@@ -538,9 +542,10 @@ public actor ArchiveService {
   {
     let listing = directory.appendingPathComponent(UUID().uuidString + ".listing")
     defer { try? FileManager.default.removeItem(at: listing) }
+    let secret = try EnginePassword.reading(password)
     try await runner().run(
-      arguments: ["l", "-slt", "-sccUTF-8", "-p" + password, "--", url.path], outputURL: listing,
-      limit: 32 * 1024 * 1024)
+      arguments: ["l", "-slt", "-sccUTF-8"] + secret.arguments + ["--", url.path],
+      input: secret.input, outputURL: listing, limit: 32 * 1024 * 1024)
     guard let text = String(data: try Data(contentsOf: listing), encoding: .utf8),
       let boundary = text.range(of: "\n----------\n")
     else { throw ArchiveError.malformedListing }
@@ -561,8 +566,8 @@ public actor ArchiveService {
       let test = directory.appendingPathComponent(UUID().uuidString + ".test")
       defer { try? FileManager.default.removeItem(at: test) }
       try await runner().run(
-        arguments: ["t", "-bsp0", "-bso1", "-sccUTF-8", "-p" + password, "--", url.path],
-        outputURL: test, limit: 1024 * 1024)
+        arguments: ["t", "-bsp0", "-bso1", "-sccUTF-8"] + secret.arguments + ["--", url.path],
+        input: secret.input, outputURL: test, limit: 1024 * 1024)
       guard let report = String(data: try Data(contentsOf: test), encoding: .utf8),
         let size = Self.testedStreamSize(report)
       else { throw ArchiveError.malformedListing }
@@ -696,15 +701,17 @@ extension ArchiveService {
       threads: compression.threads)
     await reporter.report(
       phase: .compressing, fraction: 0, processedBytes: 0, totalBytes: bytes, totalFiles: files)
+    let secret = try EnginePassword.writing(password)
     try await runner().run(
       arguments: [
         "a", "-t" + format, "-spd", "-ssc", "-snl", "-scsUTF-8",
         progress == nil ? "-bsp0" : "-bsp2", "-i@" + list.path,
       ]
         + settings.arguments
-        + (password.isEmpty ? [] : ["-p" + password, format == "7z" ? "-mhe=on" : "-mem=AES256"])
+        + (password.isEmpty ? [] : secret.arguments + [format == "7z" ? "-mhe=on" : "-mem=AES256"])
         + ["--", working.path],
-      outputURL: transaction.appendingPathComponent("create.log"), limit: 32 * 1024 * 1024,
+      input: secret.input, outputURL: transaction.appendingPathComponent("create.log"),
+      limit: 32 * 1024 * 1024,
       workingDirectory: inputs,
       progress: reporter.engine(
         phase: .compressing, from: 0, to: 0.9, totalBytes: bytes, totalFiles: files,
@@ -713,7 +720,7 @@ extension ArchiveService {
       phase: .verifying, fraction: 0.9, processedBytes: 0, totalBytes: bytes,
       totalFiles: files, outputURL: working)
     try await verify(
-      working, passwordArguments: password.isEmpty ? [] : ["-p" + password], in: transaction,
+      working, password: password.isEmpty ? .none : .reading(password), in: transaction,
       progress: reporter.engine(
         phase: .verifying, from: 0.9, to: 0.99, totalBytes: bytes, totalFiles: files,
         outputURL: working))
@@ -789,7 +796,7 @@ extension ArchiveService {
       phase: .verifying, fraction: verificationBase, processedBytes: 0,
       totalBytes: workload.bytes, totalFiles: workload.files, outputURL: url)
     try await verify(
-      source, passwordArguments: ["-p" + password], in: transaction,
+      source, password: .reading(password), in: transaction,
       progress: reporter.engine(
         phase: .verifying, from: verificationBase, to: extractionStart,
         totalBytes: workload.bytes, totalFiles: workload.files, outputURL: url))
@@ -830,7 +837,7 @@ extension ArchiveService {
       try? workspace.removeSession(session.id)
     }
     let directory = try workspace.sessionDirectory(session.id)
-    try await verify(url, passwordArguments: ["-p" + password], in: directory)
+    try await verify(url, password: .reading(password), in: directory)
     _ = try await checkedState(session)
   }
 
@@ -839,13 +846,11 @@ extension ArchiveService {
     _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String,
     progress: (@Sendable (Double) async -> Void)? = nil, sizeLimit: UInt64? = nil
   ) async throws {
+    let secret = try EnginePassword.reading(password)
     try await runner().run(
-      arguments: [
-        "x", "-so", "-spd", "-ssc", "-y", "-bso0", progress == nil ? "-bsp0" : "-bsp2",
-        "-p" + password, "--", archive.path,
-        entry.path,
-      ],
-      outputURL: output, limit: sizeLimit ?? entry.size, progress: progress)
+      arguments: ["x", "-so", "-spd", "-ssc", "-y", "-bso0", progress == nil ? "-bsp0" : "-bsp2"]
+        + secret.arguments + ["--", archive.path, entry.path],
+      input: secret.input, outputURL: output, limit: sizeLimit ?? entry.size, progress: progress)
     guard try sizeLimit != nil || FileFingerprint(output).size == entry.size else {
       throw ArchiveError.extractionMismatch
     }
@@ -996,11 +1001,12 @@ extension ArchiveService {
         }
         let list = transaction.appendingPathComponent("extract.list")
         try Self.writeNameList(entries.map(\.path), to: list)
+        let secret = try EnginePassword.reading(password)
         try await runner().run(
-          arguments: [
-            "x", "-spd", "-ssc", "-r-", "-y", "-bso0", "-scsUTF-8", "-p" + password,
+          arguments: ["x", "-spd", "-ssc", "-r-", "-y", "-bso0", "-scsUTF-8"] + secret.arguments + [
             "-bsp2", "-i@" + list.path, "-o" + output.path, "--", source.path,
-          ], outputURL: transaction.appendingPathComponent("extract.log"), limit: 32 * 1024 * 1024,
+          ], input: secret.input, outputURL: transaction.appendingPathComponent("extract.log"),
+          limit: 32 * 1024 * 1024,
           progress: reporter.engine(
             phase: .extracting, from: start, to: 0.98, totalBytes: workload.bytes,
             totalFiles: workload.files),
