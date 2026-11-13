@@ -96,16 +96,18 @@ printf 'NEW DMG' > "$PANGOZIP_DMG_DIRECTORY/PangoZip-0.6.0-arm64.dmg"
         result = self.run_script("sign-app.sh", str(self.app))
         self.assertEqual(result.returncode, 0, result.stderr)
         signatures = [args for args in self.commands() if args[:2] == ["codesign", "--force"]]
-        self.assertEqual(len(signatures), 7)
+        self.assertEqual(len(signatures), 9)
         for args in signatures:
             self.assertIn("--timestamp", args)
             self.assertEqual(args[args.index("--options") + 1], "runtime")
         self.assertTrue(signatures[0][-1].endswith("Resources/Engine/7zz"))
         self.assertEqual(signatures[-1][-1], str(self.app))
         entitlements = [args for args in signatures if "--entitlements" in args]
-        self.assertEqual(len(entitlements), 2)
-        self.assertTrue(entitlements[0][-1].endswith(".appex"))
-        self.assertTrue(entitlements[1][-1].endswith("PangoZipPreview.appex"))
+        self.assertEqual(len(entitlements), 4)
+        self.assertTrue(entitlements[0][-1].endswith("PangoZipFinderSync.appex"))
+        self.assertTrue(entitlements[1][-1].endswith("PangoZipQuickExtract.appex"))
+        self.assertTrue(entitlements[2][-1].endswith("PangoZipQuickZip.appex"))
+        self.assertTrue(entitlements[3][-1].endswith("PangoZipPreview.appex"))
 
     def test_sparkle_nested_helpers_are_signed_before_worker_and_container(self):
         """Подпись Sparkle сохраняет sandbox entitlements XPC и идёт изнутри наружу."""
@@ -114,7 +116,7 @@ printf 'NEW DMG' > "$PANGOZIP_DMG_DIRECTORY/PangoZip-0.6.0-arm64.dmg"
         result = self.run_script("sign-app.sh", str(self.app))
         self.assertEqual(result.returncode, 0, result.stderr)
         signatures = [args for args in self.commands() if args[:2] == ["codesign", "--force"]]
-        self.assertEqual(len(signatures), 12)
+        self.assertEqual(len(signatures), 14)
         self.assertTrue(signatures[0][-1].endswith("/Autoupdate"))
         self.assertEqual(signatures[4][-1], str(framework))
         self.assertEqual(signatures[-1][-1], str(self.app))

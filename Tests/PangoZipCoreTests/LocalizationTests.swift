@@ -52,7 +52,7 @@ final class LocalizationTests: XCTestCase {
       let services =
         try PropertyListSerialization.propertyList(from: Data(contentsOf: serviceURL), format: nil)
         as? [String: String]
-      XCTAssertEqual(services?.count, 2, language)
+      XCTAssertEqual(services?.count, 7, language)
     }
   }
 

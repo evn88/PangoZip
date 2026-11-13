@@ -26,7 +26,8 @@ class MainReleaseTests(unittest.TestCase):
         self.git("config", "user.email", "release@example.invalid")
         self.git("checkout", "-b", "main")
         self.files = ["Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist",
-                      "QuickLookExtension/Info.plist"]
+                      "QuickLookExtension/Info.plist", "QuickActionExtension/Info-Extract.plist",
+                      "QuickActionExtension/Info-Zip.plist"]
         for name in self.files:
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)

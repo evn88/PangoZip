@@ -31,6 +31,9 @@ for component in \
   codesign "${signing_arguments[@]}" "$component"
 done
 codesign "${signing_arguments[@]}" --entitlements FinderExtension/Entitlements.plist "$app/Contents/PlugIns/PangoZipFinderSync.appex"
+for quick in PangoZipQuickExtract PangoZipQuickZip; do
+  codesign "${signing_arguments[@]}" --entitlements QuickActionExtension/Entitlements.plist "$app/Contents/PlugIns/$quick.appex"
+done
 codesign "${signing_arguments[@]}" --entitlements QuickLookExtension/Entitlements.plist "$app/Contents/PlugIns/PangoZipPreview.appex"
 codesign "${signing_arguments[@]}" "$app"
 codesign --verify --deep --strict "$app"

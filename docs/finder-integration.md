@@ -2,6 +2,15 @@
 
 Подменю **PangoZip** добавляется непосредственно в основное контекстное меню Finder через `FIFinderSync`. Наблюдаемая область — `/`, включая локальные тома; расширение не обходит дерево и не добавляет badges. Облачные провайдеры могут ограничивать поддержку Finder Sync; проверка каждого провайдера и внешнего тома не выполнена.
 
+## Облачные папки (iCloud Drive, Google Drive и др.)
+
+В папках File Provider Finder не вызывает Finder Sync — подменю PangoZip там не появится. Команды доступны через Services и Quick Actions:
+
+- **Службы** (Системные настройки → Клавиатура → Сочетания клавиш → Службы): открыть архив, добавить в архив…, распаковать здесь, распаковать в отдельные папки, заархивировать в ZIP и 7z, тестировать архив.
+- **Быстрые действия** (Системные настройки → Расширения → Finder; ПКМ → «Быстрые действия» и панель просмотра): «Распаковать здесь» и «Заархивировать в ZIP».
+
+Все механизмы передают `FinderRequest` одному и тому же `PangoZipWorker`. Подробности, ограничения и порядок включения: [finder-services.md](finder-services.md).
+
 ## Выделение и команды
 
 Состав и порядок основных архивных команд сверены с [исходным ContextMenu.cpp 7-Zip](https://github.com/ip7z/7zip/blob/main/CPP/7zip/UI/Explorer/ContextMenu.cpp).
@@ -32,7 +41,7 @@
 
 ## Сборка и установка
 
-`scripts/build-app.sh` собирает расширение с `-application-extension` и точкой входа `_NSExtensionMain`, упаковывает helper и подписывает вложенные компоненты до основного приложения. `scripts/install-app.sh` регистрирует расширение через `pluginkit -a`, включает `pluginkit -e use`. Первый запуск установленного приложения также явно восстанавливает запись appex через `pluginkit -a`, сохраняя пользовательский выбор включения. Настройки программы открывают штатный интерфейс управления Finder extensions.
+`scripts/build-app.sh` также собирает два расширения Quick Action (`QuickActionExtension/`). `scripts/build-app.sh` собирает расширение с `-application-extension` и точкой входа `_NSExtensionMain`, упаковывает helper и подписывает вложенные компоненты до основного приложения. `scripts/install-app.sh` регистрирует расширение через `pluginkit -a`, включает `pluginkit -e use`. Первый запуск установленного приложения также явно восстанавливает запись appex через `pluginkit -a`, сохраняя пользовательский выбор включения. Настройки программы открывают штатный интерфейс управления Finder extensions.
 
 Подпись ad hoc предназначена для локальной разработки. Распространение потребует Developer ID и notarization. Основные официальные источники: [Finder Sync](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html), установленный SDK FinderSync.framework, AppKit NSWorkspace/NSPasteboard и SwiftUI.
 

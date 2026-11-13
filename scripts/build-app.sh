@@ -35,7 +35,37 @@ mkdir -p "$extension/Contents/MacOS" "$extension/Contents/Resources"
 cp Resources/Icons/AppIcon.icns "$extension/Contents/Resources/AppIcon.icns"
 cp FinderExtension/Info.plist "$extension/Contents/Info.plist"
 cp -R Sources/PangoZipCore/Resources/*.lproj "$extension/Contents/Resources/"
-xcrun swiftc -swift-version 6 -O -parse-as-library -application-extension   -target "$(uname -m)-apple-macos26.0" -module-name PangoZipFinderSync   -Xlinker -e -Xlinker _NSExtensionMain   Sources/PangoZipCore/Localization.swift Sources/PangoZipCore/FinderRequest.swift Sources/PangoZipCore/FinderInstallation.swift FinderExtension/FinderSync.swift   -o "$extension/Contents/MacOS/PangoZipFinderSync"
+xcrun swiftc -swift-version 6 -O -parse-as-library -application-extension   -target "$(uname -m)-apple-macos26.0" -module-name PangoZipFinderSync   -Xlinker -e -Xlinker _NSExtensionMain   Sources/PangoZipCore/Localization.swift Sources/PangoZipCore/FinderRequest.swift Sources/PangoZipCore/FinderInstallation.swift Sources/PangoZipCore/QuickAction.swift FinderExtension/FinderSync.swift   -o "$extension/Contents/MacOS/PangoZipFinderSync"
+# Quick Action: один appex даёт один пункт, поэтому из одного исполняемого файла собираются два расширения.
+quick_binary="$build_staging/PangoZipQuickAction"
+xcrun swiftc -swift-version 6 -O -parse-as-library -application-extension \
+  -target "$(uname -m)-apple-macos26.0" -module-name PangoZipQuickAction \
+  -Xlinker -e -Xlinker _NSExtensionMain \
+  Sources/PangoZipCore/Localization.swift Sources/PangoZipCore/FinderRequest.swift \
+  Sources/PangoZipCore/FinderInstallation.swift Sources/PangoZipCore/QuickAction.swift \
+  QuickActionExtension/QuickActionHandler.swift \
+  -o "$quick_binary"
+for quick in Extract:PangoZipQuickExtract:extractHere Zip:PangoZipQuickZip:createZip; do
+  IFS=: read -r suffix bundle_name mode <<< "$quick"
+  quick_appex="$app/Contents/PlugIns/$bundle_name.appex"
+  mkdir -p "$quick_appex/Contents/MacOS" "$quick_appex/Contents/Resources"
+  cp QuickActionExtension/Info-$suffix.plist "$quick_appex/Contents/Info.plist"
+  for key in CFBundleShortVersionString CFBundleVersion; do
+    value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$app/Contents/Info.plist")"
+    /usr/libexec/PlistBuddy -c "Set :$key $value" "$quick_appex/Contents/Info.plist"
+  done
+  cp Resources/Icons/AppIcon.icns "$quick_appex/Contents/Resources/AppIcon.icns"
+  cp "$quick_binary" "$quick_appex/Contents/MacOS/PangoZipQuickAction"
+  chmod +x "$quick_appex/Contents/MacOS/PangoZipQuickAction"
+  # Имя пункта в «Быстрых действиях» берётся из CFBundleDisplayName; переводы совпадают с названиями Services.
+  default_title="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$quick_appex/Contents/Info.plist")"
+  for lproj in Sources/PangoZipCore/Resources/*.lproj; do
+    target="$quick_appex/Contents/Resources/$(basename "$lproj")"
+    mkdir -p "$target"
+    title="$(plutil -extract "$default_title" raw -o - "$lproj/ServicesMenu.strings")"
+    printf '"CFBundleDisplayName" = "%s";\n' "$title" > "$target/InfoPlist.strings"
+  done
+done
 preview="$app/Contents/PlugIns/PangoZipPreview.appex"
 mkdir -p "$preview/Contents/MacOS" "$preview/Contents/Resources"
 cp QuickLookExtension/Info.plist "$preview/Contents/Info.plist"

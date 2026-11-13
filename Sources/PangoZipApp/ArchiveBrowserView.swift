@@ -40,6 +40,7 @@ struct ArchiveBrowserView: View {
     .onExitCommand { model.cancelCurrentOperation() }
     .onChange(of: model.searchFocusToken) { _, _ in searchFocused = true }
     .sheet(isPresented: $model.isPasswordPromptPresented) { passwordSheet }
+    .sheet(item: $model.checksums) { ChecksumsView(model: $0) }
     .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
     .overlay {
       if isDropTargeted {
@@ -58,6 +59,10 @@ struct ArchiveBrowserView: View {
         + ($0.canModify && !model.isNestedArchive ? "" : L10n.tr(" — Только чтение"))
     } ?? ""
   }
+
+  /// Внутренний отступ содержимого кнопок с подписью: стеклянная подложка панели macOS 26
+  /// облегает Label вплотную, и без отступа значок прижимается к краю кнопки.
+  private static let toolbarLabelInset: CGFloat = 6
 
   @ToolbarContentBuilder
   private var primaryToolbar: some ToolbarContent {
@@ -89,6 +94,7 @@ struct ArchiveBrowserView: View {
       Button(action: model.extractSelected) {
         Label(L10n.tr("Извлечь"), systemImage: "arrow.up.bin")
           .labelStyle(.titleAndIcon).fontWeight(.semibold).foregroundStyle(Brand.onGold)
+          .padding(.horizontal, Self.toolbarLabelInset)
       }
       .buttonStyle(.borderedProminent).tint(Brand.gold)
       .help(L10n.tr("Извлечь выбранные файлы и папки (⌘⇧E)"))
@@ -116,6 +122,7 @@ struct ArchiveBrowserView: View {
     ToolbarItem(placement: .automatic) {
       Button(action: model.chooseFilesToAdd) {
         Label(L10n.tr("Добавить"), systemImage: "plus").labelStyle(.titleAndIcon)
+          .padding(.horizontal, Self.toolbarLabelInset)
       }
       .help(L10n.tr("Добавить файлы и папки (⌘⇧A)")).disabled(!model.canQueueModifications)
     }
@@ -141,7 +148,7 @@ struct ArchiveBrowserView: View {
       ToolbarItem(placement: .automatic) {
         Button(action: model.saveWorkingCopies) {
           Label(L10n.tr("Сохранить в архив"), systemImage: "square.and.arrow.down")
-            .labelStyle(.titleAndIcon)
+            .labelStyle(.titleAndIcon).padding(.horizontal, Self.toolbarLabelInset)
         }
         .help(L10n.tr("Сохранить рабочие копии сейчас"))
         .disabled(!model.canModify)
@@ -178,6 +185,13 @@ struct ArchiveBrowserView: View {
         action: model.undoLastChange
       )
       .disabled(!model.canUndoLastChange)
+      Divider()
+      Button(
+        L10n.tr("Проверить архив"), systemImage: "checkmark.shield", action: model.verifyArchive
+      )
+      .disabled(!model.canQueueOperations)
+      Button(L10n.tr("Контрольные суммы…"), systemImage: "number", action: model.showChecksums)
+        .disabled(!model.canAct || model.session == nil)
       Divider()
       if let url = model.session?.url {
         ShareLink(item: url) {
@@ -232,6 +246,7 @@ struct ArchiveBrowserView: View {
               .background(Brand.gold, in: Capsule()).foregroundStyle(Brand.onGold)
           }
         }
+        .padding(.horizontal, Self.toolbarLabelInset)
       }
       .accessibilityLabel(L10n.tr("Очередь операций"))
       .help(L10n.tr("Очередь операций") + " (" + String(model.queuedOperations.count) + ")")

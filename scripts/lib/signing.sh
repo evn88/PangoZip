@@ -32,6 +32,8 @@ verify_distribution_app() {
     "$app/Contents/Helpers/PangoZipWorker.app"
     "$app/Contents/Helpers/PangoZipUninstall"
     "$app/Contents/PlugIns/PangoZipFinderSync.appex"
+    "$app/Contents/PlugIns/PangoZipQuickExtract.appex"
+    "$app/Contents/PlugIns/PangoZipQuickZip.appex"
     "$app/Contents/PlugIns/PangoZipPreview.appex"
     "$app")
   local framework="$app/Contents/Frameworks/Sparkle.framework"

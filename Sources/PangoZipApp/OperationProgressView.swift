@@ -183,6 +183,7 @@ enum ProgressFormatting {
   static func phaseTitle(_ phase: ArchiveProgress.Phase) -> String {
     switch phase {
     case .preparing: L10n.tr("Подготовка файлов…")
+    case .downloading: L10n.tr("Загрузка из облака…")
     case .compressing: L10n.tr("Сжатие…")
     case .verifying: L10n.tr("Проверка архива…")
     case .extracting: L10n.tr("Извлечение…")

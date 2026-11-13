@@ -23,6 +23,18 @@ final class ArchiveBrowserModel: ObservableObject {
     case create([URL], String)
     case extract([URL])
     case export([String], URL)
+    case verify
+
+    /// Операции, ход которых показывается в Dock и о завершении которых приходит уведомление.
+    var feedbackKind: OperationKind? {
+      switch self {
+      case .create: .create
+      case .extract, .export: .extract
+      case .add, .delete, .save, .autosave, .undo: .modify
+      case .verify: .verify
+      case .open, .preview, .external, .nested, .back, .edit: nil
+      }
+    }
   }
 
   private enum IncomingRequest {
@@ -106,6 +118,7 @@ final class ArchiveBrowserModel: ObservableObject {
   @Published var isPasswordPromptPresented = false
   @Published private(set) var showsPreview = true
   @Published private(set) var searchFocusToken = UUID()
+  @Published var checksums: ChecksumsModel?
 
   private let service: ArchiveService
   private var autosaveTask: Task<Void, Never>?
@@ -129,6 +142,8 @@ final class ArchiveBrowserModel: ObservableObject {
   private var promiseTail: Task<Void, Never>?
   private var dragLeases: [UUID: Set<String>] = [:]
   private var promisePasswordReply: CheckedContinuation<String?, Never>?
+  private var operationFeedbackID: UUID?
+  private var exportFeedbackID: UUID?
 
   /// Принимает отдельный сервис, чтобы сеанс и временные файлы принадлежали этой модели.
   init(service: ArchiveService = ArchiveService()) { self.service = service }
@@ -292,6 +307,21 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// Ставит проверку целостности в общую очередь; вложенный архив проверяется по рабочей копии.
+  func verifyArchive() {
+    guard canQueueOperations else { return }
+    enqueue(.verify, title: L10n.tr("Проверить архив"))
+  }
+
+  /// Открывает лист с суммами файла архива и выбранных элементов; расчёт ведёт сам лист.
+  func showChecksums() {
+    guard canAct, let session else { return }
+    let sheet = ChecksumsModel(
+      service: service, session: session, paths: selectedPaths.sorted(), password: password)
+    checksums = sheet
+    sheet.start()
+  }
+
   /// Копирует внутренние пути, а не адреса временных извлечённых файлов.
   func copySelectedPaths() {
     guard !selectedPaths.isEmpty else { return }
@@ -373,6 +403,11 @@ final class ArchiveBrowserModel: ObservableObject {
     let wasExporting = isExporting
     isExporting = !promiseTasks.isEmpty || !dragLeases.isEmpty
     if !isExporting {
+      if let id = exportFeedbackID {
+        exportFeedbackID = nil
+        OperationFeedback.shared.finish(
+          id, outcome: errorMessage.map { .failure($0) } ?? .success)
+      }
       operationProgress = nil
       promiseTail = nil
       drainIncomingRequests()
@@ -525,6 +560,7 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Отменяет задачи и освобождает ожидание пароля; завершение выполняют сами задачи.
   func cancelCurrentOperation() {
+    checksums?.cancel()
     actionTask?.cancel()
     for task in promiseTasks.values { task.cancel() }
     promisePasswordReply?.resume(returning: nil)
@@ -632,18 +668,54 @@ final class ArchiveBrowserModel: ObservableObject {
   }
 
   /// Обновляет наблюдаемое состояние только на главном акторе.
-  private func receiveProgress(_ value: ArchiveProgress) { operationProgress = value }
+  private func receiveProgress(_ value: ArchiveProgress) {
+    operationProgress = value
+    let feedback = OperationFeedback.shared
+    if operationFeedbackID == nil, exportFeedbackID == nil, isExporting {
+      exportFeedbackID = feedback.begin(
+        kind: .extract, subject: session?.url.lastPathComponent ?? "")
+    }
+    if let id = operationFeedbackID ?? exportFeedbackID {
+      feedback.update(id, fraction: DockProgress.fraction(of: value))
+    }
+  }
+
+  /// Итог для уведомления: ошибка, отмена или успех определяются состоянием модели после операции.
+  private var feedbackOutcome: OperationOutcome {
+    if Task.isCancelled || isPasswordPromptPresented { return .cancelled }
+    if let errorMessage { return .failure(errorMessage) }
+    return .success
+  }
+
+  /// Название архива или исходного файла, которое попадёт в уведомление.
+  private func feedbackSubject(for operation: Operation) -> String {
+    switch operation {
+    case .create(let urls, _), .extract(let urls):
+      urls.first?.lastPathComponent ?? ""
+    default:
+      session?.url.lastPathComponent ?? ""
+    }
+  }
 
   /// Сериализует пользовательские операции и после завершения продолжает очередь запросов.
   private func run(
-    acceptingQueuedOperations: Bool = false, _ body: @escaping @MainActor () async -> Void
+    acceptingQueuedOperations: Bool = false, feedback: Operation? = nil,
+    _ body: @escaping @MainActor () async -> Void
   ) {
     guard !isBusy, !isClosing else { return }
     acceptsQueuedOperations = acceptingQueuedOperations
     isBusy = true
     operationProgress = nil
+    if let feedback, let kind = feedback.feedbackKind {
+      operationFeedbackID = OperationFeedback.shared.begin(
+        kind: kind, subject: feedbackSubject(for: feedback))
+    }
     actionTask = Task { [weak self] in
       await body()
+      if let self, let id = self.operationFeedbackID {
+        self.operationFeedbackID = nil
+        OperationFeedback.shared.finish(id, outcome: self.feedbackOutcome)
+      }
       self?.operationProgress = nil
       self?.isBusy = false
       self?.acceptsQueuedOperations = false
@@ -660,7 +732,9 @@ final class ArchiveBrowserModel: ObservableObject {
       guard !isQueuePaused else { return }
       let next = queuedOperations.removeFirst()
       guard next.sessionID == session?.id else { continue }
-      run(acceptingQueuedOperations: true) { await self.perform(next.operation) }
+      run(acceptingQueuedOperations: true, feedback: next.operation) {
+        await self.perform(next.operation)
+      }
       return
     }
     guard !incomingRequests.isEmpty else { return }
@@ -680,7 +754,9 @@ final class ArchiveBrowserModel: ObservableObject {
       case .external, .nested, .back: false
       default: true
       }
-    run(acceptingQueuedOperations: acceptsQueue) { await self.perform(operation) }
+    run(acceptingQueuedOperations: acceptsQueue, feedback: operation) {
+      await self.perform(operation)
+    }
   }
 
   /// Сохраняет остаток пакетной операции для повтора после запроса пароля.
@@ -727,24 +803,39 @@ final class ArchiveBrowserModel: ObservableObject {
       case .extract(let urls):
         await settlePreviews()
         var results: [URL] = []
-        defer { if !results.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(results) } }
+        let preferences = ExtractionPreferences.load()
+        var trashFailure: String?
+        defer {
+          if preferences.revealsResult, !results.isEmpty {
+            NSWorkspace.shared.activateFileViewerSelecting(results)
+          }
+        }
         for (index, url) in urls.enumerated() {
           retryOperation = .extract(Array(urls[index...]))
           operationMessage = L10n.tr(
             "Извлекаем %1$@ из %2$@: %3$@", String(describing: index + 1),
             String(describing: urls.count), String(describing: url.lastPathComponent))
-          results.append(
-            try await service.extractArchive(url, password: password, progress: progressHandler))
+          let outcome = try await service.extractAndFinish(
+            url, password: password, smartExtraction: preferences.smartExtraction,
+            trashesArchive: preferences.trashesArchive, progress: progressHandler)
+          results.append(outcome.url)
+          trashFailure = trashFailure ?? outcome.trashFailure
           password = ""
         }
         operationMessage = L10n.tr("Извлечено архивов: %1$@", String(describing: results.count))
+        if let trashFailure {
+          operationMessage = L10n.tr(
+            "Не удалось переместить архив в Корзину: %1$@", String(describing: trashFailure))
+        }
       case .export(let paths, let directory):
         guard let session else { throw ArchiveError.sessionExpired }
         await settlePreviews()
         operationMessage = L10n.tr("Извлечение…")
         let results = try await service.exportSelection(
           paths, from: session, to: directory, password: password, progress: progressHandler)
-        NSWorkspace.shared.activateFileViewerSelecting(results)
+        if ExtractionPreferences.load().revealsResult {
+          NSWorkspace.shared.activateFileViewerSelecting(results)
+        }
         operationMessage = L10n.tr("Извлечено объектов: %1$@", String(describing: results.count))
       case .preview:
         return
@@ -802,6 +893,18 @@ final class ArchiveBrowserModel: ObservableObject {
         try await persistWorkingCopies(activeEdits, retainingWorkingCopies: false)
       case .autosave(let edits):
         try await persistWorkingCopies(edits, retainingWorkingCopies: true)
+      case .verify:
+        guard let session else { throw ArchiveError.sessionExpired }
+        await settlePreviews()
+        operationMessage = L10n.tr("Проверяем архив…")
+        do {
+          // Для вложенного архива session.url — его рабочая копия.
+          try await service.testArchive(
+            session.url, password: password, progress: progressHandler)
+        } catch let error as ArchiveError where error != .passwordRequired {
+          throw VerificationFailure(reason: error.localizedDescription)
+        }
+        operationMessage = L10n.tr("Архив проверен: ошибок нет")
       case .undo:
         guard let session else { throw ArchiveError.sessionExpired }
         await settlePreviews()
@@ -1082,6 +1185,8 @@ final class ArchiveBrowserModel: ObservableObject {
       if !terminate || !didClose { drainIncomingRequests() }
     }
     activePanel?.cancel(nil)
+    checksums?.cancel()
+    checksums = nil
     await settleExports()
     isPasswordPromptPresented = false
     actionTask?.cancel()
@@ -1183,4 +1288,10 @@ struct PlainTextPreview: NSViewRepresentable {
     text.string = String(decoding: data, as: UTF8.self)
     text.scroll(.zero)
   }
+}
+
+/// Итог проверки целостности с причиной сбоя в понятном для пользователя виде.
+private struct VerificationFailure: LocalizedError {
+  let reason: String
+  var errorDescription: String? { L10n.tr("Проверка не пройдена: %1$@", reason) }
 }

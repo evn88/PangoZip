@@ -14,6 +14,13 @@ struct ArchiveAssociationsView: View {
         )
         .font(.caption).foregroundStyle(.secondary)
 
+        HStack {
+          Button(L10n.tr("Выбрать все")) { model.selectAll() }
+            .disabled(model.areAllSelected || model.isApplying)
+          Button(L10n.tr("Снять все")) { model.deselectAll() }
+            .disabled(model.selectedTypeIdentifiers.isEmpty || model.isApplying)
+        }
+
         ForEach(model.rows) { row in
           Toggle(isOn: selection(for: row.type.identifier)) {
             HStack {

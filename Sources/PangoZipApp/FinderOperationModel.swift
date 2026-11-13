@@ -24,7 +24,19 @@ final class FinderOperationModel: ObservableObject {
   private let logger = Logger(subsystem: "app.pangozip.desktop.worker", category: "operations")
   private var task: Task<Void, Never>?
   private var passwordReply: CheckedContinuation<String?, Never>?
-  @Published var creationFormat = "zip" { didSet { updateCreationFormat() } }
+  @Published var creationFormat = "zip" {
+    didSet {
+      updateCreationFormat()
+      // Форматы без шифрования не принимают пароль; поля в окне отключены, значения сбрасываем.
+      if !CompressionOptions.supportsPassword(creationFormat) {
+        creationPassword = ""
+        creationPasswordConfirmation = ""
+      }
+    }
+  }
+  @Published var creationProfile = CompressionProfile.customID
+  @Published var creationEncryptsFileNames = true
+  @Published var creationVolumeSizeMB = 0
   @Published var creationLevel = 5
   @Published var creationSolid = true
   @Published var creationThreads = 0
@@ -33,34 +45,62 @@ final class FinderOperationModel: ObservableObject {
   private var panel: NSSavePanel?
   private var saveDelegate: NewArchiveSaveDelegate?
   private var started = false
+  private var feedbackID: UUID?
+  private var feedbackKind: OperationKind = .extract
+  private var feedbackSubject = ""
 
   private var progressHandler: ArchiveProgressHandler {
     { [weak self] value in await self?.receiveProgress(value) }
   }
 
   /// Публикует прогресс на главном акторе, где SwiftUI наблюдает модель.
-  private func receiveProgress(_ value: ArchiveProgress) { progress = value }
+  private func receiveProgress(_ value: ArchiveProgress) {
+    progress = value
+    beginFeedbackIfNeeded()
+  }
+
+  /// Отсчёт для уведомления идёт с первого прогресса, а не с ожидания панелей и пароля.
+  private func beginFeedbackIfNeeded() {
+    guard feedbackID == nil else { return }
+    feedbackID = OperationFeedback.shared.begin(kind: feedbackKind, subject: feedbackSubject)
+  }
+
+  /// Завершает учёт операции и ждёт постановки уведомления до закрытия процесса.
+  private func finishFeedback(_ outcome: OperationOutcome) async {
+    guard let id = feedbackID else { return }
+    feedbackID = nil
+    await OperationFeedback.shared.finish(id, outcome: outcome)?.value
+  }
 
   /// Принимает один запрос на процесс worker и очищает сервис перед автоматическим завершением.
   func start(_ request: FinderRequest) {
     guard !started else { return }
     started = true
     logger.notice("Background operation started: \(request.action.rawValue, privacy: .public)")
+    switch request.action {
+    case .create, .add, .createZip, .create7z: feedbackKind = .create
+    case .test: feedbackKind = .verify
+    default: feedbackKind = .extract
+    }
+    feedbackSubject = request.urls.first?.lastPathComponent ?? ""
     task = Task {
       do {
         try await execute(request)
         logger.notice("Background operation completed")
+        await finishFeedback(.success)
         await service.cleanup()
         task = nil
         ApplicationMode.workerFinished = true
         NSApp.terminate(nil)
       } catch is CancellationError {
         logger.notice("Background operation cancelled")
+        await finishFeedback(.cancelled)
         await service.cleanup()
         task = nil
         ApplicationMode.workerFinished = true
         NSApp.terminate(nil)
       } catch {
+        await finishFeedback(.failure(error.localizedDescription))
         await service.cleanup()
         progress = nil
         errorMessage = error.localizedDescription
@@ -120,11 +160,11 @@ final class FinderOperationModel: ObservableObject {
   /// Не меняет панель выбора папки; у панели создания согласует расширение с форматом.
   private func updateCreationFormat() {
     guard let panel, !(panel is NSOpenPanel) else { return }
-    panel.allowedContentTypes = [UTType(filenameExtension: creationFormat) ?? .data]
-    let name = panel.nameFieldStringValue as NSString
-    if ["zip", "7z"].contains(name.pathExtension.lowercased()) {
-      panel.nameFieldStringValue = name.deletingPathExtension + "." + creationFormat
-    }
+    panel.allowedContentTypes = [ArchiveFormatPresentation.contentType(for: creationFormat)]
+    // Составное расширение (tar.gz) не должно превращаться в «.gz» из-за типа содержимого.
+    panel.allowsOtherFileTypes = true
+    panel.nameFieldStringValue = ArchiveFormatPresentation.renamed(
+      panel.nameFieldStringValue, to: creationFormat)
   }
 
   /// Разделяет создание и извлечение; пароль повторно запрашивается для каждого архива.
@@ -137,6 +177,9 @@ final class FinderOperationModel: ObservableObject {
       creationLevel = defaults.level
       creationSolid = defaults.solid
       creationThreads = defaults.threads
+      creationEncryptsFileNames = defaults.encryptsFileNames
+      creationVolumeSizeMB = defaults.volumeSizeMB ?? 0
+      creationProfile = ArchivePreferences.profileID
       creationPassword = ""
       creationPasswordConfirmation = ""
       message = L10n.tr("Добавить в архив")
@@ -166,7 +209,8 @@ final class FinderOperationModel: ObservableObject {
       let options = CompressionOptions(
         format: creationFormat, level: creationLevel, solid: creationSolid,
         threads: creationThreads,
-        excludesSystemFiles: ArchivePreferences.excludesSystemFiles)
+        excludesSystemFiles: ArchivePreferences.excludesSystemFiles,
+        volumeSizeMB: creationVolumeSizeMB, encryptsFileNames: creationEncryptsFileNames)
       message = L10n.tr("Создаём %1$@…", String(describing: destination.lastPathComponent))
       defer {
         creationPassword = ""
@@ -207,6 +251,9 @@ final class FinderOperationModel: ObservableObject {
         guard response == .OK, let selected = chooser.url else { throw CancellationError() }
         destination = selected
       }
+      let preferences = ExtractionPreferences.load()
+      var revealed: [URL] = []
+      var trashFailure: String?
       for (index, url) in request.urls.enumerated() {
         var suppliedPassword = ""
         while true {
@@ -222,11 +269,16 @@ final class FinderOperationModel: ObservableObject {
           do {
             if request.action == .test {
               progress = ArchiveProgress(phase: .verifying)
+              beginFeedbackIfNeeded()
               try await service.testArchive(url, password: suppliedPassword)
             } else {
-              _ = try await service.extractArchive(
+              let outcome = try await service.extractAndFinish(
                 url, password: suppliedPassword, directory: destination,
-                createsSubfolder: request.action == .extract, progress: progressHandler)
+                createsSubfolder: request.action == .extract,
+                smartExtraction: preferences.smartExtraction,
+                trashesArchive: preferences.trashesArchive, progress: progressHandler)
+              revealed.append(outcome.url)
+              trashFailure = trashFailure ?? outcome.trashFailure
             }
             break
           } catch ArchiveError.passwordRequired {
@@ -234,8 +286,25 @@ final class FinderOperationModel: ObservableObject {
           }
         }
       }
+      if request.action != .test, preferences.revealsResult, !revealed.isEmpty {
+        if request.action == .extract {
+          NSWorkspace.shared.activateFileViewerSelecting(revealed)
+        } else {
+          // Без подпапки результат лежит в самой папке назначения: открываем её.
+          NSWorkspace.shared.open(destination ?? revealed[0])
+        }
+      }
+      if let trashFailure { throw TrashFailure(message: trashFailure) }
     case .open: throw ArchiveError.invalidOperation
     }
+  }
+}
+
+/// Извлечение удалось, но архив не удалось переместить в Корзину: окно worker остаётся с пояснением.
+private struct TrashFailure: LocalizedError {
+  let message: String
+  var errorDescription: String? {
+    L10n.tr("Не удалось переместить архив в Корзину: %1$@", String(describing: message))
   }
 }
 
@@ -299,44 +368,25 @@ private struct ArchiveCreationOptionsView: View {
   @ObservedObject var model: FinderOperationModel
   var body: some View {
     Form {
-      Picker(L10n.tr("Формат архива"), selection: $model.creationFormat) {
-        Text("7z").tag("7z")
-        Text("ZIP").tag("zip")
-      }
-      Picker(L10n.tr("Уровень сжатия"), selection: $model.creationLevel) {
-        Text(L10n.tr("Без сжатия")).tag(0)
-        Text(L10n.tr("Быстрая")).tag(1)
-        Text(L10n.tr("Обычная")).tag(5)
-        Text(L10n.tr("Максимальная")).tag(7)
-        Text(L10n.tr("Ультра")).tag(9)
-      }
-      Toggle(isOn: $model.creationSolid) {
-        HStack(spacing: 6) {
-          Text(L10n.tr("Сплошное сжатие"))
-          Image(systemName: "questionmark.circle")
-            .foregroundStyle(.secondary)
-            .help(
-              L10n.tr(
-                "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
-              )
-            )
-            .accessibilityHidden(true)
-        }
-      }
-      .accessibilityLabel(L10n.tr("Сплошное сжатие"))
-      .accessibilityHint(
-        L10n.tr(
-          "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
-        )
-      )
-      .disabled(model.creationFormat != "7z")
+      CompressionSettingsFields(
+        profile: $model.creationProfile, format: $model.creationFormat,
+        level: $model.creationLevel, solid: $model.creationSolid,
+        encryptsFileNames: $model.creationEncryptsFileNames,
+        volumeSizeMB: $model.creationVolumeSizeMB)
       Picker(L10n.tr("Потоки"), selection: $model.creationThreads) {
         Text(L10n.tr("Автоматически")).tag(0)
         ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
       }
+      let supportsPassword = CompressionOptions.supportsPassword(model.creationFormat)
       SecureField(L10n.tr("Пароль (необязательно)"), text: $model.creationPassword)
+        .disabled(!supportsPassword)
       SecureField(L10n.tr("Повторите пароль"), text: $model.creationPasswordConfirmation)
+        .disabled(!supportsPassword)
+      if !supportsPassword {
+        Text(L10n.tr("Этот формат не поддерживает пароль."))
+          .font(.caption).foregroundStyle(.secondary)
+      }
     }
-    .formStyle(.grouped).frame(width: 440, height: 290)
+    .formStyle(.grouped).frame(width: 440, height: 440)
   }
 }

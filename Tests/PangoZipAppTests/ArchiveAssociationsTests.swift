@@ -43,6 +43,38 @@ final class ArchiveAssociationsTests: XCTestCase, @unchecked Sendable {
   }
 
   @MainActor
+  func testSelectAllAndDeselectAll() async {
+    let zip = ArchiveAssociationType(identifier: "public.zip-archive", fileExtension: "zip")
+    let sevenZip = ArchiveAssociationType(
+      identifier: "org.7-zip.7-zip-archive", fileExtension: "7z")
+    let manager = FakeArchiveAssociationsManager()
+    let model = ArchiveAssociationsModel(types: [zip, sevenZip], manager: manager)
+    XCTAssertFalse(model.areAllSelected)
+
+    model.selectedTypeIdentifiers = [zip.identifier]
+    model.selectAll()
+    XCTAssertEqual(model.selectedTypeIdentifiers, [zip.identifier, sevenZip.identifier])
+    XCTAssertTrue(model.areAllSelected)
+
+    await model.applySelection()
+    XCTAssertEqual(Set(manager.updatedTypes), [zip.identifier, sevenZip.identifier])
+
+    model.deselectAll()
+    XCTAssertTrue(model.selectedTypeIdentifiers.isEmpty)
+    XCTAssertFalse(model.areAllSelected)
+    // Снятие отметок не вызывает системных изменений.
+    XCTAssertEqual(manager.updatedTypes.count, 2)
+  }
+
+  @MainActor
+  func testSelectAllWithoutTypesStaysEmpty() {
+    let model = ArchiveAssociationsModel(types: [], manager: FakeArchiveAssociationsManager())
+    model.selectAll()
+    XCTAssertTrue(model.selectedTypeIdentifiers.isEmpty)
+    XCTAssertFalse(model.areAllSelected)
+  }
+
+  @MainActor
   func testArchiveTypesComeFromDocumentTypesAndAreDeduplicated() {
     let types = ArchiveAssociationsModel.archiveTypes(from: [
       "CFBundleDocumentTypes": [

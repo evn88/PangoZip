@@ -26,7 +26,24 @@ enum ArchivePreferences {
       level: defaults.object(forKey: "compressionLevel") as? Int ?? 5,
       solid: defaults.object(forKey: "compressionSolid") as? Bool ?? true,
       threads: defaults.integer(forKey: "compressionThreads"),
-      excludesSystemFiles: excludesSystemFiles)
+      excludesSystemFiles: excludesSystemFiles,
+      volumeSizeMB: defaults.integer(forKey: "compressionVolumeSize"),
+      encryptsFileNames: defaults.object(forKey: "compressionEncryptNames") as? Bool ?? true)
+  }
+
+  /// Профиль по умолчанию: сохранённый встроенный либо совпавший с текущими значениями, иначе «Свой».
+  static var profileID: String {
+    let defaults = UserDefaults(suiteName: "app.pangozip.desktop") ?? .standard
+    if let stored = defaults.string(forKey: "compressionProfile"),
+      CompressionProfile.builtIn(id: stored) != nil
+    {
+      return stored
+    }
+    let current = options
+    return CompressionProfile.matching(
+      format: current.format, level: current.level, solid: current.solid,
+      encryptsFileNames: current.encryptsFileNames, volumeSizeMB: current.volumeSizeMB)?.id
+      ?? CompressionProfile.customID
   }
 
   /// Служебные файлы систем по умолчанию не попадают в создаваемые архивы.
@@ -43,8 +60,12 @@ struct ArchiveSettingsView: View {
   @AppStorage("compressionLevel") private var level = 5
   @AppStorage("compressionSolid") private var solid = true
   @AppStorage("compressionThreads") private var threads = 0
+  @AppStorage("compressionProfile") private var profile = CompressionProfile.customID
+  @AppStorage("compressionEncryptNames") private var encryptsFileNames = true
+  @AppStorage("compressionVolumeSize") private var volumeSizeMB = 0
   @AppStorage("excludeSystemFiles") private var excludesSystemFiles = true
   @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
+  @AppStorage(OperationNotificationPolicy.defaultsKey) private var notifiesOnCompletion = true
   @AppStorage(AppearanceMode.storageKey) private var appearanceMode = AppearanceMode.system.rawValue
 
   var body: some View {
@@ -60,6 +81,8 @@ struct ArchiveSettingsView: View {
         .tabItem { Label(L10n.tr("Типы архивов"), systemImage: "square.and.arrow.down") }
       finderSettings
         .tabItem { Label("Finder", systemImage: "folder") }
+      ExtractionSettingsView()
+        .tabItem { Label(L10n.tr("Извлечение"), systemImage: "tray.and.arrow.up") }
       DropIslandSettingsView()
         .tabItem { Label(L10n.tr("Остров"), systemImage: "rectangle.topthird.inset.filled") }
       applicationSettings
@@ -71,37 +94,11 @@ struct ArchiveSettingsView: View {
   private var compressionSettings: some View {
     Form {
       Section(L10n.tr("Параметры по умолчанию")) {
-        Picker(L10n.tr("Формат по умолчанию"), selection: $format) {
-          Text("ZIP").tag("zip")
-          Text("7z").tag("7z")
-        }
-        Picker(L10n.tr("Степень сжатия"), selection: $level) {
-          Text(L10n.tr("Без сжатия")).tag(0)
-          Text(L10n.tr("Быстрая")).tag(1)
-          Text(L10n.tr("Обычная")).tag(5)
-          Text(L10n.tr("Максимальная")).tag(7)
-          Text(L10n.tr("Ультра")).tag(9)
-        }
-        Toggle(isOn: $solid) {
-          HStack(spacing: 6) {
-            Text(L10n.tr("Сплошное сжатие 7z"))
-            Image(systemName: "questionmark.circle")
-              .foregroundStyle(.secondary)
-              .help(
-                L10n.tr(
-                  "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
-                )
-              )
-              .accessibilityHidden(true)
-          }
-        }
-        .accessibilityLabel(L10n.tr("Сплошное сжатие 7z"))
-        .accessibilityHint(
-          L10n.tr(
-            "Сжимает файлы вместе: архив обычно меньше, но извлечение одного файла может занять больше времени."
-          )
-        )
-        .disabled(format != "7z")
+        CompressionSettingsFields(
+          profile: $profile, format: $format, level: $level, solid: $solid,
+          encryptsFileNames: $encryptsFileNames, volumeSizeMB: $volumeSizeMB,
+          formatTitle: L10n.tr("Формат по умолчанию"), levelTitle: L10n.tr("Степень сжатия"),
+          solidTitle: L10n.tr("Сплошное сжатие 7z"))
         Picker(L10n.tr("Потоки процессора"), selection: $threads) {
           Text(L10n.tr("Автоматически")).tag(0)
           ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
@@ -154,6 +151,9 @@ struct ArchiveSettingsView: View {
           )
         )
         .font(.caption).foregroundStyle(.secondary)
+      }
+      Section(L10n.tr("Уведомления")) {
+        Toggle(L10n.tr("Уведомлять о завершении долгих операций"), isOn: $notifiesOnCompletion)
       }
       if let supportURL = SupportConfiguration.pageURL {
         DevelopmentSupportSection(pageURL: supportURL)

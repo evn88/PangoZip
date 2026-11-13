@@ -5,6 +5,8 @@ public struct FinderRegistrationPlan: Sendable, Equatable {
   public let applicationURL: URL
   public let workerURL: URL
   public let extensionURL: URL
+  /// Встроенные расширения Quick Action; отсутствующие в комплекте (старые сборки) пропускаются.
+  public let quickActionURLs: [URL]
 
   /// Проверяет установленное приложение и встроенные компоненты до регистрации в macOS.
   public static func make(
@@ -35,7 +37,20 @@ public struct FinderRegistrationPlan: Sendable, Equatable {
     guard contains(worker.resolvingSymlinksInPath(), in: app),
       contains(finder.resolvingSymlinksInPath(), in: app)
     else { throw FinderRegistrationError.invalidBundle(app) }
-    return Self(applicationURL: app, workerURL: worker, extensionURL: finder)
+    var quickActions: [URL] = []
+    for action in QuickAction.allCases {
+      let bundle = app.appendingPathComponent(action.bundlePath)
+      guard FileManager.default.fileExists(atPath: bundle.path) else { continue }
+      try validateBundle(
+        bundle, identifier: action.bundleIdentifier, executable: QuickAction.executableName,
+        type: "XPC!", extensionPoint: QuickAction.extensionPoint)
+      guard contains(bundle.resolvingSymlinksInPath(), in: app) else {
+        throw FinderRegistrationError.invalidBundle(app)
+      }
+      quickActions.append(bundle)
+    }
+    return Self(
+      applicationURL: app, workerURL: worker, extensionURL: finder, quickActionURLs: quickActions)
   }
 
   /// Сравнивает компоненты путей, исключая совпадение только по строковому префиксу.
@@ -98,7 +113,9 @@ public enum FinderRegistration {
   /// Обновляет все вложенные компоненты, сохраняя пользовательский выбор включения расширения.
   public static func register(_ plan: FinderRegistrationPlan) async throws {
     try await register(plan) { url, update in
-      guard url == plan.extensionURL else { return LSRegisterURL(url as CFURL, update) }
+      guard url == plan.extensionURL || plan.quickActionURLs.contains(url) else {
+        return LSRegisterURL(url as CFURL, update)
+      }
       // Обнаружение appex через одну регистрацию приложения не гарантируется PlugInKit.
       // Ключ -a восстанавливает запись, но не включает расширение вопреки выбору пользователя.
       let process = Process()
@@ -118,7 +135,7 @@ public enum FinderRegistration {
   ) async throws {
     try Task.checkCancellation()
     let task = Task.detached(priority: .utility) {
-      for url in [plan.applicationURL, plan.workerURL, plan.extensionURL] {
+      for url in [plan.applicationURL, plan.workerURL, plan.extensionURL] + plan.quickActionURLs {
         try Task.checkCancellation()
         let status = try executor(url, true)
         guard status == noErr else {

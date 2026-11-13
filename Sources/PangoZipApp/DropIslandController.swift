@@ -138,6 +138,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private var jobTask: Task<URL, any Error>?
   private var pauseTask: Task<Void, Never>?
   private var shrinkTask: Task<Void, Never>?
+  private var feedbackID: UUID?
 
   var isBusy: Bool { work == .working || !jobs.isEmpty }
 
@@ -466,7 +467,8 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     chooser.prompt = L10n.tr("Сжать")
     chooser.directoryURL = url.deletingLastPathComponent()
     chooser.nameFieldStringValue = name
-    chooser.allowedContentTypes = [UTType(filenameExtension: format) ?? .data]
+    chooser.allowedContentTypes = [ArchiveFormatPresentation.contentType(for: format)]
+    chooser.allowsOtherFileTypes = true
     chooser.canCreateDirectories = true
     NSApp.activate(ignoringOtherApps: true)
     let response = await withCheckedContinuation { continuation in
@@ -498,6 +500,10 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     updateStage()
     let task = Task { try await self.perform(job) }
     jobTask = task
+    let feedbackID = OperationFeedback.shared.begin(
+      kind: isExtraction ? .extract : .create, subject: workTitle)
+    self.feedbackID = feedbackID
+    var outcome = OperationOutcome.success
     do {
       let result = try await task.value
       resultURL = result
@@ -505,12 +511,16 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       workSubtitle = L10n.tr("Готово")
       work = .done
     } catch is CancellationError {
+      outcome = .cancelled
       work = .idle
     } catch {
+      outcome = .failure(error.localizedDescription)
       workSubtitle = error.localizedDescription
       work = .failed
     }
     jobTask = nil
+    self.feedbackID = nil
+    OperationFeedback.shared.finish(feedbackID, outcome: outcome)
     refresh()
     guard work != .idle else { return }
     // Результат остаётся на виду, но следующая операция в очереди ждёт недолго.
@@ -532,6 +542,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
         options: job.options, progress: handler)
     }
     var result = job.plan.urls[0]
+    let preferences = ExtractionPreferences.load()
     for url in job.plan.urls {
       workTitle = url.lastPathComponent
       model.fraction = nil
@@ -540,7 +551,10 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       while true {
         try Task.checkCancellation()
         do {
-          result = try await service.extractArchive(url, password: password, progress: handler)
+          result = try await service.extractAndFinish(
+            url, password: password, smartExtraction: preferences.smartExtraction,
+            trashesArchive: preferences.trashesArchive, progress: handler
+          ).url
           break
         } catch ArchiveError.passwordRequired {
           guard let answer = askPassword(for: url) else { throw CancellationError() }
@@ -552,6 +566,9 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   }
 
   private func receive(_ progress: ArchiveProgress) {
+    if let feedbackID {
+      OperationFeedback.shared.update(feedbackID, fraction: DockProgress.fraction(of: progress))
+    }
     model.fraction = progress.fraction
     updateStage()
   }

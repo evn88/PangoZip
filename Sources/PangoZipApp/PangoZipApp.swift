@@ -11,6 +11,7 @@ struct PangoZipApp: App {
   @StateObject private var model = ArchiveBrowserModel()
   @State private var updater = ApplicationUpdater()
   @AppStorage(DropIslandSettings.enabledKey) private var isIslandEnabled = true
+  @AppStorage(WatchedFolderStore.key) private var watchedRules = Data()
   @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
 
   /// Переносит прежние настройки до создания интерфейса и запуска операций Finder.
@@ -38,7 +39,7 @@ struct PangoZipApp: App {
             updater.start(
               isBusy: {
                 !model.canAct || !model.queuedOperations.isEmpty
-                  || DropIslandController.shared.isBusy
+                  || DropIslandController.shared.isBusy || WatchedFolderMonitor.shared.isBusy
               },
               prepareForInstallation: {
                 model.isUpdatePending = true
@@ -89,7 +90,12 @@ struct PangoZipApp: App {
     // Значок в строке меню показывает, что PangoZip работает в фоне ради острова.
     MenuBarExtra(
       "PangoZip", systemImage: "archivebox",
-      isInserted: Binding(get: { isIslandEnabled && !isFinderWorker }, set: { _ in })
+      isInserted: Binding(
+        get: {
+          (isIslandEnabled
+            || WatchedFolderMonitor.isActive(rules: WatchedFolderStore.decode(watchedRules)))
+            && !isFinderWorker
+        }, set: { _ in })
     ) {
       Button(L10n.tr("Открыть PangoZip")) {
         openWindow(id: "main")
@@ -143,6 +149,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
       NSUpdateDynamicServices()
       finderSetupTask = Task { await finderIntegration.prepare() }
       DropIslandController.shared.applySettings()
+      WatchedFolderMonitor.shared.reload()
       hideWindowsAfterLoginLaunch()
     }
   }
@@ -171,9 +178,10 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     services.deliverOpenURLs(urls)
   }
 
-  /// С включённым островом приложение остаётся в фоне; иначе завершается с последним окном.
+  /// С островом или слежением за папками приложение остаётся в фоне; иначе завершается с последним окном.
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    ApplicationMode.isFinderWorker || !DropIslandSettings.isEnabled
+    ApplicationMode.isFinderWorker
+      || (!DropIslandSettings.isEnabled && !WatchedFolderMonitor.isActive)
   }
 
   /// Откладывает системное завершение до асинхронной очистки и ответа о рабочих копиях.
@@ -188,6 +196,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
         let allowed = await prepareTermination()
         if allowed && !ApplicationMode.isFinderWorker {
           await DropIslandController.shared.prepareTermination()
+          await WatchedFolderMonitor.shared.prepareTermination()
         }
         self.terminationPending = false
         NSApp.reply(toApplicationShouldTerminate: allowed)

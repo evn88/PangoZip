@@ -1,2 +1,7 @@
 "Открыть архив в PangoZip" = "在 PangoZip 中打开归档";
 "Добавить в архив PangoZip…" = "添加到 PangoZip 归档…";
+"Распаковать здесь с PangoZip" = "使用 PangoZip 解压到此处";
+"Распаковать в отдельные папки с PangoZip" = "使用 PangoZip 解压到单独文件夹";
+"Заархивировать в ZIP с PangoZip" = "使用 PangoZip 压缩为 ZIP";
+"Заархивировать в 7z с PangoZip" = "使用 PangoZip 压缩为 7z";
+"Тестировать архив в PangoZip" = "使用 PangoZip 测试归档";

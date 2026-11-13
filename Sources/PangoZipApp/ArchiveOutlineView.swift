@@ -432,6 +432,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
           key: "e",
           modifiers: [.command, .shift])
         add(L10n.tr("Копировать путь в архиве"), #selector(copyPaths), enabled: true)
+        add(
+          L10n.tr("Контрольные суммы…"), #selector(showChecksums),
+          enabled: model.canAct)
         menu.addItem(.separator())
         if row >= 0, model.selectedPaths.count == 1, let item = outline.item(atRow: row) as? Item,
           !item.children.isEmpty
@@ -466,6 +469,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
     @objc private func extractFiles() { parent.model.extractSelected() }
     /// Копирует внутренние пути без предварительного извлечения объектов.
     @objc private func copyPaths() { parent.model.copySelectedPaths() }
+    /// Лист сумм берёт выделение модели и проверяет доступность команды сам.
+    @objc private func showChecksums() { parent.model.showChecksums() }
     /// Использует текущую папку выделения, которую модель зафиксирует перед выбором файлов.
     @objc private func addFiles() { parent.model.chooseFilesToAdd() }
     /// Сохранение рабочих копий требует отдельной команды пользователя во внешнем редакторе.
