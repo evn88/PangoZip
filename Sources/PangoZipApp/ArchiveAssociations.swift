@@ -98,6 +98,23 @@ final class ArchiveAssociationsModel: ObservableObject {
     }
   }
 
+  /// Все типы выбраны, когда список не пуст и в выборе нет пропусков.
+  var areAllSelected: Bool {
+    !types.isEmpty && types.allSatisfy { selectedTypeIdentifiers.contains($0.identifier) }
+  }
+
+  /// Отмечает все типы архивов; назначение выполняется отдельной кнопкой.
+  func selectAll() {
+    guard !isApplying else { return }
+    selectedTypeIdentifiers = Set(types.map(\.identifier))
+  }
+
+  /// Снимает только отметки в списке; уже назначенные системные обработчики не меняются.
+  func deselectAll() {
+    guard !isApplying else { return }
+    selectedTypeIdentifiers.removeAll()
+  }
+
   func applySelection() async {
     guard !isApplying else { return }
     let selected = types.filter { selectedTypeIdentifiers.contains($0.identifier) }

@@ -4,7 +4,7 @@ public typealias ArchiveProgressHandler = @Sendable (ArchiveProgress) async -> V
 
 public struct ArchiveProgress: Sendable, Equatable {
   public enum Phase: Sendable, Equatable {
-    case preparing, compressing, verifying, extracting, finalizing
+    case preparing, downloading, compressing, verifying, extracting, finalizing
   }
 
   public let phase: Phase

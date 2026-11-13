@@ -332,3 +332,9 @@
 "У курсора" = "İmlecin yanında";
 "⌥ — выбрать место" = "⌥ — konum seç";
 "⌥ — сжать в новый архив" = "⌥ — yeni arşive sıkıştır";
+"Загрузка из облака…" = "Bulut'tan indiriliyor…";
+"Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "Dosya buluttan indirilemedi. iCloud'a veya diğer depolamaya erişimi kontrol edin.";
+"Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "Ağ bağlantısı yok: buluttaki dosya indirilmedi. Bağlanıp tekrar deneyin.";
+"Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "Buluttan indirme ilerlemiyor. Ağ bağlantısını kontrol edip tekrar deneyin.";
+"Выбрать все" = "Tümünü seç";
+"Снять все" = "Seçimi kaldır";

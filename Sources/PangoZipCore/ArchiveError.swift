@@ -20,6 +20,9 @@ public enum ArchiveError: LocalizedError, Equatable, Sendable {
   case invalidOperation
   case activeEdits
   case editedFileChanged
+  case cloudDownloadFailed
+  case cloudOffline
+  case cloudDownloadTimedOut
 
   public var errorDescription: String? {
     switch self {
@@ -52,6 +55,13 @@ public enum ArchiveError: LocalizedError, Equatable, Sendable {
       L10n.tr(
         "Рабочий файл изменился во время сохранения. Повторите сохранение после завершения работы редактора."
       )
+    case .cloudDownloadFailed:
+      L10n.tr(
+        "Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу.")
+    case .cloudOffline:
+      L10n.tr("Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите.")
+    case .cloudDownloadTimedOut:
+      L10n.tr("Загрузка из облака не продвигается. Проверьте подключение к сети и повторите.")
     case .sessionExpired: L10n.tr("Сеанс архива завершён. Откройте архив заново.")
     }
   }

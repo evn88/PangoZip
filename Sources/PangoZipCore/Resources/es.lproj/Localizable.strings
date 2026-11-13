@@ -332,3 +332,9 @@
 "У курсора" = "Junto al puntero";
 "⌥ — выбрать место" = "⌥ — elegir ubicación";
 "⌥ — сжать в новый архив" = "⌥ — comprimir en un archivo nuevo";
+"Загрузка из облака…" = "Descargando desde la nube…";
+"Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "No se pudo descargar el archivo de la nube. Comprueba el acceso a iCloud o al otro almacenamiento.";
+"Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "Sin conexión de red: el archivo de la nube no se descargó. Conéctate e inténtalo de nuevo.";
+"Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "La descarga desde la nube no avanza. Comprueba la conexión de red e inténtalo de nuevo.";
+"Выбрать все" = "Seleccionar todo";
+"Снять все" = "Deseleccionar todo";
