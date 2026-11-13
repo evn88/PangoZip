@@ -57,7 +57,7 @@ public enum FinderInstallation {
     let ownParent = self.applicationURL(for: Bundle.main.bundleURL).resolvingSymlinksInPath()
       .standardizedFileURL
     let isOwnParent =
-      Bundle.main.bundleIdentifier == "app.pangozip.desktop.finder"
+      Self.isOwnExtensionIdentifier(Bundle.main.bundleIdentifier)
       && ownParent.path == app.path
     guard !app.pathComponents.contains(where: { [".Trash", ".Trashes"].contains($0) }),
       isOwnParent || identifier(at: app) == "app.pangozip.desktop"
@@ -66,6 +66,13 @@ public enum FinderInstallation {
       && executableExists(
         at: app.appendingPathComponent(
           "Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip"))
+  }
+
+  /// Распознаёт расширения комплекта: Finder Sync и действия Quick Action.
+  static func isOwnExtensionIdentifier(_ identifier: String?) -> Bool {
+    guard let identifier else { return false }
+    return identifier == "app.pangozip.desktop.finder"
+      || identifier.hasPrefix(QuickAction.identifierPrefix)
   }
 
   /// Читает идентификатор непосредственно из Info.plist; недоступный или неверный файл даёт nil.

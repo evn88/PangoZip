@@ -22,7 +22,7 @@ pbs="/System/Library/CoreServices/pbs"
 source_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$source_app/Contents/Info.plist")"
 [[ "$source_id" == app.pangozip.desktop ]] || { echo "Invalid application bundle" >&2; exit 1; }
 codesign --verify --deep --strict "$source_app"
-for resource in Contents/MacOS/PangoZip Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip Contents/PlugIns/PangoZipFinderSync.appex/Contents/MacOS/PangoZipFinderSync Contents/PlugIns/PangoZipPreview.appex/Contents/MacOS/PangoZipPreview Contents/Helpers/PangoZipUninstall; do
+for resource in Contents/MacOS/PangoZip Contents/Helpers/PangoZipWorker.app/Contents/MacOS/PangoZip Contents/PlugIns/PangoZipFinderSync.appex/Contents/MacOS/PangoZipFinderSync Contents/PlugIns/PangoZipPreview.appex/Contents/MacOS/PangoZipPreview Contents/PlugIns/PangoZipQuickExtract.appex/Contents/MacOS/PangoZipQuickAction Contents/PlugIns/PangoZipQuickZip.appex/Contents/MacOS/PangoZipQuickAction Contents/Helpers/PangoZipUninstall; do
   [[ -x "$source_app/$resource" ]] || { echo "Missing component: $resource" >&2; exit 1; }
 done
 
@@ -65,6 +65,14 @@ register() {
         /usr/bin/pluginkit -a "$preview"
         /usr/bin/pluginkit -e use -i app.pangozip.desktop.preview
       fi
+      # Quick Action: оба расширения регистрируются и включаются; провал не блокирует установку.
+      local quick
+      for quick in PangoZipQuickExtract:extract PangoZipQuickZip:zip; do
+        if [[ -d "$destination/Contents/PlugIns/${quick%%:*}.appex" ]]; then
+          /usr/bin/pluginkit -a "$destination/Contents/PlugIns/${quick%%:*}.appex" || true
+          /usr/bin/pluginkit -e use -i "app.pangozip.desktop.quickaction.${quick##*:}" || true
+        fi
+      done
       "$pbs" -update
       return 0
     fi
@@ -85,6 +93,8 @@ cleanup() {
   if [[ "$committed" != true && "$installed_new" == true && ! -d "$backup" ]]; then
     /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipPreview.appex" || true
     /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipFinderSync.appex" || true
+    /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipQuickExtract.appex" || true
+    /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipQuickZip.appex" || true
     "$lsregister" -u "$destination/Contents/Helpers/PangoZipWorker.app" || true
     "$lsregister" -u "$destination" || true
     rm -rf "$destination"
@@ -99,6 +109,8 @@ codesign --verify --deep --strict "$staging"
 if [[ -d "$destination" ]]; then
   /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipPreview.appex" || true
   /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipFinderSync.appex" || true
+  /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipQuickExtract.appex" || true
+  /usr/bin/pluginkit -r "$destination/Contents/PlugIns/PangoZipQuickZip.appex" || true
   "$lsregister" -u "$destination/Contents/Helpers/PangoZipWorker.app" || true
   "$lsregister" -u "$destination" || true
   while read -r process_id command; do

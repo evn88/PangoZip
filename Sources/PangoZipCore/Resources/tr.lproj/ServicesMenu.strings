@@ -1,2 +1,7 @@
 "Открыть архив в PangoZip" = "Arşivi PangoZip ile Aç";
 "Добавить в архив PangoZip…" = "PangoZip Arşivine Ekle…";
+"Распаковать здесь с PangoZip" = "PangoZip ile Buraya Çıkar";
+"Распаковать в отдельные папки с PangoZip" = "PangoZip ile Ayrı Klasörlere Çıkar";
+"Заархивировать в ZIP с PangoZip" = "PangoZip ile ZIP Olarak Arşivle";
+"Заархивировать в 7z с PangoZip" = "PangoZip ile 7z Olarak Arşivle";
+"Тестировать архив в PangoZip" = "Arşivi PangoZip ile Sına";
