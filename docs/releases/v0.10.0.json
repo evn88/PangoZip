@@ -1,0 +1,26 @@
+{
+  "en": [
+    "New archive formats to create: TAR, tar.gz, tar.xz and WIM, in addition to ZIP and 7z.",
+    "Split ZIP and 7z archives into volumes of a chosen size, and pick a compression profile: Fast, Normal, Maximum or Email (25 MB volumes).",
+    "Verify an archive from its window and view CRC32 and SHA-256 checksums of the archive and selected files, with a field to compare against a known value.",
+    "Smarter extraction: no extra folder when the archive holds a single item. New options to show the result in Finder and to move the archive to the Trash afterwards.",
+    "Watched folders: PangoZip can extract new archives that appear in the folders you choose, to a destination you set.",
+    "Files that are not downloaded from iCloud or another cloud folder are now downloaded first instead of failing with an error.",
+    "More Finder commands for cloud folders, where the PangoZip menu is not shown: new Services and two Quick Actions, Extract Here and Compress to ZIP.",
+    "Progress on the Dock icon and a notification when a long operation finishes.",
+    "Settings: select all archive types at once for opening in PangoZip; more formats are in the list.",
+    "Toolbar buttons with labels have proper inner spacing."
+  ],
+  "ru": [
+    "Новые форматы для создания архивов: TAR, tar.gz, tar.xz и WIM, в дополнение к ZIP и 7z.",
+    "Архивы ZIP и 7z можно разбивать на тома выбранного размера. Появились профили сжатия: «Быстро», «Обычный», «Максимум» и «Для почты» (тома по 25 МБ).",
+    "Проверка архива прямо в его окне и контрольные суммы CRC32 и SHA-256 для архива и выбранных файлов, с полем для сравнения с известным значением.",
+    "Умное извлечение: без лишней папки, если в архиве один объект. Новые настройки: показать результат в Finder и переместить архив в Корзину после извлечения.",
+    "Отслеживаемые папки: PangoZip сам распаковывает новые архивы, появившиеся в выбранных папках, в указанное место.",
+    "Файлы, не загруженные из iCloud или другой облачной папки, теперь сначала скачиваются, а операция не завершается ошибкой.",
+    "Больше команд Finder для облачных папок, где меню PangoZip не показывается: новые службы и два быстрых действия — «Распаковать здесь» и «Заархивировать в ZIP».",
+    "Прогресс на значке в Dock и уведомление о завершении долгой операции.",
+    "Настройки: можно разом выбрать все типы архивов для открытия в PangoZip; в списке стало больше форматов.",
+    "У кнопок панели инструментов с подписями появились нормальные внутренние отступы."
+  ]
+}

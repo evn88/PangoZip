@@ -70,7 +70,8 @@ class ReleaseAutomationTests(unittest.TestCase):
     def test_bundle_versions_and_build_numbers_must_match(self):
         """Релиз с несогласованными версиями отклоняется до сборки."""
         files = ["Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist",
-                 "QuickLookExtension/Info.plist"]
+                 "QuickLookExtension/Info.plist", "QuickActionExtension/Info-Extract.plist",
+                 "QuickActionExtension/Info-Zip.plist"]
         for name in files:
             path = self.directory / name
             path.parent.mkdir(exist_ok=True)

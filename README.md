@@ -24,7 +24,7 @@ ZIP, 7z, and TAR archives can be modified. RAR, multi-volume, and self-extractin
 
 To modify a file, use **Edit (⌘E)**. When you save it in an external editor, PangoZip updates the archive automatically. Opening a file normally creates a copy without tracking changes.
 
-Passwords are not saved in preferences, but may be visible to local process inspection tools.
+Passwords are not saved in preferences and are passed to the 7-Zip engine through standard input, so they do not appear in the process list.
 
 ## Installation
 

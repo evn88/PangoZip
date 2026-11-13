@@ -73,7 +73,7 @@ def prepare(root, requested, published):
     current = {info["CFBundleShortVersionString"] for info in infos}
     builds = {info["CFBundleVersion"] for info in infos}
     if len(current) != 1 or len(builds) != 1 or not all(re.fullmatch(r"[1-9][0-9]*", x) for x in builds):
-        raise ValueError("All four bundles must have matching versions and positive integer builds")
+        raise ValueError("All bundles must have matching versions and positive integer builds")
     current = version("v" + current.pop())
     tags = []
     for tag in git(root, "tag", "--list").splitlines():

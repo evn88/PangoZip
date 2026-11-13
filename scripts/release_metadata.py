@@ -17,7 +17,8 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_FILES = ("Resources/Info.plist", "Resources/WorkerInfo.plist", "FinderExtension/Info.plist",
-                "QuickLookExtension/Info.plist")
+                "QuickLookExtension/Info.plist", "QuickActionExtension/Info-Extract.plist",
+                "QuickActionExtension/Info-Zip.plist")
 VERSION_PATTERN = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 
 DEFAULT_CHANGES = {
