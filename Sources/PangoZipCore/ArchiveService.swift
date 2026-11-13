@@ -649,7 +649,11 @@ extension ArchiveService {
   ) async throws -> URL {
     let reporter = ArchiveProgressReporter(progress)
     await reporter.report(phase: .preparing)
-    guard ["zip", "7z"].contains(format), !urls.isEmpty, proposedURL.isFileURL else {
+    guard CompressionOptions.supportedFormats.contains(format), !urls.isEmpty,
+      proposedURL.isFileURL
+    else { throw ArchiveError.invalidOperation }
+    // tar, tar.gz, tar.xz и wim не шифруют: молча создать открытый архив вместо защищённого нельзя.
+    guard password.isEmpty || CompressionOptions.supportsPassword(format) else {
       throw ArchiveError.invalidOperation
     }
     let compression = options ?? CompressionOptions(format: format)
@@ -690,42 +694,102 @@ extension ArchiveService {
     let files = workload?.files ?? 0
     let list = transaction.appendingPathComponent("items.list")
     try Self.writeNameList(names, to: list)
-    let working = transaction.appendingPathComponent("working." + format)
     let settings = CompressionOptions(
       format: format, level: compression.level, solid: compression.solid,
-      threads: compression.threads)
+      threads: compression.threads, volumeSizeMB: compression.volumeSizeMB,
+      encryptsFileNames: compression.encryptsFileNames)
+    let isCompressedTar = format == "tar.gz" || format == "tar.xz"
+    // Первый шаг tar.gz и tar.xz — обычный TAR; имя внутри потока берётся из будущего имени архива.
+    let engineFormat = isCompressedTar ? "tar" : format
+    let innerName =
+      isCompressedTar
+      ? ArchiveOutput.stem(of: proposedURL, removing: "." + format) + ".tar" : nil
+    let working = transaction.appendingPathComponent("working." + format)
+    let tarStep = innerName.map { transaction.appendingPathComponent($0) } ?? working
+    // Многотомный результат: 7zz добавляет к имени .001, .002 и так далее.
+    let firstVolume = URL(fileURLWithPath: working.path + ".001")
+    let measured = settings.volumeSizeMB == nil ? working : firstVolume
     await reporter.report(
       phase: .compressing, fraction: 0, processedBytes: 0, totalBytes: bytes, totalFiles: files)
+    let tarShare = isCompressedTar ? 0.45 : 0.9
+    let tarBytes = isCompressedTar ? bytes / 2 : bytes
     try await runner().run(
       arguments: [
-        "a", "-t" + format, "-spd", "-ssc", "-snl", "-scsUTF-8",
+        "a", "-t" + engineFormat, "-spd", "-ssc", "-snl", "-scsUTF-8",
         progress == nil ? "-bsp0" : "-bsp2", "-i@" + list.path,
       ]
-        + settings.arguments
-        + (password.isEmpty ? [] : ["-p" + password, format == "7z" ? "-mhe=on" : "-mem=AES256"])
-        + ["--", working.path],
+        + (isCompressedTar ? [] : settings.arguments + settings.volumeArguments)
+        + (password.isEmpty
+          ? []
+          : [
+            "-p" + password,
+            format == "7z" ? (settings.encryptsFileNames ? "-mhe=on" : "-mhe=off") : "-mem=AES256",
+          ])
+        + ["--", tarStep.path],
       outputURL: transaction.appendingPathComponent("create.log"), limit: 32 * 1024 * 1024,
       workingDirectory: inputs,
       progress: reporter.engine(
-        phase: .compressing, from: 0, to: 0.9, totalBytes: bytes, totalFiles: files,
-        outputURL: working))
+        phase: .compressing, from: 0, to: tarShare, totalBytes: bytes, itemBytes: tarBytes,
+        totalFiles: files, outputURL: measured))
+    if isCompressedTar {
+      try await runner().run(
+        arguments: [
+          "a", "-t" + (format == "tar.gz" ? "gzip" : "xz"), "-spd", "-ssc", "-scsUTF-8",
+          progress == nil ? "-bsp0" : "-bsp2",
+        ] + settings.arguments + ["--", working.path, tarStep.path],
+        outputURL: transaction.appendingPathComponent("compress.log"), limit: 32 * 1024 * 1024,
+        progress: reporter.engine(
+          phase: .compressing, from: tarShare, to: 0.9, totalBytes: bytes,
+          baseBytes: tarBytes, itemBytes: bytes - tarBytes, totalFiles: files,
+          outputURL: working))
+      try? FileManager.default.removeItem(at: tarStep)
+    }
+    // Тома находятся по числовому суффиксу; верификация и чтение идут по первому тому.
+    var volumes: [URL] = []
+    if settings.volumeSizeMB != nil {
+      let prefix = working.lastPathComponent + "."
+      volumes = try FileManager.default.contentsOfDirectory(
+        at: transaction, includingPropertiesForKeys: nil
+      ).filter {
+        let tail = $0.lastPathComponent.dropFirst(prefix.count)
+        return $0.lastPathComponent.hasPrefix(prefix) && !tail.isEmpty
+          && tail.allSatisfy { $0.isASCII && $0.isNumber }
+      }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+      guard volumes.first?.lastPathComponent == firstVolume.lastPathComponent else {
+        throw ArchiveError.invalidArchive
+      }
+    }
+    let primary = volumes.first ?? working
     await reporter.report(
       phase: .verifying, fraction: 0.9, processedBytes: 0, totalBytes: bytes,
-      totalFiles: files, outputURL: working)
+      totalFiles: files, outputURL: primary)
     try await verify(
-      working, passwordArguments: password.isEmpty ? [] : ["-p" + password], in: transaction,
+      primary, passwordArguments: password.isEmpty ? [] : ["-p" + password], in: transaction,
       progress: reporter.engine(
         phase: .verifying, from: 0.9, to: 0.99, totalBytes: bytes, totalFiles: files,
-        outputURL: working))
-    _ = try await readArchive(working, password: password, in: transaction)
+        outputURL: primary))
+    _ = try await readArchive(primary, password: password, in: transaction)
     try Task.checkCancellation()
     guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
     await reporter.report(
       phase: .finalizing, fraction: 0.99, processedBytes: bytes, totalBytes: bytes,
-      completedFiles: files, totalFiles: files, outputURL: working)
+      completedFiles: files, totalFiles: files, outputURL: primary)
     try Task.checkCancellation()
     guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
-    let result = try ArchiveOutput.publish(working, proposed: proposedURL, isDirectory: false)
+    let result: URL
+    if !volumes.isEmpty || isCompressedTar {
+      // Составные расширения и наборы томов публикуются под общим свободным именем.
+      let stem = ArchiveOutput.stem(of: proposedURL, removing: "." + format)
+      let prefix = "working"
+      let items =
+        volumes.isEmpty
+        ? [(source: working, suffix: "." + format)]
+        : volumes.map { (source: $0, suffix: String($0.lastPathComponent.dropFirst(prefix.count))) }
+      result = try ArchiveOutput.publishSet(
+        items, parent: proposedURL.deletingLastPathComponent(), stem: stem)[0]
+    } else {
+      result = try ArchiveOutput.publish(working, proposed: proposedURL, isDirectory: false)
+    }
     await reporter.report(
       phase: .finalizing, fraction: 1, processedBytes: bytes, totalBytes: bytes,
       completedFiles: files, totalFiles: files, outputURL: result)

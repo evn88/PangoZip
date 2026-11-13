@@ -466,7 +466,8 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     chooser.prompt = L10n.tr("Сжать")
     chooser.directoryURL = url.deletingLastPathComponent()
     chooser.nameFieldStringValue = name
-    chooser.allowedContentTypes = [UTType(filenameExtension: format) ?? .data]
+    chooser.allowedContentTypes = [ArchiveFormatPresentation.contentType(for: format)]
+    chooser.allowsOtherFileTypes = true
     chooser.canCreateDirectories = true
     NSApp.activate(ignoringOtherApps: true)
     let response = await withCheckedContinuation { continuation in
