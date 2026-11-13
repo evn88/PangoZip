@@ -45,34 +45,62 @@ final class FinderOperationModel: ObservableObject {
   private var panel: NSSavePanel?
   private var saveDelegate: NewArchiveSaveDelegate?
   private var started = false
+  private var feedbackID: UUID?
+  private var feedbackKind: OperationKind = .extract
+  private var feedbackSubject = ""
 
   private var progressHandler: ArchiveProgressHandler {
     { [weak self] value in await self?.receiveProgress(value) }
   }
 
   /// Публикует прогресс на главном акторе, где SwiftUI наблюдает модель.
-  private func receiveProgress(_ value: ArchiveProgress) { progress = value }
+  private func receiveProgress(_ value: ArchiveProgress) {
+    progress = value
+    beginFeedbackIfNeeded()
+  }
+
+  /// Отсчёт для уведомления идёт с первого прогресса, а не с ожидания панелей и пароля.
+  private func beginFeedbackIfNeeded() {
+    guard feedbackID == nil else { return }
+    feedbackID = OperationFeedback.shared.begin(kind: feedbackKind, subject: feedbackSubject)
+  }
+
+  /// Завершает учёт операции и ждёт постановки уведомления до закрытия процесса.
+  private func finishFeedback(_ outcome: OperationOutcome) async {
+    guard let id = feedbackID else { return }
+    feedbackID = nil
+    await OperationFeedback.shared.finish(id, outcome: outcome)?.value
+  }
 
   /// Принимает один запрос на процесс worker и очищает сервис перед автоматическим завершением.
   func start(_ request: FinderRequest) {
     guard !started else { return }
     started = true
     logger.notice("Background operation started: \(request.action.rawValue, privacy: .public)")
+    switch request.action {
+    case .create, .add, .createZip, .create7z: feedbackKind = .create
+    case .test: feedbackKind = .verify
+    default: feedbackKind = .extract
+    }
+    feedbackSubject = request.urls.first?.lastPathComponent ?? ""
     task = Task {
       do {
         try await execute(request)
         logger.notice("Background operation completed")
+        await finishFeedback(.success)
         await service.cleanup()
         task = nil
         ApplicationMode.workerFinished = true
         NSApp.terminate(nil)
       } catch is CancellationError {
         logger.notice("Background operation cancelled")
+        await finishFeedback(.cancelled)
         await service.cleanup()
         task = nil
         ApplicationMode.workerFinished = true
         NSApp.terminate(nil)
       } catch {
+        await finishFeedback(.failure(error.localizedDescription))
         await service.cleanup()
         progress = nil
         errorMessage = error.localizedDescription
@@ -241,6 +269,7 @@ final class FinderOperationModel: ObservableObject {
           do {
             if request.action == .test {
               progress = ArchiveProgress(phase: .verifying)
+              beginFeedbackIfNeeded()
               try await service.testArchive(url, password: suppliedPassword)
             } else {
               let outcome = try await service.extractAndFinish(

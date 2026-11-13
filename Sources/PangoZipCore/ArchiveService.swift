@@ -900,15 +900,29 @@ extension ArchiveService {
   }
 
   /// Создаёт временный сеанс для проверки целостности и подтверждает неизменность архива после неё.
-  public func testArchive(_ url: URL, password: String = "") async throws {
+  public func testArchive(
+    _ url: URL, password: String = "", progress: ArchiveProgressHandler? = nil
+  ) async throws {
+    let reporter = ArchiveProgressReporter(progress)
+    await reporter.report(phase: .preparing)
     let session = try await open(url, password: password)
     defer {
       sessions.removeValue(forKey: session.id)
       try? workspace.removeSession(session.id)
     }
     let directory = try workspace.sessionDirectory(session.id)
-    try await verify(url, passwordArguments: ["-p" + password], in: directory)
+    let workload = try? ArchiveWorkload(entries: session.entries)
+    try await verify(
+      url, passwordArguments: ["-p" + password], in: directory,
+      progress: progress == nil
+        ? nil
+        : reporter.engine(
+          phase: .verifying, from: 0, to: 0.99, totalBytes: workload?.bytes ?? 0,
+          totalFiles: workload?.files))
     _ = try await checkedState(session)
+    await reporter.report(
+      phase: .finalizing, fraction: 1, processedBytes: workload?.bytes,
+      totalBytes: workload?.bytes, completedFiles: workload?.files, totalFiles: workload?.files)
   }
 
   /// Извлекает ровно одну запись через stdout и требует совпадения фактического и заявленного размера.
@@ -1125,5 +1139,79 @@ extension ArchiveService {
       try manager.setAttributes(attributes, ofItemAtPath: target.path)
     }
     try Quarantine.copy(from: quarantineSource, to: output)
+  }
+}
+
+extension ArchiveService {
+  /// Считает суммы файлов выборки: каждый файл извлекается в приватный каталог сеанса,
+  /// хешируется потоково и сразу удаляется. Папки заменяются содержащимися в них файлами.
+  public func checksums(
+    of paths: [String], in session: ArchiveSession, password: String = "",
+    progress: ArchiveProgressHandler? = nil
+  ) async throws -> [ChecksumRecord] {
+    let reporter = ArchiveProgressReporter(progress)
+    await reporter.report(phase: .preparing)
+    let state = try await checkedState(session)
+    guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }
+    let roots = try ArchiveSelection.topLevelPaths(paths, entries: state.descriptor.entries)
+    let files = state.descriptor.entries.filter { entry in
+      !entry.isDirectory && !entry.isSymbolicLink
+        && roots.contains { entry.path == $0 || entry.path.hasPrefix($0 + "/") }
+    }
+    .sorted { $0.path < $1.path }
+    guard !files.isEmpty else { throw ArchiveError.unsupportedEntry }
+    for entry in files { try ArchiveListing.validatePath(entry.path) }
+    let totalBytes = files.reduce(UInt64(0)) { $0 &+ $1.size }
+    busy.insert(session.id)
+    defer { busy.remove(session.id) }
+    let directory = try workspace.sessionDirectory(session.id).appendingPathComponent(
+      "checksums-" + UUID().uuidString)
+    try FileManager.default.createDirectory(
+      at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var records: [ChecksumRecord] = []
+    var doneBytes: UInt64 = 0
+    for (index, entry) in files.enumerated() {
+      try Task.checkCancellation()
+      let output = directory.appendingPathComponent("item")
+      let base = doneBytes
+      let size = entry.size
+      let count = files.count
+      let name = entry.path
+      /// Доля всей работы: 80% веса файла занимает извлечение, 20% — хеширование.
+      let overall: @Sendable (Double) -> Double = { stage in
+        if totalBytes == 0 { return (Double(index) + stage) / Double(count) }
+        return (Double(base) + Double(size) * stage) / Double(totalBytes)
+      }
+      let report: @Sendable (ArchiveProgress.Phase, Double) async -> Void = { phase, stage in
+        await reporter.report(
+          phase: phase, fraction: overall(stage),
+          processedBytes: base &+ UInt64(Double(size) * stage), totalBytes: totalBytes,
+          completedFiles: index, totalFiles: count, currentFile: name)
+      }
+      var extractProgress: (@Sendable (Double) async -> Void)?
+      var hashProgress: (@Sendable (UInt64, UInt64) async -> Void)?
+      if progress != nil {
+        extractProgress = { fraction in await report(.extracting, 0.8 * fraction) }
+        hashProgress = { processed, total in
+          let stage = total == 0 ? 1 : Double(processed) / Double(total)
+          await report(.verifying, 0.8 + 0.2 * stage)
+        }
+      }
+      try await extractFile(
+        entry, from: state.url, to: output, password: password, progress: extractProgress)
+      let record = try await ArchiveChecksums.compute(
+        fileAt: output, id: name, name: name, progress: hashProgress)
+      try? FileManager.default.removeItem(at: output)
+      records.append(record)
+      doneBytes &+= entry.size
+    }
+    try Task.checkCancellation()
+    let latest = try await checkedState(session)
+    guard latest.digest == state.digest else { throw ArchiveError.archiveChanged }
+    await reporter.report(
+      phase: .finalizing, fraction: 1, processedBytes: totalBytes, totalBytes: totalBytes,
+      completedFiles: files.count, totalFiles: files.count)
+    return records
   }
 }

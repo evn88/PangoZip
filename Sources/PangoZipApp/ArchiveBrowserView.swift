@@ -40,6 +40,7 @@ struct ArchiveBrowserView: View {
     .onExitCommand { model.cancelCurrentOperation() }
     .onChange(of: model.searchFocusToken) { _, _ in searchFocused = true }
     .sheet(isPresented: $model.isPasswordPromptPresented) { passwordSheet }
+    .sheet(item: $model.checksums) { ChecksumsView(model: $0) }
     .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
     .overlay {
       if isDropTargeted {
@@ -178,6 +179,13 @@ struct ArchiveBrowserView: View {
         action: model.undoLastChange
       )
       .disabled(!model.canUndoLastChange)
+      Divider()
+      Button(
+        L10n.tr("Проверить архив"), systemImage: "checkmark.shield", action: model.verifyArchive
+      )
+      .disabled(!model.canQueueOperations)
+      Button(L10n.tr("Контрольные суммы…"), systemImage: "number", action: model.showChecksums)
+        .disabled(!model.canAct || model.session == nil)
       Divider()
       if let url = model.session?.url {
         ShareLink(item: url) {
