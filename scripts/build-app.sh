@@ -26,6 +26,7 @@ ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sp
 cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
 cp .build/artifacts/sparkle/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt"
 cp Resources/Icons/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+cp Resources/Icons/Pangolin.png "$app/Contents/Resources/Pangolin.png"
 cp -R Resources/Engine "$app/Contents/Resources/"
 cp -R Sources/PangoZipCore/Resources/*.lproj "$app/Contents/Resources/"
 chmod +x "$app/Contents/MacOS/PangoZip" "$app/Contents/Resources/Engine/7zz"

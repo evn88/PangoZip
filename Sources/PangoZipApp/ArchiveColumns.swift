@@ -67,6 +67,7 @@ enum ArchiveColumn: String, CaseIterable, Identifiable {
     switch self {
     case .name: 340
     case .size: 90
+    case .compression: 140
     case .kind, .modified, .created, .permissions: 150
     case .path, .symbolicLink, .hardLink, .comment, .otherMetadata: 280
     case .accessed, .attributes: 180

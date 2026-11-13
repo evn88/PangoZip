@@ -10,6 +10,7 @@ struct PangoZipApp: App {
   @StateObject private var worker = FinderOperationModel()
   @StateObject private var model = ArchiveBrowserModel()
   @State private var updater = ApplicationUpdater()
+  @AppStorage(DropIslandSettings.enabledKey) private var isIslandEnabled = true
   @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
 
   /// Переносит прежние настройки до создания интерфейса и запуска операций Finder.
@@ -35,7 +36,10 @@ struct PangoZipApp: App {
           .onAppear {
             appDelegate.prepareTermination = prepareForClosing
             updater.start(
-              isBusy: { !model.canAct || !model.queuedOperations.isEmpty },
+              isBusy: {
+                !model.canAct || !model.queuedOperations.isEmpty
+                  || DropIslandController.shared.isBusy
+              },
               prepareForInstallation: {
                 model.isUpdatePending = true
                 let ready = await prepareForClosing()
@@ -82,6 +86,19 @@ struct PangoZipApp: App {
         ArchiveSettingsView(integration: appDelegate.finderIntegration, updater: updater)
       }
     }
+    // Значок в строке меню показывает, что PangoZip работает в фоне ради острова.
+    MenuBarExtra(
+      "PangoZip", systemImage: "archivebox",
+      isInserted: Binding(get: { isIslandEnabled && !isFinderWorker }, set: { _ in })
+    ) {
+      Button(L10n.tr("Открыть PangoZip")) {
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
+      }
+      SettingsLink { Text(L10n.tr("Настройки…")) }
+      Divider()
+      Button(L10n.tr("Завершить PangoZip")) { NSApp.terminate(nil) }
+    }
   }
 
   private func prepareForClosing() async -> Bool {
@@ -118,12 +135,29 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
 
   /// Регистрирует Services только у основного приложения, чтобы worker не перехватывал команды.
   func applicationDidFinishLaunching(_ notification: Notification) {
+    AppearanceMode.apply()
     if ApplicationMode.isFinderWorker {
       NSApp.setActivationPolicy(.accessory)
     } else {
       NSApp.servicesProvider = services
       NSUpdateDynamicServices()
       finderSetupTask = Task { await finderIntegration.prepare() }
+      DropIslandController.shared.applySettings()
+      hideWindowsAfterLoginLaunch()
+    }
+  }
+
+  /// При автозапуске со входом в систему окно не нужно: остаются значок в строке меню и остров.
+  private func hideWindowsAfterLoginLaunch() {
+    let event = NSAppleEventManager.shared().currentAppleEvent
+    guard event?.eventID == AEEventID(kAEOpenApplication),
+      event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+        == AEEventID(keyAELaunchedAsLogInItem)
+    else { return }
+    DispatchQueue.main.async {
+      for window in NSApp.windows where window.isVisible && !(window is NSPanel) {
+        window.performClose(nil)
+      }
     }
   }
 
@@ -137,8 +171,10 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     services.deliverOpenURLs(urls)
   }
 
-  /// Завершает приложение после последнего окна, чтобы освободить временные файлы сеанса.
-  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+  /// С включённым островом приложение остаётся в фоне; иначе завершается с последним окном.
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    ApplicationMode.isFinderWorker || !DropIslandSettings.isEnabled
+  }
 
   /// Откладывает системное завершение до асинхронной очистки и ответа о рабочих копиях.
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -150,6 +186,9 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
         self.finderSetupTask?.cancel()
         await self.finderSetupTask?.value
         let allowed = await prepareTermination()
+        if allowed && !ApplicationMode.isFinderWorker {
+          await DropIslandController.shared.prepareTermination()
+        }
         self.terminationPending = false
         NSApp.reply(toApplicationShouldTerminate: allowed)
       }
@@ -184,6 +223,11 @@ struct WindowLifecycleBridge: NSViewRepresentable {
       }
       self.proxy = proxy
       window.delegate = proxy
+      if !ApplicationMode.isFinderWorker {
+        // Шапка окна всегда тёмно-синяя, поэтому стекло и значки панели рисуются для тёмного фона.
+        window.standardWindowButton(.closeButton)?.superview?.superview?.appearance =
+          NSAppearance(named: .darkAqua)
+      }
       if !ApplicationMode.isFinderWorker,
         UserDefaults.standard.integer(forKey: "archiveTableLayoutVersion") < 2
       {

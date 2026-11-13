@@ -1,0 +1,114 @@
+{
+  "en": [
+    "Drop island: start dragging files from Finder and a PangoZip tab appears; drop them on it to compress next to the originals. Archives dropped there are extracted into a folder named after the archive.",
+    "Hold ⌥ while dropping to choose where to save, or to compress an archive again instead of extracting it. Position (top, right edge, at the pointer) and a default folder are in Settings.",
+    "PangoZip now stays in the menu bar after its windows are closed so the island keeps working; it can also open at login.",
+    "New look in the brand colours: navy header, actions grouped on the right, clearer table and a compact operation queue in the toolbar.",
+    "Appearance setting: light, dark or system.",
+    "Updates are checked on every launch; a new version is offered in the usual install-and-relaunch window."
+  ],
+  "ru": [
+    "Остров перетаскивания: начните тащить файлы из Finder — появится ярлычок PangoZip; бросьте файлы на него, и архив создастся рядом с ними. Брошенный архив распаковывается в папку с его именем.",
+    "С зажатой ⌥ можно выбрать место сохранения, а архив — сжать заново вместо распаковки. Положение острова (сверху, справа, у курсора) и папка по умолчанию задаются в настройках.",
+    "PangoZip остаётся в строке меню после закрытия окон, чтобы остров работал всегда; можно включить запуск при входе в систему.",
+    "Новое оформление в цветах бренда: тёмно-синяя шапка, действия собраны справа, более читаемая таблица и компактная очередь операций в панели инструментов.",
+    "Настройка оформления: светлое, тёмное или системное.",
+    "Обновления проверяются при каждом запуске; новая версия предлагается в привычном окне с установкой и перезапуском."
+  ],
+  "sr-Latn": [
+    "Ostrvo za prevlačenje: počnite da prevlačite datoteke iz Findera i pojaviće se PangoZip jezičak; otpustite ih na njega i arhiva nastaje pored njih. Otpuštena arhiva se raspakuje u fasciklu sa njenim imenom.",
+    "Držite ⌥ pri otpuštanju da izaberete mesto čuvanja ili da arhivu ponovo komprimujete umesto raspakivanja. Položaj ostrva i podrazumevana fascikla su u podešavanjima.",
+    "PangoZip ostaje na traci menija posle zatvaranja prozora kako bi ostrvo uvek radilo; može se pokretati pri prijavljivanju.",
+    "Novi izgled u bojama brenda: tamnoplavo zaglavlje, radnje grupisane desno, preglednija tabela i kompaktan red operacija na traci alata.",
+    "Podešavanje izgleda: svetli, tamni ili sistemski.",
+    "Ažuriranja se proveravaju pri svakom pokretanju; nova verzija se nudi u uobičajenom prozoru za instalaciju i ponovno pokretanje."
+  ],
+  "de": [
+    "Ablage-Insel: Beim Ziehen von Dateien aus dem Finder erscheint ein PangoZip-Reiter; darauf abgelegte Dateien werden neben den Originalen komprimiert. Abgelegte Archive werden in einen Ordner mit ihrem Namen entpackt.",
+    "Mit ⌥ beim Ablegen wählst du den Speicherort oder komprimierst ein Archiv erneut, statt es zu entpacken. Position und Standardordner stehen in den Einstellungen.",
+    "PangoZip bleibt nach dem Schließen der Fenster in der Menüleiste, damit die Insel immer funktioniert; Start bei der Anmeldung ist möglich.",
+    "Neues Design in den Markenfarben: dunkelblauer Kopf, Aktionen rechts gruppiert, klarere Tabelle und kompakte Vorgangsliste in der Symbolleiste.",
+    "Einstellung für das Erscheinungsbild: hell, dunkel oder System.",
+    "Updates werden bei jedem Start geprüft; eine neue Version erscheint im gewohnten Fenster zum Installieren und Neustarten."
+  ],
+  "fr": [
+    "Île de dépôt : faites glisser des fichiers depuis le Finder et un onglet PangoZip apparaît ; déposez-les dessus pour les compresser à côté des originaux. Une archive déposée est extraite dans un dossier à son nom.",
+    "Maintenez ⌥ en déposant pour choisir l’emplacement, ou pour recompresser une archive au lieu de l’extraire. Position et dossier par défaut sont dans les réglages.",
+    "PangoZip reste dans la barre des menus après la fermeture des fenêtres pour que l’île fonctionne toujours ; ouverture à la connexion possible.",
+    "Nouvelle apparence aux couleurs de la marque : en-tête bleu marine, actions regroupées à droite, tableau plus lisible et file d’opérations compacte dans la barre d’outils.",
+    "Réglage d’apparence : clair, sombre ou système.",
+    "Les mises à jour sont vérifiées à chaque lancement ; une nouvelle version est proposée dans la fenêtre habituelle d’installation et de relance."
+  ],
+  "es": [
+    "Isla de arrastre: al arrastrar archivos desde Finder aparece una pestaña de PangoZip; suéltalos en ella para comprimirlos junto a los originales. Un archivo comprimido soltado se extrae en una carpeta con su nombre.",
+    "Mantén ⌥ al soltar para elegir dónde guardar o para volver a comprimir un archivo en lugar de extraerlo. La posición y la carpeta predeterminada están en Ajustes.",
+    "PangoZip permanece en la barra de menús tras cerrar las ventanas para que la isla funcione siempre; puede abrirse al iniciar sesión.",
+    "Nuevo aspecto con los colores de la marca: cabecera azul marino, acciones agrupadas a la derecha, tabla más clara y cola de operaciones compacta en la barra de herramientas.",
+    "Ajuste de apariencia: claro, oscuro o del sistema.",
+    "Las actualizaciones se comprueban en cada inicio; la nueva versión se ofrece en la ventana habitual de instalar y reiniciar."
+  ],
+  "it": [
+    "Isola di rilascio: trascina file dal Finder e compare una linguetta PangoZip; rilasciali lì per comprimerli accanto agli originali. Un archivio rilasciato viene estratto in una cartella con il suo nome.",
+    "Tieni premuto ⌥ al rilascio per scegliere dove salvare o per comprimere di nuovo un archivio invece di estrarlo. Posizione e cartella predefinita sono nelle impostazioni.",
+    "PangoZip resta nella barra dei menu dopo la chiusura delle finestre così l’isola funziona sempre; può aprirsi al login.",
+    "Nuovo aspetto con i colori del marchio: intestazione blu scuro, azioni raggruppate a destra, tabella più leggibile e coda operazioni compatta nella barra strumenti.",
+    "Impostazione dell’aspetto: chiaro, scuro o di sistema.",
+    "Gli aggiornamenti vengono controllati a ogni avvio; la nuova versione è proposta nella consueta finestra di installazione e riavvio."
+  ],
+  "pt": [
+    "Ilha de arrasto: arraste arquivos do Finder e surge uma aba do PangoZip; solte-os nela para compactar ao lado dos originais. Um arquivo compactado solto é extraído para uma pasta com o nome dele.",
+    "Mantenha ⌥ ao soltar para escolher onde salvar ou para compactar novamente um arquivo em vez de extraí-lo. Posição e pasta padrão ficam nos Ajustes.",
+    "O PangoZip permanece na barra de menus após fechar as janelas para a ilha funcionar sempre; pode abrir ao iniciar sessão.",
+    "Novo visual nas cores da marca: cabeçalho azul-marinho, ações agrupadas à direita, tabela mais legível e fila de operações compacta na barra de ferramentas.",
+    "Ajuste de aparência: claro, escuro ou do sistema.",
+    "As atualizações são verificadas a cada abertura; a nova versão é oferecida na janela habitual de instalar e reiniciar."
+  ],
+  "pl": [
+    "Wyspa upuszczania: zacznij przeciągać pliki z Findera, a pojawi się zakładka PangoZip; upuść je na nią, aby skompresować obok oryginałów. Upuszczone archiwum jest rozpakowywane do folderu o jego nazwie.",
+    "Przytrzymaj ⌥ przy upuszczaniu, aby wybrać miejsce zapisu albo ponownie skompresować archiwum zamiast je rozpakować. Położenie i folder domyślny są w ustawieniach.",
+    "PangoZip pozostaje na pasku menu po zamknięciu okien, aby wyspa działała zawsze; może uruchamiać się po zalogowaniu.",
+    "Nowy wygląd w kolorach marki: granatowy nagłówek, akcje zgrupowane po prawej, czytelniejsza tabela i zwarta kolejka operacji na pasku narzędzi.",
+    "Ustawienie wyglądu: jasny, ciemny lub systemowy.",
+    "Aktualizacje są sprawdzane przy każdym uruchomieniu; nowa wersja pojawia się w zwykłym oknie instalacji i ponownego uruchomienia."
+  ],
+  "uk": [
+    "Острів перетягування: почніть тягнути файли з Finder — з’явиться ярличок PangoZip; киньте файли на нього, і архів створиться поруч із ними. Кинутий архів розпаковується в папку з його назвою.",
+    "Із затиснутою ⌥ можна вибрати місце збереження, а архів — стиснути заново замість розпакування. Розташування острова та типова папка задаються в параметрах.",
+    "PangoZip залишається в рядку меню після закриття вікон, щоб острів працював завжди; можна ввімкнути запуск під час входу в систему.",
+    "Нове оформлення в кольорах бренду: темно-синя шапка, дії зібрані праворуч, читабельніша таблиця та компактна черга операцій на панелі інструментів.",
+    "Параметр оформлення: світле, темне або системне.",
+    "Оновлення перевіряються під час кожного запуску; нова версія пропонується у звичному вікні зі встановленням і перезапуском."
+  ],
+  "tr": [
+    "Bırakma adası: Finder’dan dosya sürüklemeye başlayınca bir PangoZip sekmesi belirir; dosyaları üzerine bırakın, özgünlerin yanına sıkıştırılsın. Bırakılan arşiv kendi adını taşıyan klasöre açılır.",
+    "Bırakırken ⌥ tuşunu basılı tutarak kayıt yerini seçin veya arşivi açmak yerine yeniden sıkıştırın. Konum ve varsayılan klasör Ayarlar’dadır.",
+    "PangoZip, ada her zaman çalışsın diye pencereler kapatıldıktan sonra menü çubuğunda kalır; oturum açılışında başlatılabilir.",
+    "Marka renklerinde yeni görünüm: lacivert başlık, sağda gruplanmış eylemler, daha okunaklı tablo ve araç çubuğunda derli toplu işlem kuyruğu.",
+    "Görünüm ayarı: açık, koyu veya sistem.",
+    "Güncellemeler her açılışta denetlenir; yeni sürüm alışılmış yükle ve yeniden başlat penceresinde sunulur."
+  ],
+  "zh-Hans": [
+    "拖放灵动岛：从 Finder 拖动文件时会出现 PangoZip 标签；把文件拖到上面即可在原位置旁压缩。拖入的归档会解压到同名文件夹。",
+    "松开时按住 ⌥ 可选择保存位置，或将归档重新压缩而不是解压。位置和默认文件夹可在设置中调整。",
+    "关闭窗口后 PangoZip 会保留在菜单栏，让灵动岛始终可用；也可设为登录时打开。",
+    "采用品牌配色的新外观：深蓝色标题栏、操作集中在右侧、更清晰的表格，以及工具栏中的紧凑操作队列。",
+    "外观设置：浅色、深色或跟随系统。",
+    "每次启动都会检查更新；新版本会在熟悉的“安装并重新启动”窗口中提示。"
+  ],
+  "ja": [
+    "ドロップアイランド：Finder からファイルをドラッグすると PangoZip のタブが現れ、そこにドロップすると元の場所に圧縮されます。アーカイブをドロップすると同名のフォルダに展開されます。",
+    "ドロップ時に ⌥ を押すと保存先を選択でき、アーカイブは展開せず再圧縮できます。位置とデフォルトのフォルダは設定で変更できます。",
+    "アイランドを常に使えるよう、ウインドウを閉じても PangoZip はメニューバーに残ります。ログイン時に開くこともできます。",
+    "ブランドカラーの新しい外観：ネイビーのヘッダー、右側にまとめた操作、見やすい表、ツールバー内のコンパクトな操作キュー。",
+    "外観設定：ライト、ダーク、システム。",
+    "起動のたびにアップデートを確認し、新しいバージョンはいつものインストールして再起動するウインドウで案内されます。"
+  ],
+  "ko": [
+    "드롭 아일랜드: Finder에서 파일을 드래그하면 PangoZip 탭이 나타나고, 그 위에 놓으면 원본 옆에 압축됩니다. 아카이브를 놓으면 같은 이름의 폴더에 풀립니다.",
+    "놓을 때 ⌥를 누르면 저장 위치를 선택하거나 아카이브를 풀지 않고 다시 압축할 수 있습니다. 위치와 기본 폴더는 설정에서 바꿀 수 있습니다.",
+    "아일랜드가 항상 동작하도록 윈도우를 닫아도 PangoZip이 메뉴 막대에 남습니다. 로그인 시 열기도 가능합니다.",
+    "브랜드 색상의 새로운 모습: 네이비 헤더, 오른쪽에 모은 동작, 더 읽기 쉬운 표, 도구 막대의 간결한 작업 대기열.",
+    "모양 설정: 라이트, 다크 또는 시스템.",
+    "실행할 때마다 업데이트를 확인하며, 새 버전은 익숙한 설치 후 재시동 윈도우로 안내됩니다."
+  ]
+}

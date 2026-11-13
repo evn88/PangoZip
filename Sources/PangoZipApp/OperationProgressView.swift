@@ -3,6 +3,8 @@ import SwiftUI
 
 struct OperationProgressView: View {
   let progress: ArchiveProgress?
+  /// В узком списке очереди подробности идут в две строки и без повторного названия этапа.
+  var isCompact = false
 
   var body: some View {
     if let progress {
@@ -32,35 +34,25 @@ struct OperationProgressView: View {
       } else {
         ProgressView().progressViewStyle(.linear)
       }
-      HStack(spacing: 12) {
-        Text(ProgressFormatting.phaseTitle(value.phase))
-        if let fraction = value.fraction, determinate {
-          Text("\(Int((fraction * 100).rounded(.down)))%")
-            .foregroundStyle(.primary)
-        }
-        if let total = value.totalBytes, total > 0 {
-          Text(
-            ProgressFormatting.processedBytes(
-              value.processedBytes, total: total, estimated: value.bytesAreEstimated)
-          )
-          .help(L10n.tr("Обработано"))
-        }
-        if let total = value.totalFiles, total > 0 {
-          Label(
-            ProgressFormatting.files(completed: value.completedFiles, total: total),
-            systemImage: "doc"
-          )
-          .help(L10n.tr("Файлы"))
-        }
-        Spacer(minLength: 4)
-        if let speed = value.bytesPerSecond, speed > 0, value.phase != .finalizing {
-          Text(ProgressFormatting.speed(speed)).help(L10n.tr("Средняя скорость"))
-        }
-        Label(ProgressFormatting.time(shownElapsed), systemImage: "clock")
-          .help(L10n.tr("Прошло"))
-        if value.remainingSeconds != nil, value.phase != .finalizing {
-          Text(ProgressFormatting.eta(value.remainingSeconds, phase: value.phase))
-            .help(L10n.tr("Осталось на этапе"))
+      Group {
+        if isCompact {
+          VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 12) {
+              volume(value, determinate: determinate)
+              Spacer(minLength: 4)
+            }
+            HStack(spacing: 12) {
+              timing(value, elapsed: shownElapsed)
+              Spacer(minLength: 4)
+            }
+          }
+        } else {
+          HStack(spacing: 12) {
+            Text(ProgressFormatting.phaseTitle(value.phase))
+            volume(value, determinate: determinate)
+            Spacer(minLength: 4)
+            timing(value, elapsed: shownElapsed)
+          }
         }
       }
       .font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -72,6 +64,43 @@ struct OperationProgressView: View {
       }
     }
     .accessibilityElement(children: .contain)
+  }
+
+  /// Процент, обработанный объём и счётчик файлов.
+  @ViewBuilder
+  private func volume(_ value: ArchiveProgress, determinate: Bool) -> some View {
+    if let fraction = value.fraction, determinate {
+      Text("\(Int((fraction * 100).rounded(.down)))%")
+        .foregroundStyle(.primary)
+    }
+    if let total = value.totalBytes, total > 0 {
+      Text(
+        ProgressFormatting.processedBytes(
+          value.processedBytes, total: total, estimated: value.bytesAreEstimated)
+      )
+      .help(L10n.tr("Обработано"))
+    }
+    if let total = value.totalFiles, total > 0 {
+      Label(
+        ProgressFormatting.files(completed: value.completedFiles, total: total),
+        systemImage: "doc"
+      )
+      .help(L10n.tr("Файлы"))
+    }
+  }
+
+  /// Скорость, прошедшее время и оценка оставшегося.
+  @ViewBuilder
+  private func timing(_ value: ArchiveProgress, elapsed: TimeInterval) -> some View {
+    if let speed = value.bytesPerSecond, speed > 0, value.phase != .finalizing {
+      Text(ProgressFormatting.speed(speed)).help(L10n.tr("Средняя скорость"))
+    }
+    Label(ProgressFormatting.time(elapsed), systemImage: "clock")
+      .help(L10n.tr("Прошло"))
+    if value.remainingSeconds != nil, value.phase != .finalizing {
+      Text(ProgressFormatting.eta(value.remainingSeconds, phase: value.phase))
+        .help(L10n.tr("Осталось на этапе"))
+    }
   }
 
 }

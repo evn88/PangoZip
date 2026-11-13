@@ -45,6 +45,7 @@ struct ArchiveSettingsView: View {
   @AppStorage("compressionThreads") private var threads = 0
   @AppStorage("excludeSystemFiles") private var excludesSystemFiles = true
   @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
+  @AppStorage(AppearanceMode.storageKey) private var appearanceMode = AppearanceMode.system.rawValue
 
   var body: some View {
     TabView {
@@ -59,6 +60,8 @@ struct ArchiveSettingsView: View {
         .tabItem { Label(L10n.tr("Типы архивов"), systemImage: "square.and.arrow.down") }
       finderSettings
         .tabItem { Label("Finder", systemImage: "folder") }
+      DropIslandSettingsView()
+        .tabItem { Label(L10n.tr("Остров"), systemImage: "rectangle.topthird.inset.filled") }
       applicationSettings
         .tabItem { Label(L10n.tr("Приложение"), systemImage: "app.badge") }
     }
@@ -136,6 +139,13 @@ struct ArchiveSettingsView: View {
 
   private var applicationSettings: some View {
     Form {
+      Section(L10n.tr("Оформление")) {
+        Picker(L10n.tr("Оформление"), selection: $appearanceMode) {
+          ForEach(AppearanceMode.allCases) { mode in Text(mode.title).tag(mode.rawValue) }
+        }
+        .pickerStyle(.segmented).labelsHidden()
+        .onChange(of: appearanceMode) { _, mode in AppearanceMode.apply(mode) }
+      }
       Section(L10n.tr("Просмотр архивов")) {
         Toggle(L10n.tr("Скрывать служебные файлы систем"), isOn: $hidesSystemFiles)
         Text(

@@ -75,8 +75,21 @@ final class ApplicationUpdater: NSObject, SPUUpdaterDelegate {
           }
         }
       ]
+      scheduleLaunchCheck()
     } catch {
       lastError = error.localizedDescription
+    }
+  }
+
+  /// Проверяет обновления при каждом запуске, не дожидаясь суточного расписания Sparkle.
+  /// Найденная версия показывается тем же окном, что и при ручной проверке; без неё окна нет.
+  private func scheduleLaunchCheck() {
+    Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .seconds(5))
+      guard let self, self.automaticallyChecksForUpdates, !self.isInstalling,
+        !self.controller.updater.sessionInProgress
+      else { return }
+      self.controller.updater.checkForUpdatesInBackground()
     }
   }
 
