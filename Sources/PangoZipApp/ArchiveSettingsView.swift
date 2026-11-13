@@ -45,6 +45,7 @@ struct ArchiveSettingsView: View {
   @AppStorage("compressionThreads") private var threads = 0
   @AppStorage("excludeSystemFiles") private var excludesSystemFiles = true
   @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
+  @AppStorage(OperationNotificationPolicy.defaultsKey) private var notifiesOnCompletion = true
   @AppStorage(AppearanceMode.storageKey) private var appearanceMode = AppearanceMode.system.rawValue
 
   var body: some View {
@@ -154,6 +155,9 @@ struct ArchiveSettingsView: View {
           )
         )
         .font(.caption).foregroundStyle(.secondary)
+      }
+      Section(L10n.tr("Уведомления")) {
+        Toggle(L10n.tr("Уведомлять о завершении долгих операций"), isOn: $notifiesOnCompletion)
       }
       if let supportURL = SupportConfiguration.pageURL {
         DevelopmentSupportSection(pageURL: supportURL)

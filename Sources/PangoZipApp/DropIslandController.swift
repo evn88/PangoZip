@@ -138,6 +138,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private var jobTask: Task<URL, any Error>?
   private var pauseTask: Task<Void, Never>?
   private var shrinkTask: Task<Void, Never>?
+  private var feedbackID: UUID?
 
   var isBusy: Bool { work == .working || !jobs.isEmpty }
 
@@ -498,6 +499,10 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     updateStage()
     let task = Task { try await self.perform(job) }
     jobTask = task
+    let feedbackID = OperationFeedback.shared.begin(
+      kind: isExtraction ? .extract : .create, subject: workTitle)
+    self.feedbackID = feedbackID
+    var outcome = OperationOutcome.success
     do {
       let result = try await task.value
       resultURL = result
@@ -505,12 +510,16 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       workSubtitle = L10n.tr("Готово")
       work = .done
     } catch is CancellationError {
+      outcome = .cancelled
       work = .idle
     } catch {
+      outcome = .failure(error.localizedDescription)
       workSubtitle = error.localizedDescription
       work = .failed
     }
     jobTask = nil
+    self.feedbackID = nil
+    OperationFeedback.shared.finish(feedbackID, outcome: outcome)
     refresh()
     guard work != .idle else { return }
     // Результат остаётся на виду, но следующая операция в очереди ждёт недолго.
@@ -552,6 +561,9 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   }
 
   private func receive(_ progress: ArchiveProgress) {
+    if let feedbackID {
+      OperationFeedback.shared.update(feedbackID, fraction: DockProgress.fraction(of: progress))
+    }
     model.fraction = progress.fraction
     updateStage()
   }
