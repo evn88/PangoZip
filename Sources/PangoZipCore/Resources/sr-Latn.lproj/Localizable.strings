@@ -388,3 +388,9 @@
 "Не совпадает" = "Ne poklapa se";
 "Уведомления" = "Obaveštenja";
 "Уведомлять о завершении долгих операций" = "Obaveštavaj kada se duge operacije završe";
+"Загрузка из облака…" = "Preuzimanje iz oblaka…";
+"Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "Nije moguće preuzeti datoteku iz oblaka. Proverite pristup iCloud-u ili drugom skladištu.";
+"Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "Nema mrežne veze: datoteka iz oblaka nije preuzeta. Povežite se i pokušajte ponovo.";
+"Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "Preuzimanje iz oblaka ne napreduje. Proverite mrežnu vezu i pokušajte ponovo.";
+"Выбрать все" = "Izaberi sve";
+"Снять все" = "Poništi izbor";

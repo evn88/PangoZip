@@ -388,3 +388,9 @@
 "Не совпадает" = "Nie zgadza się";
 "Уведомления" = "Powiadomienia";
 "Уведомлять о завершении долгих операций" = "Powiadamiaj o zakończeniu długich operacji";
+"Загрузка из облака…" = "Pobieranie z chmury…";
+"Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "Nie udało się pobrać pliku z chmury. Sprawdź dostęp do iCloud lub innego magazynu.";
+"Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "Brak połączenia z siecią: plik z chmury nie został pobrany. Połącz się i spróbuj ponownie.";
+"Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "Pobieranie z chmury nie postępuje. Sprawdź połączenie z siecią i spróbuj ponownie.";
+"Выбрать все" = "Zaznacz wszystko";
+"Снять все" = "Odznacz wszystko";

@@ -70,6 +70,8 @@ public actor ArchiveService {
   /// Создаёт сеанс только для обычного файла, неизменившегося за время чтения списка.
   public func open(_ url: URL, password: String = "") async throws -> ArchiveSession {
     guard url.isFileURL else { throw ArchiveError.invalidArchive }
+    // Сначала загружаем из облака: иначе чтение меняет метаданные и отпечаток расходится.
+    try await CloudFiles.materializeArchive(url)
     let fingerprint = try FileFingerprint(url)
     guard fingerprint.type == .typeRegular else { throw ArchiveError.invalidArchive }
     let id = UUID()
@@ -173,7 +175,8 @@ public actor ArchiveService {
     _ urls: [URL], to session: ArchiveSession, directory: String = "", password: String = "",
     excludingSystemFiles: Bool = true
   ) async throws -> ArchiveSession {
-    try await mutate(
+    try await CloudFiles.materialize(urls)
+    return try await mutate(
       .add(urls, directory, excludingSystemFiles), session: session, password: password)
   }
 
@@ -656,6 +659,7 @@ extension ArchiveService {
     guard password.isEmpty || CompressionOptions.supportsPassword(format) else {
       throw ArchiveError.invalidOperation
     }
+    try await CloudFiles.materialize(urls, progress: progress)
     let compression = options ?? CompressionOptions(format: format)
     let initialGeneration = generation
     let transaction = try workspace.transactionDirectory(nextTo: proposedURL)
@@ -806,6 +810,7 @@ extension ArchiveService {
   ) async throws -> URL {
     let reporter = ArchiveProgressReporter(progress)
     await reporter.report(phase: .preparing)
+    try await CloudFiles.materializeArchive(url, progress: progress)
     let session = try await open(url, password: password)
     defer {
       sessions.removeValue(forKey: session.id)
