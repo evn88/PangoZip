@@ -11,6 +11,7 @@ enum ArchiveOutput {
       if let mode { chmod(source.path, mode) }
       throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
     }
+    OwnOutputRegistry.shared.register(destination)
     if let mode { chmod(destination.path, mode) }
   }
 
@@ -39,6 +40,7 @@ enum ArchiveOutput {
       let name = stem + (number == 1 ? "" : " (\(number))") + (ext.isEmpty ? "" : "." + ext)
       let target = parent.appendingPathComponent(name)
       if renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 {
+        OwnOutputRegistry.shared.register(target)
         if let mode { chmod(target.path, mode) }
         return target
       }

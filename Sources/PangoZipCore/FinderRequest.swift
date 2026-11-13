@@ -113,13 +113,19 @@ public struct FinderSelection: Sendable {
       let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
       values.isDirectory != true, values.isSymbolicLink != true
     else { return false }
-    let ext = url.pathExtension.lowercased()
-    if [
-      "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz", "tbz2", "txz", "zst",
-      "tzst", "lzma", "lz", "cab", "iso", "wim", "arj", "cpio", "deb", "rpm", "cbz", "cbr",
-    ].contains(ext) {
-      return true
-    }
+    return isArchiveName(url.lastPathComponent)
+  }
+
+  /// Расширения, которые считаются архивами без обращения к системным типам.
+  static let archiveExtensions: Set<String> = [
+    "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz", "tbz2", "txz", "zst",
+    "tzst", "lzma", "lz", "cab", "iso", "wim", "arj", "cpio", "deb", "rpm", "cbz", "cbr",
+  ]
+
+  /// Проверка только по имени, без файловой системы: отдельно от `isArchive` ради чистой логики.
+  public static func isArchiveName(_ name: String) -> Bool {
+    let ext = (name as NSString).pathExtension.lowercased()
+    if archiveExtensions.contains(ext) { return true }
     return UTType(filenameExtension: ext)?.conforms(to: .archive) == true
   }
 

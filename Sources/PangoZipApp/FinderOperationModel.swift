@@ -207,6 +207,9 @@ final class FinderOperationModel: ObservableObject {
         guard response == .OK, let selected = chooser.url else { throw CancellationError() }
         destination = selected
       }
+      let preferences = ExtractionPreferences.load()
+      var revealed: [URL] = []
+      var trashFailure: String?
       for (index, url) in request.urls.enumerated() {
         var suppliedPassword = ""
         while true {
@@ -224,9 +227,13 @@ final class FinderOperationModel: ObservableObject {
               progress = ArchiveProgress(phase: .verifying)
               try await service.testArchive(url, password: suppliedPassword)
             } else {
-              _ = try await service.extractArchive(
+              let outcome = try await service.extractAndFinish(
                 url, password: suppliedPassword, directory: destination,
-                createsSubfolder: request.action == .extract, progress: progressHandler)
+                createsSubfolder: request.action == .extract,
+                smartExtraction: preferences.smartExtraction,
+                trashesArchive: preferences.trashesArchive, progress: progressHandler)
+              revealed.append(outcome.url)
+              trashFailure = trashFailure ?? outcome.trashFailure
             }
             break
           } catch ArchiveError.passwordRequired {
@@ -234,8 +241,25 @@ final class FinderOperationModel: ObservableObject {
           }
         }
       }
+      if request.action != .test, preferences.revealsResult, !revealed.isEmpty {
+        if request.action == .extract {
+          NSWorkspace.shared.activateFileViewerSelecting(revealed)
+        } else {
+          // Без подпапки результат лежит в самой папке назначения: открываем её.
+          NSWorkspace.shared.open(destination ?? revealed[0])
+        }
+      }
+      if let trashFailure { throw TrashFailure(message: trashFailure) }
     case .open: throw ArchiveError.invalidOperation
     }
+  }
+}
+
+/// Извлечение удалось, но архив не удалось переместить в Корзину: окно worker остаётся с пояснением.
+private struct TrashFailure: LocalizedError {
+  let message: String
+  var errorDescription: String? {
+    L10n.tr("Не удалось переместить архив в Корзину: %1$@", String(describing: message))
   }
 }
 

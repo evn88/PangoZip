@@ -532,6 +532,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
         options: job.options, progress: handler)
     }
     var result = job.plan.urls[0]
+    let preferences = ExtractionPreferences.load()
     for url in job.plan.urls {
       workTitle = url.lastPathComponent
       model.fraction = nil
@@ -540,7 +541,10 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       while true {
         try Task.checkCancellation()
         do {
-          result = try await service.extractArchive(url, password: password, progress: handler)
+          result = try await service.extractAndFinish(
+            url, password: password, smartExtraction: preferences.smartExtraction,
+            trashesArchive: preferences.trashesArchive, progress: handler
+          ).url
           break
         } catch ArchiveError.passwordRequired {
           guard let answer = askPassword(for: url) else { throw CancellationError() }
