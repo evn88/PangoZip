@@ -727,24 +727,39 @@ final class ArchiveBrowserModel: ObservableObject {
       case .extract(let urls):
         await settlePreviews()
         var results: [URL] = []
-        defer { if !results.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(results) } }
+        let preferences = ExtractionPreferences.load()
+        var trashFailure: String?
+        defer {
+          if preferences.revealsResult, !results.isEmpty {
+            NSWorkspace.shared.activateFileViewerSelecting(results)
+          }
+        }
         for (index, url) in urls.enumerated() {
           retryOperation = .extract(Array(urls[index...]))
           operationMessage = L10n.tr(
             "Извлекаем %1$@ из %2$@: %3$@", String(describing: index + 1),
             String(describing: urls.count), String(describing: url.lastPathComponent))
-          results.append(
-            try await service.extractArchive(url, password: password, progress: progressHandler))
+          let outcome = try await service.extractAndFinish(
+            url, password: password, smartExtraction: preferences.smartExtraction,
+            trashesArchive: preferences.trashesArchive, progress: progressHandler)
+          results.append(outcome.url)
+          trashFailure = trashFailure ?? outcome.trashFailure
           password = ""
         }
         operationMessage = L10n.tr("Извлечено архивов: %1$@", String(describing: results.count))
+        if let trashFailure {
+          operationMessage = L10n.tr(
+            "Не удалось переместить архив в Корзину: %1$@", String(describing: trashFailure))
+        }
       case .export(let paths, let directory):
         guard let session else { throw ArchiveError.sessionExpired }
         await settlePreviews()
         operationMessage = L10n.tr("Извлечение…")
         let results = try await service.exportSelection(
           paths, from: session, to: directory, password: password, progress: progressHandler)
-        NSWorkspace.shared.activateFileViewerSelecting(results)
+        if ExtractionPreferences.load().revealsResult {
+          NSWorkspace.shared.activateFileViewerSelecting(results)
+        }
         operationMessage = L10n.tr("Извлечено объектов: %1$@", String(describing: results.count))
       case .preview:
         return

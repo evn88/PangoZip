@@ -797,9 +797,12 @@ extension ArchiveService {
   }
 
   /// Проверяет пути, ссылки и суммарный размер; готовые объекты публикует без перезаписи.
+  /// С `smartExtraction` единственный объект в корне архива публикуется без обёрточной папки;
+  /// возвращается фактически опубликованный объект.
   public func extractArchive(
     _ url: URL, password: String = "", maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
-    directory: URL? = nil, createsSubfolder: Bool = true, progress: ArchiveProgressHandler? = nil
+    directory: URL? = nil, createsSubfolder: Bool = true, smartExtraction: Bool = false,
+    progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
     let reporter = ArchiveProgressReporter(progress)
     await reporter.report(phase: .preparing)
@@ -867,7 +870,17 @@ extension ArchiveService {
     _ = try await checkedState(session)
     try Task.checkCancellation()
     if createsSubfolder {
-      let result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: true)
+      let children = try FileManager.default.contentsOfDirectory(
+        at: output, includingPropertiesForKeys: nil)
+      let result: URL
+      if smartExtraction, children.count == 1, let only = children.first {
+        // Один объект в корне: обёртка с именем архива только добавила бы лишний уровень.
+        result = try ArchiveOutput.publish(
+          only, proposed: parent.appendingPathComponent(only.lastPathComponent),
+          isDirectory: try FileFingerprint(only).type == .typeDirectory)
+      } else {
+        result = try ArchiveOutput.publish(output, proposed: destination, isDirectory: true)
+      }
       await reporter.report(
         phase: .finalizing, fraction: 1, processedBytes: workload.bytes,
         totalBytes: workload.bytes, completedFiles: workload.files, totalFiles: workload.files)
