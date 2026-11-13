@@ -1130,3 +1130,57 @@ struct QuickLookPreview: NSViewRepresentable {
     nsView.previewItem = url as NSURL
   }
 }
+
+/// Текстовый предпросмотр в оформлении приложения. Quick Look рисует текст во внешнем процессе
+/// по системной теме, поэтому при принудительно выбранном оформлении его заменяет этот вид.
+struct PlainTextPreview: NSViewRepresentable {
+  let url: URL
+  private static let byteLimit = 1_000_000
+
+  /// Замена нужна только текстовым файлам и только когда тема приложения отличается от системной.
+  @MainActor
+  static func shouldReplaceQuickLook(for url: URL) -> Bool {
+    let systemIsDark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    let appIsDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    guard systemIsDark != appIsDark else { return false }
+    return UTType(filenameExtension: url.pathExtension)?.conforms(to: .text) == true
+  }
+
+  func makeNSView(context: Context) -> NSScrollView {
+    let scroll = NSTextView.scrollableTextView()
+    // Фон как у таблицы: белый в светлом оформлении и тёмно-синий в тёмном.
+    scroll.drawsBackground = false
+    if let text = scroll.documentView as? NSTextView {
+      text.isEditable = false
+      text.drawsBackground = false
+      text.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+      text.textColor = .labelColor
+      text.textContainerInset = NSSize(width: 10, height: 12)
+    }
+    load(into: scroll, coordinator: context.coordinator)
+    return scroll
+  }
+
+  func updateNSView(_ nsView: NSScrollView, context: Context) {
+    load(into: nsView, coordinator: context.coordinator)
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  final class Coordinator {
+    var loadedURL: URL?
+  }
+
+  /// Читает только начало файла: предпросмотр не должен загружать в память большие журналы.
+  private func load(into scroll: NSScrollView, coordinator: Coordinator) {
+    guard coordinator.loadedURL != url, let text = scroll.documentView as? NSTextView else {
+      return
+    }
+    coordinator.loadedURL = url
+    let handle = try? FileHandle(forReadingFrom: url)
+    defer { try? handle?.close() }
+    let data = (try? handle?.read(upToCount: Self.byteLimit)) ?? Data()
+    text.string = String(decoding: data, as: UTF8.self)
+    text.scroll(.zero)
+  }
+}

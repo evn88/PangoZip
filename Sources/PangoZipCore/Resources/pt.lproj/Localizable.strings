@@ -297,3 +297,9 @@
 "Просмотр архивов" = "Visualização de arquivos compactados";
 "Скрывать служебные файлы систем" = "Ocultar arquivos do sistema";
 "Скрывает в списке __MACOSX, .DS_Store, ._*, Thumbs.db и подобные файлы. При распаковке всего архива они всё равно извлекаются." = "Oculta __MACOSX, .DS_Store, ._*, Thumbs.db e arquivos semelhantes na lista. Ao extrair o arquivo inteiro, eles ainda são incluídos.";
+"Ещё действия" = "Mais ações";
+"В очереди" = "Em fila";
+"Оформление" = "Aspeto";
+"Системное" = "Sistema";
+"Светлое" = "Claro";
+"Тёмное" = "Escuro";

@@ -118,6 +118,7 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
 
   /// Регистрирует Services только у основного приложения, чтобы worker не перехватывал команды.
   func applicationDidFinishLaunching(_ notification: Notification) {
+    AppearanceMode.apply()
     if ApplicationMode.isFinderWorker {
       NSApp.setActivationPolicy(.accessory)
     } else {
@@ -184,6 +185,11 @@ struct WindowLifecycleBridge: NSViewRepresentable {
       }
       self.proxy = proxy
       window.delegate = proxy
+      if !ApplicationMode.isFinderWorker {
+        // Шапка окна всегда тёмно-синяя, поэтому стекло и значки панели рисуются для тёмного фона.
+        window.standardWindowButton(.closeButton)?.superview?.superview?.appearance =
+          NSAppearance(named: .darkAqua)
+      }
       if !ApplicationMode.isFinderWorker,
         UserDefaults.standard.integer(forKey: "archiveTableLayoutVersion") < 2
       {

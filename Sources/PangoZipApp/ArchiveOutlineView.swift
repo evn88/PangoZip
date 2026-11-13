@@ -26,7 +26,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
     outline.rowSizeStyle = .medium
     outline.allowsMultipleSelection = true
     outline.allowsEmptySelection = true
-    outline.usesAlternatingRowBackgroundColors = true
+    // Чередование и выделение рисует BrandRowView в цветах бренда.
+    outline.usesAlternatingRowBackgroundColors = false
+    outline.backgroundColor = Brand.tableNS
     // Ширину окна подстраивает колонка «Имя» (fitNameColumn): автоподстройка AppKit растягивает её
     // при первой раскладке SwiftUI и не сжимает обратно, оставляя горизонтальную прокрутку.
     outline.columnAutoresizingStyle = .noColumnAutoresizing
@@ -191,7 +193,14 @@ struct ArchiveOutlineView: NSViewRepresentable {
       updating = true
       defer { updating = false }
       if previousRoots != parent.roots || previousSessionID != parent.sessionID {
-        if previousSessionID != parent.sessionID { expandedPaths.removeAll() }
+        if previousSessionID != parent.sessionID {
+          expandedPaths.removeAll()
+          // Новый архив сразу готов к управлению с клавиатуры: фокус в списке, а не на панели.
+          DispatchQueue.main.async { [weak outline] in
+            guard let outline else { return }
+            outline.window?.makeFirstResponder(outline)
+          }
+        }
         previousSessionID = parent.sessionID
         previousRoots = parent.roots
         items = parent.roots.map(Item.init)
@@ -280,6 +289,16 @@ struct ArchiveOutlineView: NSViewRepresentable {
         parent.openSelection()
       }
     }
+    /// Подставляет строку с фирменным выделением и чередованием фона.
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+      let id = NSUserInterfaceItemIdentifier("brandRow")
+      if let row = outlineView.makeView(withIdentifier: id, owner: self) as? BrandRowView {
+        return row
+      }
+      let row = BrandRowView()
+      row.identifier = id
+      return row
+    }
     /// Повторно использует ячейки и подставляет прочерк для отсутствующих метаданных.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any)
       -> NSView?
@@ -356,6 +375,13 @@ struct ArchiveOutlineView: NSViewRepresentable {
           } ?? "—"
       }
       cell.textField?.stringValue = value.isEmpty ? "—" : value
+      if let compression = cell as? CompressionCellView {
+        let details =
+          isFolder
+          ? parent.model.itemDetailsByPath[item.node.path]
+          : entry.map { ArchiveItemDetails(entry: $0) }
+        compression.savings = details?.compressionSavings.map { max(0, min(1, $0 / 100)) }
+      }
       if isFolder && parent.model.areFolderDetailsLoading
         && ["size", "compression", "fileCount", "folderCount"].contains(id.rawValue)
       {
@@ -367,9 +393,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
       }
       if id.rawValue == "name" {
         cell.imageView?.image = NSImage(
-          systemSymbolName: isFolder ? "folder" : "doc",
+          systemSymbolName: isFolder ? "folder.fill" : "doc",
           accessibilityDescription: isFolder ? L10n.tr("Папка") : L10n.tr("Файл"))
-        cell.imageView?.contentTintColor = isFolder ? .controlAccentColor : .secondaryLabelColor
+        cell.imageView?.contentTintColor = isFolder ? Brand.goldNS : .secondaryLabelColor
       }
       return cell
     }
@@ -547,7 +573,7 @@ struct ArchiveOutlineView: NSViewRepresentable {
 
     /// Оставляет текст штатному NSTextField, чтобы сохранить выделение и доступность AppKit.
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
-      let cell = NSTableCellView()
+      let cell = id.rawValue == "compression" ? CompressionCellView() : NSTableCellView()
       cell.identifier = id
       let text = NSTextField(labelWithString: "")
       text.lineBreakMode = .byTruncatingMiddle
@@ -576,6 +602,10 @@ struct ArchiveOutlineView: NSViewRepresentable {
           text.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         }
       }
+      if let compression = cell as? CompressionCellView {
+        leading = compression.installBar()
+        offset = 8
+      }
       NSLayoutConstraint.activate([
         text.leadingAnchor.constraint(equalTo: leading, constant: offset),
         text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
@@ -589,8 +619,94 @@ struct ArchiveOutlineView: NSViewRepresentable {
 @MainActor
 final class InteractiveOutlineView: NSOutlineView {
   var makeContextMenu: ((Int) -> NSMenu?)?
+  /// При появлении в окне забирает фокус, чтобы он не доставался полю или кнопке панели.
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    DispatchQueue.main.async { [weak self] in
+      guard let self, let window = self.window else { return }
+      window.makeFirstResponder(self)
+    }
+  }
   /// Строит меню для строки под курсором, включая свободное пространство таблицы.
   override func menu(for event: NSEvent) -> NSMenu? {
     makeContextMenu?(row(at: convert(event.locationInWindow, from: nil)))
+  }
+}
+
+/// Строка таблицы: тёмно-синее выделение в активном окне и тёплое чередование фона.
+@MainActor
+final class BrandRowView: NSTableRowView {
+  override func drawBackground(in dirtyRect: NSRect) {
+    guard let table = superview as? NSTableView, table.row(for: self) % 2 == 1 else { return }
+    Brand.stripeNS.setFill()
+    bounds.fill()
+  }
+
+  /// В неактивном окне оставляет штатное серое выделение AppKit.
+  override func drawSelection(in dirtyRect: NSRect) {
+    guard isEmphasized else { return super.drawSelection(in: dirtyRect) }
+    Brand.selectionNS.setFill()
+    NSBezierPath(roundedRect: bounds.insetBy(dx: 10, dy: 0), xRadius: 6, yRadius: 6).fill()
+  }
+}
+
+/// Ячейка «Сжатие»: полоска показывает долю сэкономленного места рядом с процентом.
+@MainActor
+final class CompressionCellView: NSTableCellView {
+  private let track = NSView()
+  private let fill = NSView()
+  private var fillWidth: NSLayoutConstraint?
+  private static let barWidth: CGFloat = 44
+
+  /// Доля от 0 до 1; nil скрывает полоску, когда размер в архиве неизвестен.
+  var savings: Double? {
+    didSet {
+      track.isHidden = savings == nil
+      fillWidth?.constant = Self.barWidth * (savings ?? 0)
+    }
+  }
+
+  override var backgroundStyle: NSView.BackgroundStyle {
+    didSet { updateColors() }
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    updateColors()
+  }
+
+  /// Добавляет полоску у левого края и возвращает якорь, от которого размещается текст.
+  func installBar() -> NSLayoutXAxisAnchor {
+    for view in [track, fill] {
+      view.wantsLayer = true
+      view.layer?.cornerRadius = 2
+      view.translatesAutoresizingMaskIntoConstraints = false
+    }
+    addSubview(track)
+    track.addSubview(fill)
+    let width = fill.widthAnchor.constraint(equalToConstant: 0)
+    fillWidth = width
+    NSLayoutConstraint.activate([
+      track.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+      track.centerYAnchor.constraint(equalTo: centerYAnchor),
+      track.widthAnchor.constraint(equalToConstant: Self.barWidth),
+      track.heightAnchor.constraint(equalToConstant: 4),
+      fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+      fill.topAnchor.constraint(equalTo: track.topAnchor),
+      fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
+      width,
+    ])
+    updateColors()
+    return track.trailingAnchor
+  }
+
+  /// На выделенной строке полоска становится золотой на полупрозрачной дорожке.
+  private func updateColors() {
+    let selected = backgroundStyle == .emphasized
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      track.layer?.backgroundColor =
+        (selected ? NSColor.white.withAlphaComponent(0.25) : Brand.trackNS).cgColor
+      fill.layer?.backgroundColor = (selected ? Brand.goldNS : Brand.barNS).cgColor
+    }
   }
 }
