@@ -60,6 +60,8 @@ struct ArchiveSettingsView: View {
         .tabItem { Label(L10n.tr("Типы архивов"), systemImage: "square.and.arrow.down") }
       finderSettings
         .tabItem { Label("Finder", systemImage: "folder") }
+      DropIslandSettingsView()
+        .tabItem { Label(L10n.tr("Остров"), systemImage: "rectangle.topthird.inset.filled") }
       applicationSettings
         .tabItem { Label(L10n.tr("Приложение"), systemImage: "app.badge") }
     }
