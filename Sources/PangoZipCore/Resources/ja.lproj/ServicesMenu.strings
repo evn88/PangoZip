@@ -1,2 +1,7 @@
 "Открыть архив в PangoZip" = "PangoZip でアーカイブを開く";
 "Добавить в архив PangoZip…" = "PangoZip アーカイブに追加…";
+"Распаковать здесь с PangoZip" = "PangoZip でここに展開";
+"Распаковать в отдельные папки с PangoZip" = "PangoZip で個別のフォルダに展開";
+"Заархивировать в ZIP с PangoZip" = "PangoZip で ZIP に圧縮";
+"Заархивировать в 7z с PangoZip" = "PangoZip で 7z に圧縮";
+"Тестировать архив в PangoZip" = "PangoZip でアーカイブをテスト";

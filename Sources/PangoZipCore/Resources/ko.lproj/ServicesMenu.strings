@@ -1,2 +1,7 @@
 "Открыть архив в PangoZip" = "PangoZip에서 아카이브 열기";
 "Добавить в архив PangoZip…" = "PangoZip 아카이브에 추가…";
+"Распаковать здесь с PangoZip" = "PangoZip으로 여기에 압축 풀기";
+"Распаковать в отдельные папки с PangoZip" = "PangoZip으로 별도 폴더에 압축 풀기";
+"Заархивировать в ZIP с PangoZip" = "PangoZip으로 ZIP으로 압축";
+"Заархивировать в 7z с PangoZip" = "PangoZip으로 7z로 압축";
+"Тестировать архив в PangoZip" = "PangoZip에서 아카이브 테스트";

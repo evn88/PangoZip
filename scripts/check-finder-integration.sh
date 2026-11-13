@@ -34,4 +34,24 @@ if ! /usr/bin/awk -v path="$extension" '
   exit 1
 fi
 echo "Регистрация указанного расширения: активно."
+
+# Quick Action: проверяется регистрация каждого встроенного расширения; отсутствие не считается ошибкой Finder Sync.
+quick_missing=0
+for quick in PangoZipQuickExtract:extract PangoZipQuickZip:zip; do
+  quick_appex="$app/Contents/PlugIns/${quick%%:*}.appex"
+  [[ -d "$quick_appex" ]] || { echo "Quick Action ${quick%%:*}: отсутствует в приложении."; quick_missing=1; continue; }
+  quick_snapshot="$(/usr/bin/pluginkit -m -Av -i "app.pangozip.desktop.quickaction.${quick##*:}" 2>&1 || true)"
+  if /usr/bin/awk -v path="$quick_appex" '
+    $1 == "+" && substr($0, length($0) - length(path) + 1) == path { found = 1 }
+    END { exit !found }
+  ' <<< "$quick_snapshot"; then
+    echo "Quick Action ${quick%%:*}: активно."
+  else
+    echo "Quick Action ${quick%%:*}: не зарегистрировано или отключено (Системные настройки → Расширения)."
+    quick_missing=1
+  fi
+done
+if [[ "$quick_missing" -ne 0 ]]; then
+  echo "Quick Action необязательны для меню Finder Sync; в облачных папках они работают вместе со Services."
+fi
 echo "Наличие записи не подтверждает показ меню в конкретной папке: это проверяется в Finder."

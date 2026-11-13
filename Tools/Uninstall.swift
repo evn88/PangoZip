@@ -33,6 +33,11 @@ let registrar =
 let worker = app.appendingPathComponent("Contents/Helpers/PangoZipWorker.app")
 let previewURL = app.appendingPathComponent("Contents/PlugIns/PangoZipPreview.appex")
 let extensionURL = app.appendingPathComponent("Contents/PlugIns/PangoZipFinderSync.appex")
+// Расширения Quick Action: bundle identifier и путь внутри приложения.
+let quickActions = [
+  ("app.pangozip.desktop.quickaction.extract", "Contents/PlugIns/PangoZipQuickExtract.appex"),
+  ("app.pangozip.desktop.quickaction.zip", "Contents/PlugIns/PangoZipQuickZip.appex"),
+].map { (identifier: $0.0, url: app.appendingPathComponent($0.1)) }
 
 // Не прерываем редактирование или операцию с архивом при удалении.
 let running = Process()
@@ -69,6 +74,10 @@ do {
     try run("/usr/bin/pluginkit", ["-e", "ignore", "-i", "app.pangozip.desktop.preview"])
     try run("/usr/bin/pluginkit", ["-r", previewURL.path], required: false)
   }
+  for quick in quickActions where FileManager.default.fileExists(atPath: quick.url.path) {
+    try run("/usr/bin/pluginkit", ["-e", "ignore", "-i", quick.identifier])
+    try run("/usr/bin/pluginkit", ["-r", quick.url.path], required: false)
+  }
   try run("/usr/bin/pluginkit", ["-e", "ignore", "-i", "app.pangozip.desktop.finder"])
   try run("/usr/bin/pluginkit", ["-r", extensionURL.path], required: false)
   for process in processes
@@ -94,6 +103,10 @@ do {
     if FileManager.default.fileExists(atPath: previewURL.path) {
       try? run("/usr/bin/pluginkit", ["-a", previewURL.path])
       try? run("/usr/bin/pluginkit", ["-e", "use", "-i", "app.pangozip.desktop.preview"])
+    }
+    for quick in quickActions where FileManager.default.fileExists(atPath: quick.url.path) {
+      try? run("/usr/bin/pluginkit", ["-a", quick.url.path])
+      try? run("/usr/bin/pluginkit", ["-e", "use", "-i", quick.identifier])
     }
     try? run("/usr/bin/pluginkit", ["-a", extensionURL.path])
     try? run("/usr/bin/pluginkit", ["-e", "use", "-i", "app.pangozip.desktop.finder"])

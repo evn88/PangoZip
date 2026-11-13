@@ -1,2 +1,7 @@
 "Открыть архив в PangoZip" = "Open Archive in PangoZip";
 "Добавить в архив PangoZip…" = "Add to PangoZip Archive…";
+"Распаковать здесь с PangoZip" = "Extract Here with PangoZip";
+"Распаковать в отдельные папки с PangoZip" = "Extract to Separate Folders with PangoZip";
+"Заархивировать в ZIP с PangoZip" = "Compress to ZIP with PangoZip";
+"Заархивировать в 7z с PangoZip" = "Compress to 7z with PangoZip";
+"Тестировать архив в PangoZip" = "Test Archive in PangoZip";

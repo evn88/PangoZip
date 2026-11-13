@@ -35,6 +35,21 @@
         <key>CFBundleURLName</key><string>app.pangozip.finder</string>
         <key>CFBundleURLSchemes</key><array><string>pangozip</string></array>
     </dict></array>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.7-zip.7-zip-archive</string>
+            <key>UTTypeDescription</key><string>7-Zip archive</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.archive</string></array>
+            <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>7z</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.rarlab.rar-archive</string>
+            <key>UTTypeDescription</key><string>RAR archive</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.archive</string></array>
+            <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>rar</string></array></dict>
+        </dict>
+    </array>
     <key>NSServices</key>
     <array>
         <dict>
@@ -47,6 +62,39 @@
             <key>NSMessage</key><string>addToArchiveService</string>
             <key>NSMenuItem</key><dict><key>default</key><string>Добавить в архив PangoZip…</string></dict>
             <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
+            <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
+        </dict>
+        <dict>
+            <key>NSMessage</key><string>extractHereService</string>
+            <key>NSMenuItem</key><dict><key>default</key><string>Распаковать здесь с PangoZip</string></dict>
+            <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
+            <key>NSSendFileTypes</key><array><string>public.archive</string></array>
+            <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
+        </dict>
+        <dict>
+            <key>NSMessage</key><string>extractToFoldersService</string>
+            <key>NSMenuItem</key><dict><key>default</key><string>Распаковать в отдельные папки с PangoZip</string></dict>
+            <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
+            <key>NSSendFileTypes</key><array><string>public.archive</string></array>
+            <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
+        </dict>
+        <dict>
+            <key>NSMessage</key><string>createZipService</string>
+            <key>NSMenuItem</key><dict><key>default</key><string>Заархивировать в ZIP с PangoZip</string></dict>
+            <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
+            <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
+        </dict>
+        <dict>
+            <key>NSMessage</key><string>create7zService</string>
+            <key>NSMenuItem</key><dict><key>default</key><string>Заархивировать в 7z с PangoZip</string></dict>
+            <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
+            <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
+        </dict>
+        <dict>
+            <key>NSMessage</key><string>testArchiveService</string>
+            <key>NSMenuItem</key><dict><key>default</key><string>Тестировать архив в PangoZip</string></dict>
+            <key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
+            <key>NSSendFileTypes</key><array><string>public.archive</string></array>
             <key>NSRequiredContext</key><dict><key>NSApplicationIdentifier</key><string>com.apple.finder</string></dict>
         </dict>
     </array>

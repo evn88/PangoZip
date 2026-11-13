@@ -169,6 +169,59 @@ final class FinderRegistrationTests: XCTestCase {
   private let workerPath = "Contents/Helpers/PangoZipWorker.app"
   private let extensionPath = "Contents/PlugIns/PangoZipFinderSync.appex"
 
+  /// Quick Action регистрируются вместе с Finder Sync, а комплект без них остаётся допустимым.
+  func testQuickActionBundlesAreValidatedAndRegisteredWhenPresent() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let app = try makeApp(in: root)
+    let without = try FinderRegistrationPlan.make(
+      applicationURL: app, applicationDirectories: [root])
+    XCTAssertTrue(without.quickActionURLs.isEmpty)
+    for action in QuickAction.allCases {
+      try addQuickAction(action, to: app)
+    }
+    let plan = try FinderRegistrationPlan.make(applicationURL: app, applicationDirectories: [root])
+    XCTAssertEqual(
+      plan.quickActionURLs,
+      QuickAction.allCases.map { plan.applicationURL.appendingPathComponent($0.bundlePath) })
+    let calls = Mutex<[URL]>([])
+    try await FinderRegistration.register(plan) { url, _ in
+      calls.withLock { $0.append(url) }
+      return 0
+    }
+    XCTAssertEqual(
+      calls.withLock { $0 },
+      [plan.applicationURL, plan.workerURL, plan.extensionURL] + plan.quickActionURLs)
+    // Неверная точка расширения делает комплект недопустимым.
+    let broken = app.appendingPathComponent(QuickAction.createZip.bundlePath)
+    try addQuickAction(.createZip, to: app, extensionPoint: "com.apple.FinderSync")
+    XCTAssertThrowsError(
+      try FinderRegistrationPlan.make(applicationURL: app, applicationDirectories: [root])
+    ) {
+      XCTAssertEqual(
+        $0 as? FinderRegistrationError, .invalidBundle(broken.resolvingSymlinksInPath()))
+    }
+  }
+
+  /// Создаёт минимальный appex Quick Action с исполняемым файлом и точкой расширения.
+  private func addQuickAction(
+    _ action: QuickAction, to app: URL, extensionPoint: String = QuickAction.extensionPoint
+  ) throws {
+    let bundle = app.appendingPathComponent(action.bundlePath)
+    let binary = bundle.appendingPathComponent("Contents/MacOS/\(QuickAction.executableName)")
+    try FileManager.default.createDirectory(
+      at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("fixture".utf8).write(to: binary)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: binary.path)
+    let info: [String: Any] = [
+      "CFBundleIdentifier": action.bundleIdentifier,
+      "CFBundleExecutable": QuickAction.executableName, "CFBundlePackageType": "XPC!",
+      "NSExtension": ["NSExtensionPointIdentifier": extensionPoint],
+    ]
+    try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+      .write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+  }
+
   /// Удаляет временные данные независимо от исхода проверки.
   private func withFixture(_ operation: (URL) throws -> Void) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

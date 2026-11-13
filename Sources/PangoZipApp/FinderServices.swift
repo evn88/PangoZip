@@ -84,6 +84,56 @@ final class FinderServices: NSObject {
     bringApplicationForward()
   }
 
+  /// Распаковывает выбранные архивы рядом с исходниками, как команда меню Finder Sync.
+  @objc(extractHereService:userData:error:)
+  func extractHereService(
+    _ pasteboard: NSPasteboard, userData: String?,
+    error: AutoreleasingUnsafeMutablePointer<NSString?>
+  ) { deliverService(.extractHere, pasteboard, error) }
+
+  /// Распаковывает каждый архив в отдельную одноимённую папку.
+  @objc(extractToFoldersService:userData:error:)
+  func extractToFoldersService(
+    _ pasteboard: NSPasteboard, userData: String?,
+    error: AutoreleasingUnsafeMutablePointer<NSString?>
+  ) { deliverService(.extract, pasteboard, error) }
+
+  /// Быстро упаковывает выделение в ZIP без диалога параметров.
+  @objc(createZipService:userData:error:)
+  func createZipService(
+    _ pasteboard: NSPasteboard, userData: String?,
+    error: AutoreleasingUnsafeMutablePointer<NSString?>
+  ) { deliverService(.createZip, pasteboard, error) }
+
+  /// Быстро упаковывает выделение в 7z без диалога параметров.
+  @objc(create7zService:userData:error:)
+  func create7zService(
+    _ pasteboard: NSPasteboard, userData: String?,
+    error: AutoreleasingUnsafeMutablePointer<NSString?>
+  ) { deliverService(.create7z, pasteboard, error) }
+
+  /// Проверяет выбранные архивы командой `7zz t` без создания файлов.
+  @objc(testArchiveService:userData:error:)
+  func testArchiveService(
+    _ pasteboard: NSPasteboard, userData: String?,
+    error: AutoreleasingUnsafeMutablePointer<NSString?>
+  ) { deliverService(.test, pasteboard, error) }
+
+  /// Строит запрос тем же `FinderSelection`, что и меню Finder Sync, и передаёт его worker.
+  /// Для операций над архивами в запрос попадают только архивы из смешанного выделения.
+  private func deliverService(
+    _ action: FinderAction, _ pasteboard: NSPasteboard,
+    _ error: AutoreleasingUnsafeMutablePointer<NSString?>
+  ) {
+    let selection = FinderSelection(urls: fileURLs(from: pasteboard))
+    guard let request = try? selection.request(for: action) else {
+      error.pointee = FinderRequestError.invalidSelection.localizedDescription as NSString
+      return
+    }
+    deliver(.finder(request))
+    bringApplicationForward()
+  }
+
   /// Передаёт ограниченный запрос через pasteboard отдельному экземпляру worker и освобождает его позже.
   static func launchWorker(_ request: FinderRequest) {
     guard let data = try? JSONEncoder().encode(request), data.count <= FinderRequest.maximumBytes
