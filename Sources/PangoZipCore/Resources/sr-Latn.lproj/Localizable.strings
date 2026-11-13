@@ -332,3 +332,15 @@
 "У курсора" = "Kod pokazivača";
 "⌥ — выбрать место" = "⌥ — izaberi mesto";
 "⌥ — сжать в новый архив" = "⌥ — komprimuj u novu arhivu";
+"Быстро" = "Brzo";
+"Обычный" = "Uobičajeno";
+"Максимум" = "Maksimalno";
+"Для почты (тома по 25 МБ)" = "Za e-poštu (delovi od 25 MB)";
+"Свой" = "Prilagođeno";
+"Профиль" = "Profil";
+"Шифровать имена файлов" = "Šifruj imena datoteka";
+"Для 7z с паролем: скрывает не только содержимое, но и список файлов в архиве." = "Za 7z sa lozinkom: skriva ne samo sadržaj već i spisak datoteka u arhivi.";
+"Размер тома" = "Veličina dela";
+"Один файл" = "Jedna datoteka";
+"%1$@ МБ" = "%1$@ MB";
+"Этот формат не поддерживает пароль." = "Ovaj format ne podržava lozinku.";

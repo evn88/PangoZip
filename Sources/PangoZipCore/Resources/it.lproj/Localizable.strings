@@ -332,3 +332,15 @@
 "У курсора" = "Vicino al puntatore";
 "⌥ — выбрать место" = "⌥ — scegli posizione";
 "⌥ — сжать в новый архив" = "⌥ — comprimi in un nuovo archivio";
+"Быстро" = "Veloce";
+"Обычный" = "Normale";
+"Максимум" = "Massimo";
+"Для почты (тома по 25 МБ)" = "Per e-mail (volumi da 25 MB)";
+"Свой" = "Personalizzato";
+"Профиль" = "Profilo";
+"Шифровать имена файлов" = "Cifra i nomi dei file";
+"Для 7z с паролем: скрывает не только содержимое, но и список файлов в архиве." = "Per 7z con password: nasconde non solo il contenuto, ma anche l’elenco dei file nell’archivio.";
+"Размер тома" = "Dimensione dei volumi";
+"Один файл" = "File singolo";
+"%1$@ МБ" = "%1$@ MB";
+"Этот формат не поддерживает пароль." = "Questo formato non supporta la password.";

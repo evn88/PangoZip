@@ -114,6 +114,7 @@ public struct FinderSelection: Sendable {
       values.isDirectory != true, values.isSymbolicLink != true
     else { return false }
     let ext = url.pathExtension.lowercased()
+    if volumeSuffix(of: url.lastPathComponent) != nil { return true }
     if [
       "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz", "tbz2", "txz", "zst",
       "tzst", "lzma", "lz", "cab", "iso", "wim", "arj", "cpio", "deb", "rpm", "cbz", "cbr",
@@ -132,8 +133,17 @@ public struct FinderSelection: Sendable {
         return stem.isEmpty || stem == "." || stem == ".." ? "Archive" : stem
       }
     }
+    if let suffix = volumeSuffix(of: name) {
+      let stem = String(name.dropLast(suffix.count))
+      return stem.isEmpty || stem == "." || stem == ".." ? "Archive" : stem
+    }
     let stem = url.deletingPathExtension().lastPathComponent
     return stem.isEmpty || stem == "." || stem == ".." ? "Archive" : stem
+  }
+
+  /// Первый том многотомного архива 7zz: «.7z.001» или «.zip.001»; остальные тома открываются с него.
+  private static func volumeSuffix(of name: String) -> String? {
+    [".7z.001", ".zip.001"].first { name.lowercased().hasSuffix($0) }
   }
 
   public var archiveName: String {

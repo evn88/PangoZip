@@ -26,11 +26,12 @@ public enum ArchiveListing {
     /// Завершает накопленную запись только после проверки обязательных полей и безопасного пути.
     func appendEntry() throws {
       guard !fields.isEmpty else { return }
-      guard let rawPath = fields["Path"], let rawSize = fields["Size"],
-        let size = UInt64(rawSize)
-      else { throw ArchiveError.malformedListing }
       let attributes = fields["Attributes"] ?? ""
       let isDirectory = fields["Folder"] == "+" || attributes.hasPrefix("D")
+      // WIM не заполняет размер папок; для них пустое поле означает ноль.
+      guard let rawPath = fields["Path"], let rawSize = fields["Size"],
+        let size = rawSize.isEmpty && isDirectory ? 0 : UInt64(rawSize)
+      else { throw ArchiveError.malformedListing }
       let path = isDirectory && rawPath.hasSuffix("/") ? String(rawPath.dropLast()) : rawPath
       try validatePath(path)
       guard paths.insert(path).inserted else { throw ArchiveError.duplicatePath }

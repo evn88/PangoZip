@@ -332,3 +332,15 @@
 "У курсора" = "İmlecin yanında";
 "⌥ — выбрать место" = "⌥ — konum seç";
 "⌥ — сжать в новый архив" = "⌥ — yeni arşive sıkıştır";
+"Быстро" = "Hızlı";
+"Обычный" = "Normal";
+"Максимум" = "Maksimum";
+"Для почты (тома по 25 МБ)" = "E-posta için (25 MB’lık bölümler)";
+"Свой" = "Özel";
+"Профиль" = "Profil";
+"Шифровать имена файлов" = "Dosya adlarını şifrele";
+"Для 7z с паролем: скрывает не только содержимое, но и список файлов в архиве." = "Parolalı 7z için: yalnızca içeriği değil, arşivdeki dosya listesini de gizler.";
+"Размер тома" = "Bölüm boyutu";
+"Один файл" = "Tek dosya";
+"%1$@ МБ" = "%1$@ MB";
+"Этот формат не поддерживает пароль." = "Bu biçim parolayı desteklemiyor.";
