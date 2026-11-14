@@ -175,6 +175,65 @@ final class ReviewRegressionTests: XCTestCase, @unchecked Sendable {
     try workspace.removeTransaction(transaction)
   }
 
+  /// Транзакция живёт во временной папке тома, а не рядом с архивом, и убирается целиком.
+  func testTransactionUsesVolumeTemporaryDirectory() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let workspace = TemporaryWorkspace(base: root.appendingPathComponent("workspaces"))
+    defer { workspace.cleanup() }
+    let archives = root.appendingPathComponent("archives")
+    try FileManager.default.createDirectory(at: archives, withIntermediateDirectories: false)
+    let transaction = try workspace.transactionDirectory(
+      nextTo: archives.appendingPathComponent("a.zip"))
+    let container = transaction.deletingLastPathComponent()
+    XCTAssertNotEqual(container.standardizedFileURL, archives.standardizedFileURL)
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: archives.path), [])
+    var archiveInfo = stat()
+    var transactionInfo = stat()
+    XCTAssertEqual(stat(archives.path, &archiveInfo), 0)
+    XCTAssertEqual(stat(transaction.path, &transactionInfo), 0)
+    XCTAssertEqual(archiveInfo.st_dev, transactionInfo.st_dev)
+    try Data("x".utf8).write(to: transaction.appendingPathComponent("result"))
+    try workspace.removeTransaction(transaction)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: container.path))
+  }
+
+  /// Копия заблокированного в Finder архива (флаг uchg) не оставляет рабочую папку на диске.
+  func testRemoveTreeClearsImmutableFlags() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let tree = root.appendingPathComponent("tree/source")
+    try FileManager.default.createDirectory(at: tree, withIntermediateDirectories: true)
+    let locked = tree.appendingPathComponent("locked.zip")
+    try Data("zip".utf8).write(to: locked)
+    XCTAssertEqual(chflags(locked.path, UInt32(UF_IMMUTABLE)), 0)
+    XCTAssertEqual(chmod(tree.path, 0o500), 0)
+    try TemporaryWorkspace.removeTree(root.appendingPathComponent("tree"))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("tree").path))
+  }
+
+  /// Транзакция без рабочей области удаляется только после срока; свежие и чужие папки остаются.
+  func testOrphanTransactionsNextToArchiveAreRemovedAfterAge() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let base = root.appendingPathComponent("workspaces")
+    let workspace = TemporaryWorkspace(base: base)
+    defer { workspace.cleanup() }
+    let orphanName =
+      ".pangozip-workspace-" + UUID().uuidString + "-" + UUID().uuidString
+    let orphan = root.appendingPathComponent(orphanName + "/inputs/nested")
+    try FileManager.default.createDirectory(at: orphan, withIntermediateDirectories: true)
+    let foreign = root.appendingPathComponent(".pangozip-workspace-notes")
+    try FileManager.default.createDirectory(at: foreign, withIntermediateDirectories: false)
+    workspace.removeOrphanTransactions(in: root)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: orphan.path))
+    workspace.removeOrphanTransactions(
+      in: root, now: Date().addingTimeInterval(TemporaryWorkspace.orphanAge + 60))
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: root.appendingPathComponent(orphanName).path))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: foreign.path))
+  }
+
   /// Слово password в имени повреждённого архива не превращает ошибку в запрос пароля.
   func testPasswordInArchiveNameIsNotPasswordRequest() async throws {
     let root = try fixture()
