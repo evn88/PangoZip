@@ -6,6 +6,9 @@ final class TemporaryWorkspace {
   let root: URL
   private let base: URL
   private var lockFD: Int32 = -1
+  /// Блокировки внутри активных транзакций: по ним другой процесс отличает живую папку от брошенной.
+  private var transactionLocks: [String: Int32] = [:]
+  private static let transactionLockName = ".owner.lock"
   private static let baseName = "app.pangozip.workspaces"
   private static let legacyBaseName = "app.zipevra.workspaces"
   private static let transactionPrefixes = [".pangozip-", ".zipevra-"]
@@ -21,6 +24,7 @@ final class TemporaryWorkspace {
   /// Освобождает блокировку владельца, оставляя данные для восстановления при следующем запуске.
   deinit {
     if lockFD >= 0 { Darwin.close(lockFD) }
+    for fd in transactionLocks.values { Darwin.close(fd) }
   }
 
   /// Удаляет доступные осиротевшие рабочие папки и удерживает блокировку текущего владельца.
@@ -103,12 +107,14 @@ final class TemporaryWorkspace {
     if info.st_mode & S_IFMT == S_IFDIR { chmod(url.path, 0o700) }
   }
 
-  /// Рабочая папка рядом с архивом без журнала (процесс убит, временная папка системы очищена)
-  /// удаляется при следующей операции в этой папке. Возраст защищает транзакции Quick Look:
-  /// его песочница держит журнал и блокировку в своём контейнере, недоступном приложению.
+  /// Срок для папок прежних версий без файла блокировки: по mtime верхнего уровня нельзя понять,
+  /// идёт ли в них работа, поэтому они удаляются только заметно позже любой реальной операции.
   static let orphanAge: TimeInterval = 24 * 60 * 60
 
-  /// Удаляет рядом с архивом брошенные транзакции, чья рабочая область больше не существует.
+  /// Удаляет рядом с архивом брошенные транзакции (процесс убит, журнал во временной папке утрачен).
+  /// Приложение и песочница Quick Look не видят рабочие области друг друга, поэтому владелец
+  /// определяется по flock на файле блокировки внутри самой транзакции: он снимается только
+  /// с завершением процесса или транзакции.
   func removeOrphanTransactions(in directory: URL, now: Date = Date()) {
     let manager = FileManager.default
     let names = (try? manager.contentsOfDirectory(atPath: directory.path)) ?? []
@@ -122,13 +128,28 @@ final class TemporaryWorkspace {
         UUID(uuidString: String(suffix.suffix(36))) != nil
       else { continue }
       let workspaceName = "workspace-" + owner.uuidString
+      let legacyBase = base.deletingLastPathComponent().appendingPathComponent(
+        Self.legacyBaseName)
       // Живая или восстанавливаемая по журналу область обрабатывается своим механизмом.
       guard workspaceName != root.lastPathComponent,
-        !manager.fileExists(atPath: base.appendingPathComponent(workspaceName).path)
+        ![base, legacyBase].contains(where: {
+          manager.fileExists(atPath: $0.appendingPathComponent(workspaceName).path)
+        })
       else { continue }
       let candidate = directory.appendingPathComponent(name)
       var info = stat()
-      guard lstat(candidate.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+      guard lstat(candidate.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { continue }
+      let fd = Darwin.open(
+        candidate.appendingPathComponent(Self.transactionLockName).path,
+        O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+      if fd >= 0 {
+        // Занятая блокировка или том без поддержки flock: владелец может быть жив, не трогаем.
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 { try? Self.removeTree(candidate) }
+        Darwin.close(fd)
+        continue
+      }
+      // Файл блокировки есть, но не открылся: права или ссылка, удалять небезопасно.
+      guard errno == ENOENT,
         now.timeIntervalSince1970 - TimeInterval(info.st_mtimespec.tv_sec) >= Self.orphanAge
       else { continue }
       try? Self.removeTree(candidate)
@@ -158,11 +179,26 @@ final class TemporaryWorkspace {
         options: .atomic)
       try FileManager.default.createDirectory(
         at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+      lockTransaction(directory)
     } catch {
       if let container { rmdir(container.path) }
       throw error
     }
     return directory
+  }
+
+  /// Держит flock до removeTransaction. Если том не поддерживает блокировки, транзакция
+  /// остаётся без неё: уборка такую папку не тронет, её удалит восстановление по журналу.
+  private func lockTransaction(_ directory: URL) {
+    let fd = Darwin.open(
+      directory.appendingPathComponent(Self.transactionLockName).path,
+      O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
+    guard fd >= 0 else { return }
+    if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+      transactionLocks[directory.path] = fd
+    } else {
+      Darwin.close(fd)
+    }
   }
 
   /// Возвращает выданную системой временную папку, только если она на томе назначения.
@@ -187,6 +223,10 @@ final class TemporaryWorkspace {
     let journal = root.appendingPathComponent("transactions").appendingPathComponent(
       directory.lastPathComponent + ".json")
     let container = Self.container(of: directory, journal: journal)
+    // Блокировка снимается и при ошибке удаления: брошенную папку затем уберёт уборка.
+    defer {
+      if let fd = transactionLocks.removeValue(forKey: directory.path) { Darwin.close(fd) }
+    }
     if FileManager.default.fileExists(atPath: directory.path) { try Self.removeTree(directory) }
     if let container { rmdir(container.path) }
     if FileManager.default.fileExists(atPath: journal.path) {
@@ -237,6 +277,8 @@ final class TemporaryWorkspace {
   /// Очищает известные транзакции и освобождает блокировку; вызывающий отвечает за текущие операции.
   func cleanup() {
     if Self.recoverTransactions(in: root) { try? FileManager.default.removeItem(at: root) }
+    for fd in transactionLocks.values { Darwin.close(fd) }
+    transactionLocks.removeAll()
     if lockFD >= 0 {
       Darwin.close(lockFD)
       lockFD = -1

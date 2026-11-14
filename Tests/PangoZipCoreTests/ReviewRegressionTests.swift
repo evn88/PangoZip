@@ -234,6 +234,33 @@ final class ReviewRegressionTests: XCTestCase, @unchecked Sendable {
     XCTAssertTrue(FileManager.default.fileExists(atPath: foreign.path))
   }
 
+  /// Транзакция с занятой блокировкой не удаляется даже старой; со свободной удаляется сразу.
+  func testOrphanTransactionsRespectOwnerLock() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let workspace = TemporaryWorkspace(base: root.appendingPathComponent("workspaces"))
+    defer { workspace.cleanup() }
+    func makeTransaction() throws -> (URL, Int32) {
+      let directory = root.appendingPathComponent(
+        ".pangozip-workspace-" + UUID().uuidString + "-" + UUID().uuidString)
+      try FileManager.default.createDirectory(
+        at: directory.appendingPathComponent("contents"), withIntermediateDirectories: true)
+      let fd = open(
+        directory.appendingPathComponent(".owner.lock").path, O_CREAT | O_RDWR, 0o600)
+      XCTAssertGreaterThanOrEqual(fd, 0)
+      return (directory, fd)
+    }
+    let (active, activeFD) = try makeTransaction()
+    XCTAssertEqual(flock(activeFD, LOCK_EX | LOCK_NB), 0)
+    defer { close(activeFD) }
+    let (abandoned, abandonedFD) = try makeTransaction()
+    close(abandonedFD)
+    workspace.removeOrphanTransactions(
+      in: root, now: Date().addingTimeInterval(TemporaryWorkspace.orphanAge * 10))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: active.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: abandoned.path))
+  }
+
   /// Слово password в имени повреждённого архива не превращает ошибку в запрос пароля.
   func testPasswordInArchiveNameIsNotPasswordRequest() async throws {
     let root = try fixture()
