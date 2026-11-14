@@ -29,9 +29,9 @@ struct ArchiveBrowserView: View {
     .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     .toolbarColorScheme(.dark, for: .windowToolbar)
     .background {
-      // Шапка занимает ровно высоту панели инструментов и уходит под её стекло.
+      // Стеклянная шапка занимает ровно высоту панели инструментов; сквозь неё виден фон за окном.
       GeometryReader { proxy in
-        BrandHeaderBackground()
+        GlassHeaderBackground()
           .frame(height: proxy.safeAreaInsets.top)
           .frame(maxHeight: .infinity, alignment: .top)
           .ignoresSafeArea(edges: .top)

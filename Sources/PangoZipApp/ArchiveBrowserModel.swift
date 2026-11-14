@@ -117,6 +117,9 @@ final class ArchiveBrowserModel: ObservableObject {
   @Published var password = ""
   @Published var isPasswordPromptPresented = false
   @Published private(set) var showsPreview = true
+  /// Открыта ли панель «Быстрый просмотр»: ей нужен извлечённый файл и при скрытой боковой панели.
+  private(set) var isQuickLookOpen = false
+  private var wantsPreview: Bool { showsPreview || isQuickLookOpen }
   @Published private(set) var searchFocusToken = UUID()
   @Published var checksums: ChecksumsModel?
 
@@ -551,6 +554,23 @@ final class ArchiveBrowserModel: ObservableObject {
     if showsPreview {
       if previewURL == nil { selectionChanged() }
     } else {
+      cancelPreview(preservingContent: true)
+    }
+  }
+
+  /// «Быстрый просмотр» по пробелу доступен только для одного выделенного файла.
+  var canQuickLook: Bool {
+    guard let entry = selectedEntry else { return false }
+    return !entry.isDirectory && !entry.isSymbolicLink
+  }
+
+  /// Готовит файл для панели «Быстрый просмотр» и прекращает подготовку после её закрытия.
+  func setQuickLookOpen(_ isOpen: Bool) {
+    guard isQuickLookOpen != isOpen else { return }
+    isQuickLookOpen = isOpen
+    if isOpen {
+      if previewURL == nil { selectionChanged() }
+    } else if !showsPreview {
       cancelPreview(preservingContent: true)
     }
   }
@@ -1030,7 +1050,7 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Отменяет прежний предпросмотр до проверки нового выделения.
   private func selectionChanged() {
     cancelPreview()
-    guard showsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
+    guard wantsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
       let entry = selectedEntry,
       !entry.isDirectory, !entry.isSymbolicLink
     else { return }
@@ -1039,7 +1059,7 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Проверяет поколение и идентификатор сеанса перед публикацией извлечённого файла.
   private func startPreview(_ entry: ArchiveEntry) {
-    guard showsPreview, !isBusy, !isExporting, !isClosing, let current = session else { return }
+    guard wantsPreview, !isBusy, !isExporting, !isClosing, let current = session else { return }
     cancelPreview()
     if failedOperation == nil {
       errorMessage = nil

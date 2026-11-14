@@ -4,10 +4,8 @@ import SwiftUI
 
 /// Палитра бренда: тёмно-синий и золото логотипа, тёплый фон сайта pangozip.app.
 enum Brand {
-  /// Шапка окна под стеклянной панелью инструментов.
+  /// Тонировка стеклянной шапки окна.
   static let headerNS = dynamic(light: 0x101F4A, dark: 0x0C1532)
-  /// Синее свечение, которое вместе с золотом даёт шапке глубину матового стекла.
-  static let headerGlowNS = dynamic(light: 0x2B4388, dark: 0x22397A)
   /// Выделение строк таблицы в активном окне.
   static let selectionNS = dynamic(light: 0x101F4A, dark: 0x22397A)
   /// Заливка главной кнопки и значков папок.
@@ -23,7 +21,6 @@ enum Brand {
   static let barNS = dynamic(light: 0x101F4A, dark: 0xE6AD52)
 
   static let header = Color(nsColor: headerNS)
-  static let headerGlow = Color(nsColor: headerGlowNS)
   static let gold = Color(nsColor: goldNS)
   static let goldInk = Color(nsColor: goldInkNS)
   static let onGold = Color(nsColor: onGoldNS)
@@ -75,34 +72,108 @@ extension NSColor {
   }
 }
 
-/// Матовая тёмно-синяя шапка: размытые пятна света с небольшой долей золота, без резких кромок.
-struct BrandHeaderBackground: View {
-  /// Положение по ширине, размер относительно высоты шапки, цвет и плотность каждого пятна.
-  private static let spots:
-    [(x: CGFloat, y: CGFloat, width: CGFloat, color: Color, opacity: Double)] =
-      [
-        (0.10, 0.95, 5.0, Brand.headerGlow, 0.55),
-        (0.24, 0.05, 2.4, Brand.gold, 0.36),
-        (0.47, 1.05, 3.4, Brand.gold, 0.28),
-        (0.66, 0.00, 4.5, Brand.headerGlow, 0.45),
-        (0.84, 0.90, 2.8, Brand.gold, 0.38),
-      ]
+/// Шапка окна из матового стекла: сквозь синюю тонировку видно то, что лежит под окном.
+struct GlassHeaderBackground: NSViewRepresentable {
+  func makeNSView(context: Context) -> GlassHeaderView { GlassHeaderView() }
 
-  var body: some View {
-    GeometryReader { proxy in
-      ZStack {
-        Brand.header
-        ForEach(Array(Self.spots.enumerated()), id: \.offset) { _, spot in
-          Ellipse().fill(spot.color).opacity(spot.opacity)
-            .frame(width: proxy.size.height * spot.width, height: proxy.size.height * 1.1)
-            .position(x: proxy.size.width * spot.x, y: proxy.size.height * spot.y)
-        }
-      }
-      .blur(radius: 22)
-      .background(Brand.header)
+  func updateNSView(_ nsView: GlassHeaderView, context: Context) {}
+}
+
+/// Размытие фона за окном, тонировка бренда и блик, который следует за курсором.
+@MainActor
+final class GlassHeaderView: NSView {
+  /// Плотность синей тонировки поверх размытого фона.
+  private static let tintOpacity: CGFloat = 0.45
+  private static let spotlightSize = CGSize(width: 380, height: 190)
+
+  private let effect = NSVisualEffectView()
+  private let overlay = NSView()
+  private let tint = CALayer()
+  private let sheen = CAGradientLayer()
+  private let hairline = CALayer()
+  private let spotlight = CAGradientLayer()
+
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    effect.material = .hudWindow
+    effect.blendingMode = .behindWindow
+    // Стекло остаётся прозрачным и в неактивном окне.
+    effect.state = .active
+    effect.appearance = NSAppearance(named: .darkAqua)
+    overlay.wantsLayer = true
+    for view in [effect, overlay] {
+      view.frame = bounds
+      view.autoresizingMask = [.width, .height]
+      addSubview(view)
     }
-    .clipped()
-    .accessibilityHidden(true)
+    sheen.colors = [NSColor.white.withAlphaComponent(0.16).cgColor, NSColor.clear.cgColor]
+    sheen.startPoint = CGPoint(x: 0.5, y: 1)
+    sheen.endPoint = CGPoint(x: 0.5, y: 0.3)
+    hairline.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
+    spotlight.type = .radial
+    spotlight.colors = [NSColor.white.withAlphaComponent(0.3).cgColor, NSColor.clear.cgColor]
+    spotlight.startPoint = CGPoint(x: 0.5, y: 0.5)
+    spotlight.endPoint = CGPoint(x: 1, y: 1)
+    spotlight.bounds = CGRect(origin: .zero, size: Self.spotlightSize)
+    spotlight.opacity = 0
+    for layer in [tint, sheen, spotlight, hairline] { overlay.layer?.addSublayer(layer) }
+    overlay.layer?.masksToBounds = true
+    setAccessibilityElement(false)
+    updateTint()
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+  /// Шапка лежит под панелью инструментов и не должна перехватывать её нажатия.
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  override func layout() {
+    super.layout()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    tint.frame = bounds
+    sheen.frame = bounds
+    hairline.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 1)
+    CATransaction.commit()
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    updateTint()
+  }
+
+  private func updateTint() {
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      tint.backgroundColor = Brand.headerNS.withAlphaComponent(Self.tintOpacity).cgColor
+    }
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(
+      NSTrackingArea(
+        rect: .zero,
+        options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+        owner: self))
+  }
+
+  override func mouseEntered(with event: NSEvent) { moveSpotlight(event, isVisible: true) }
+
+  override func mouseMoved(with event: NSEvent) { moveSpotlight(event, isVisible: true) }
+
+  override func mouseExited(with event: NSEvent) { moveSpotlight(event, isVisible: false) }
+
+  /// Блик следует за курсором без анимации положения; плавно меняется только его яркость.
+  private func moveSpotlight(_ event: NSEvent, isVisible: Bool) {
+    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+    let x = convert(event.locationInWindow, from: nil).x
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    spotlight.position = CGPoint(x: x, y: bounds.maxY)
+    CATransaction.commit()
+    spotlight.opacity = isVisible ? 1 : 0
   }
 }
 

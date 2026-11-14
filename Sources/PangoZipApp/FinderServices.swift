@@ -202,7 +202,8 @@ final class FinderServices: NSObject {
   /// Показывает окно worker без смены политики активации основного приложения.
   private func bringApplicationForward() {
     if ApplicationMode.isFinderWorker {
-      NSApp.windows.first?.orderFront(nil)
+      // Пока ход операции показывает остров, окно фонового процесса остаётся скрытым.
+      if !ApplicationMode.workerShowsIsland { NSApp.windows.first?.orderFront(nil) }
     } else {
       NSApp.activate(ignoringOtherApps: true)
       NSApp.windows.first?.makeKeyAndOrderFront(nil)
