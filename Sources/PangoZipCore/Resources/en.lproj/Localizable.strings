@@ -144,7 +144,6 @@
 "Пароль (необязательно)" = "Password (optional)";
 "Повторите пароль" = "Confirm Password";
 "Архивация" = "Archiving";
-"Приложение" = "Application";
 "Параметры по умолчанию" = "Default Options";
 "Формат по умолчанию" = "Default Format";
 "Степень сжатия" = "Compression Level";
@@ -235,8 +234,6 @@
 "Подсчитываем размеры папок…" = "Calculating folder sizes…";
 "Типы архивов" = "Archive Types";
 "Выберите типы, для которых PangoZip станет приложением по умолчанию. Текущая программа указана справа." = "Choose the types for which PangoZip should be the default app. The current app is shown on the right.";
-"Назначить PangoZip для выбранных типов" = "Set PangoZip as default for selected types";
-"Не выбрано ни одного типа архивов." = "No archive types selected.";
 "Не назначено" = "Not assigned";
 "Запущена копия из папки сборки. macOS назначит обработчиком именно этот экземпляр; после его перемещения настройку придётся обновить." = "A copy from the build folder is running. macOS will assign this exact copy as the handler; update the setting after moving it.";
 "Не удалось назначить PangoZip для %1$@: %2$@" = "Could not set PangoZip for %1$@: %2$@";
@@ -392,5 +389,14 @@
 "Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "Could not download the file from the cloud. Check access to iCloud or the other storage.";
 "Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "No network connection: the cloud file was not downloaded. Connect and try again.";
 "Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "The cloud download is not progressing. Check your network connection and try again.";
-"Выбрать все" = "Select All";
-"Снять все" = "Deselect All";
+"Основные" = "General";
+"Другой размер…" = "Custom size…";
+"Размер тома, МБ" = "Volume size, MB";
+"Назначить PangoZip для всех типов" = "Set PangoZip as default for all types";
+"Снимки настроек" = "Settings snapshots";
+"Сохранить снимок" = "Save snapshot";
+"Исходные настройки" = "Original settings";
+"Вернуть" = "Restore";
+"PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip remembered the apps for archives on first launch. You can return to the original settings or to any of the ten most recent snapshots at any time.";
+"Не удалось вернуть программу для %1$@: %2$@" = "Could not restore the app for %1$@: %2$@";
+"Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "The previous app for %1$@ is unknown. Choose it in Finder: Get Info → Open with.";

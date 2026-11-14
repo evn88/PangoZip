@@ -144,7 +144,6 @@
 "Пароль (необязательно)" = "Lozinka (opciono)";
 "Повторите пароль" = "Potvrdite lozinku";
 "Архивация" = "Arhiviranje";
-"Приложение" = "Aplikacija";
 "Параметры по умолчанию" = "Podrazumevane opcije";
 "Формат по умолчанию" = "Podrazumevani format";
 "Степень сжатия" = "Nivo kompresije";
@@ -235,8 +234,6 @@
 "Подсчитываем размеры папок…" = "Izračunavanje veličina fascikli…";
 "Типы архивов" = "Tipovi arhiva";
 "Выберите типы, для которых PangoZip станет приложением по умолчанию. Текущая программа указана справа." = "Izaberite tipove za koje će PangoZip biti podrazumevana aplikacija. Trenutna aplikacija je prikazana desno.";
-"Назначить PangoZip для выбранных типов" = "Postavi PangoZip kao podrazumevanu aplikaciju za izabrane tipove";
-"Не выбрано ни одного типа архивов." = "Nijedan tip arhive nije izabran.";
 "Не назначено" = "Nije dodeljeno";
 "Запущена копия из папки сборки. macOS назначит обработчиком именно этот экземпляр; после его перемещения настройку придётся обновить." = "Pokrenuta je kopija iz fascikle za izgradnju. macOS će povezati baš ovu kopiju; ažurirajte podešavanje nakon njenog premeštanja.";
 "Не удалось назначить PangoZip для %1$@: %2$@" = "Nije moguće postaviti PangoZip za %1$@: %2$@";
@@ -392,5 +389,14 @@
 "Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "Nije moguće preuzeti datoteku iz oblaka. Proverite pristup iCloud-u ili drugom skladištu.";
 "Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "Nema mrežne veze: datoteka iz oblaka nije preuzeta. Povežite se i pokušajte ponovo.";
 "Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "Preuzimanje iz oblaka ne napreduje. Proverite mrežnu vezu i pokušajte ponovo.";
-"Выбрать все" = "Izaberi sve";
-"Снять все" = "Poništi izbor";
+"Основные" = "Opšte";
+"Другой размер…" = "Druga veličina…";
+"Размер тома, МБ" = "Veličina dela, MB";
+"Назначить PangoZip для всех типов" = "Postavi PangoZip za sve tipove";
+"Снимки настроек" = "Snimci podešavanja";
+"Сохранить снимок" = "Sačuvaj snimak";
+"Исходные настройки" = "Početna podešavanja";
+"Вернуть" = "Vrati";
+"PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip je pri prvom pokretanju zapamtio aplikacije za arhive. Na početna podešavanja i na bilo koji od deset poslednjih snimaka možete se vratiti u svakom trenutku.";
+"Не удалось вернуть программу для %1$@: %2$@" = "Nije moguće vratiti aplikaciju za %1$@: %2$@";
+"Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "Prethodna aplikacija za %1$@ nije poznata. Izaberite je u Finderu: Informacije → Otvori pomoću.";

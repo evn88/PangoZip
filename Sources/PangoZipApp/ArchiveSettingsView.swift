@@ -69,24 +69,24 @@ struct ArchiveSettingsView: View {
   @AppStorage(AppearanceMode.storageKey) private var appearanceMode = AppearanceMode.system.rawValue
 
   var body: some View {
+    // Вкладки идут от повседневного к редкому: общий вид, действия с архивами, связь с системой.
     TabView {
-      if let updater {
-        ApplicationUpdatesView(updater: updater)
-          .tabItem { Label(L10n.tr("Обновления"), systemImage: "arrow.down.circle") }
-      }
-
+      applicationSettings
+        .tabItem { Label(L10n.tr("Основные"), systemImage: "gearshape") }
       compressionSettings
         .tabItem { Label(L10n.tr("Архивация"), systemImage: "archivebox") }
-      ArchiveAssociationsView()
-        .tabItem { Label(L10n.tr("Типы архивов"), systemImage: "square.and.arrow.down") }
-      finderSettings
-        .tabItem { Label("Finder", systemImage: "folder") }
       ExtractionSettingsView()
         .tabItem { Label(L10n.tr("Извлечение"), systemImage: "tray.and.arrow.up") }
       DropIslandSettingsView()
         .tabItem { Label(L10n.tr("Остров"), systemImage: "rectangle.topthird.inset.filled") }
-      applicationSettings
-        .tabItem { Label(L10n.tr("Приложение"), systemImage: "app.badge") }
+      ArchiveAssociationsView()
+        .tabItem { Label(L10n.tr("Типы архивов"), systemImage: "square.and.arrow.down") }
+      finderSettings
+        .tabItem { Label("Finder", systemImage: "folder") }
+      if let updater {
+        ApplicationUpdatesView(updater: updater)
+          .tabItem { Label(L10n.tr("Обновления"), systemImage: "arrow.down.circle") }
+      }
     }
     .frame(width: 560, height: 480)
   }

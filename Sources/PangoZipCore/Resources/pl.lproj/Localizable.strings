@@ -144,7 +144,6 @@
 "Пароль (необязательно)" = "Hasło (opcjonalnie)";
 "Повторите пароль" = "Potwierdź hasło";
 "Архивация" = "Archiwizacja";
-"Приложение" = "Aplikacja";
 "Параметры по умолчанию" = "Opcje domyślne";
 "Формат по умолчанию" = "Format domyślny";
 "Степень сжатия" = "Poziom kompresji";
@@ -235,8 +234,6 @@
 "Подсчитываем размеры папок…" = "Obliczanie rozmiarów folderów…";
 "Типы архивов" = "Typy archiwów";
 "Выберите типы, для которых PangoZip станет приложением по умолчанию. Текущая программа указана справа." = "Wybierz typy, dla których PangoZip ma być aplikacją domyślną. Obecna aplikacja jest pokazana po prawej.";
-"Назначить PangoZip для выбранных типов" = "Ustaw PangoZip jako domyślną dla wybranych typów";
-"Не выбрано ни одного типа архивов." = "Nie wybrano typów archiwów.";
 "Не назначено" = "Nie przypisano";
 "Запущена копия из папки сборки. macOS назначит обработчиком именно этот экземпляр; после его перемещения настройку придётся обновить." = "Uruchomiona jest kopia z folderu kompilacji. macOS przypisze tę konkretną kopię jako aplikację obsługującą; po jej przeniesieniu zaktualizuj ustawienie.";
 "Не удалось назначить PangoZip для %1$@: %2$@" = "Nie udało się ustawić PangoZip dla %1$@: %2$@";
@@ -392,5 +389,14 @@
 "Не удалось загрузить файл из облака. Проверьте доступ к iCloud или другому хранилищу." = "Nie udało się pobrać pliku z chmury. Sprawdź dostęp do iCloud lub innego magazynu.";
 "Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите." = "Brak połączenia z siecią: plik z chmury nie został pobrany. Połącz się i spróbuj ponownie.";
 "Загрузка из облака не продвигается. Проверьте подключение к сети и повторите." = "Pobieranie z chmury nie postępuje. Sprawdź połączenie z siecią i spróbuj ponownie.";
-"Выбрать все" = "Zaznacz wszystko";
-"Снять все" = "Odznacz wszystko";
+"Основные" = "Ogólne";
+"Другой размер…" = "Inny rozmiar…";
+"Размер тома, МБ" = "Rozmiar woluminu, MB";
+"Назначить PangoZip для всех типов" = "Ustaw PangoZip dla wszystkich typów";
+"Снимки настроек" = "Migawki ustawień";
+"Сохранить снимок" = "Zapisz migawkę";
+"Исходные настройки" = "Ustawienia początkowe";
+"Вернуть" = "Przywróć";
+"PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip zapamiętał programy dla archiwów przy pierwszym uruchomieniu. W każdej chwili możesz wrócić do ustawień początkowych lub do dowolnej z dziesięciu ostatnich migawek.";
+"Не удалось вернуть программу для %1$@: %2$@" = "Nie udało się przywrócić programu dla %1$@: %2$@";
+"Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "Poprzedni program dla %1$@ jest nieznany. Wybierz go w Finderze: Informacje → Otwórz w programie.";

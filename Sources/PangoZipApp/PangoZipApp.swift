@@ -150,6 +150,8 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
       finderSetupTask = Task { await finderIntegration.prepare() }
       DropIslandController.shared.applySettings()
       WatchedFolderMonitor.shared.reload()
+      // Исходные программы для архивов запоминаются до того, как пользователь что-то изменит.
+      ArchiveAssociationsModel().captureInitialSnapshotIfNeeded()
       hideWindowsAfterLoginLaunch()
     }
   }
