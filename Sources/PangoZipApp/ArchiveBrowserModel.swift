@@ -1226,6 +1226,10 @@ struct QuickLookPreview: NSViewRepresentable {
   /// Передаёт Quick Look только уже извлечённый локальный файл.
   func makeNSView(context: Context) -> QLPreviewView {
     let view = QLPreviewView(frame: .zero, style: .normal) ?? QLPreviewView()
+    // По умолчанию Quick Look сам закрывает view вместе с окном. SwiftUI может пережить это
+    // окно и снова вызвать updateNSView, а установка previewItem в закрытый view — assert и abort.
+    // Поэтому закрываем view только в dismantleNSView, когда SwiftUI окончательно его убирает.
+    view.shouldCloseWithWindow = false
     view.previewItem = url as NSURL
     return view
   }
@@ -1233,6 +1237,10 @@ struct QuickLookPreview: NSViewRepresentable {
   func updateNSView(_ nsView: QLPreviewView, context: Context) {
     guard nsView.previewItem?.previewItemURL != url else { return }
     nsView.previewItem = url as NSURL
+  }
+  /// Освобождает ресурсы Quick Look после того, как SwiftUI больше не будет обращаться к view.
+  static func dismantleNSView(_ nsView: QLPreviewView, coordinator: ()) {
+    nsView.close()
   }
 }
 

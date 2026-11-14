@@ -13,3 +13,7 @@ HANDOFF-*.md
 
 __pycache__/
 *.pyc
+
+# Локальные данные агентов и Serena.
+.claude/
+.serena/
