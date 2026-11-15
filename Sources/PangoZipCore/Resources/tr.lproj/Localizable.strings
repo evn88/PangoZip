@@ -409,3 +409,6 @@
 "Перемещать исходные файлы в Корзину после сжатия" = "Sıkıştırmadan sonra kaynak dosyaları Çöp Sepeti’ne taşı";
 "Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Ayrı arşivleri hızlı ZIP ve 7z komutları ile ada oluşturur. Kaynak dosyalar yalnızca hazır arşiv doğrulandıktan sonra Çöp Sepeti’ne taşınır.";
 "Не удалось переместить исходные файлы в Корзину: %1$@" = "Kaynak dosyalar Çöp Sepeti’ne taşınamadı: %1$@";
+"PangoZip назван в честь панголинов. Все восемь их видов находятся под угрозой исчезновения." = "PangoZip adını pangolinlerden alır. Sekiz pangolin türünün tümü yok olma tehlikesiyle karşı karşıya.";
+"Как им помочь: Pangolin Crisis Fund" = "Onlara nasıl yardım edilir: Pangolin Crisis Fund";
+"Независимый фонд Wildlife Conservation Network. Откроется в браузере." = "Wildlife Conservation Network'ün bağımsız fonu. Tarayıcıda açılır.";
