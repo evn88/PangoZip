@@ -6,6 +6,10 @@ enum SupportConfiguration {
   /// Официальный сайт приложения со страницей загрузки.
   static let websiteURL = URL(string: "https://pangozip.app")!
 
+  /// Независимый фонд Wildlife Conservation Network; PangoZip не собирает для него деньги.
+  static let pangolinFundURL = URL(
+    string: "https://wildnet.org/wildlife-fund/pangolin-crisis-fund/")!
+
   static var pageURL: URL? {
     pageURL(infoDictionary: Bundle.main.infoDictionary)
   }

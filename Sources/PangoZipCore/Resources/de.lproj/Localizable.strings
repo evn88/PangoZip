@@ -409,3 +409,6 @@
 "Перемещать исходные файлы в Корзину после сжатия" = "Quelldateien nach dem Komprimieren in den Papierkorb legen";
 "Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Einzelne Archive erstellen die Schnellbefehle ZIP und 7z sowie die Insel. Quelldateien werden erst in den Papierkorb gelegt, nachdem das fertige Archiv geprüft wurde.";
 "Не удалось переместить исходные файлы в Корзину: %1$@" = "Die Quelldateien konnten nicht in den Papierkorb gelegt werden: %1$@";
+"PangoZip назван в честь панголинов. Все восемь их видов находятся под угрозой исчезновения." = "PangoZip ist nach den Schuppentieren (Pangolinen) benannt. Alle acht Arten sind vom Aussterben bedroht.";
+"Как им помочь: Pangolin Crisis Fund" = "So können Sie helfen: Pangolin Crisis Fund";
+"Независимый фонд Wildlife Conservation Network. Откроется в браузере." = "Ein unabhängiger Fonds des Wildlife Conservation Network. Wird im Browser geöffnet.";

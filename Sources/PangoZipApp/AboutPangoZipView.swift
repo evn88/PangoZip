@@ -40,6 +40,23 @@ struct AboutPangoZipView: View {
         .buttonStyle(.borderedProminent)
         .help(L10n.tr("Открыть страницу поддержки в браузере"))
       }
+      Divider()
+      // Тихая заметка о тёзках приложения: без кнопки и без призыва к пожертвованию.
+      VStack(spacing: 6) {
+        Text(
+          L10n.tr(
+            "PangoZip назван в честь панголинов. Все восемь их видов находятся под угрозой исчезновения."
+          )
+        )
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .foregroundStyle(.secondary)
+        Link(destination: SupportConfiguration.pangolinFundURL) {
+          Text(L10n.tr("Как им помочь: Pangolin Crisis Fund"))
+        }
+        .help(L10n.tr("Независимый фонд Wildlife Conservation Network. Откроется в браузере."))
+      }
+      .font(.caption)
     }
     .padding(28)
     .frame(width: 340)
