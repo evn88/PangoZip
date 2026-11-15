@@ -14,6 +14,7 @@ struct ArchiveBrowserView: View {
   @State private var showsMetadata = false
   @State private var showsOperationQueue = false
   @FocusState private var searchFocused: Bool
+  @AppStorage(KeychainArchivePasswords.enabledKey) private var remembersPasswords = false
 
   var body: some View {
     ArchiveSplitView(
@@ -200,6 +201,20 @@ struct ArchiveBrowserView: View {
         .disabled(!model.canAct)
       }
       ArchiveColumnsMenu()
+      // Пункт есть только у ZIP, чьи имена пришлось перекодировать из старой кодировки.
+      if let current = model.session?.nameEncoding, !model.isNestedArchive {
+        Menu(L10n.tr("Кодировка имён файлов")) {
+          Button(L10n.tr("Автоматически")) { model.setNameEncoding(nil) }
+          Divider()
+          ForEach(ArchiveNameEncoding.all) { encoding in
+            Toggle(
+              encoding.title,
+              isOn: Binding(
+                get: { encoding == current }, set: { _ in model.setNameEncoding(encoding) }))
+          }
+        }
+        .disabled(!model.canAct)
+      }
     } label: {
       Label(L10n.tr("Ещё действия"), systemImage: "ellipsis")
     }
@@ -489,6 +504,7 @@ struct ArchiveBrowserView: View {
       SecureField(L10n.tr("Пароль"), text: $model.password)
         .textFieldStyle(.roundedBorder).onSubmit { model.retryWithPassword() }
         .accessibilityLabel(L10n.tr("Пароль архива"))
+      Toggle(L10n.tr("Запомнить пароль в Связке ключей"), isOn: $remembersPasswords)
       HStack {
         Spacer()
         Button(L10n.tr("Отмена"), role: .cancel, action: model.cancelPasswordPrompt)

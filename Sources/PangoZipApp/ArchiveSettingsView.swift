@@ -46,6 +46,18 @@ enum ArchivePreferences {
       ?? CompressionProfile.customID
   }
 
+  /// Отдельный архив на каждый объект в быстрых командах и на острове.
+  static var separatesArchives: Bool {
+    (UserDefaults(suiteName: "app.pangozip.desktop") ?? .standard)
+      .bool(forKey: "compressionSeparateArchives")
+  }
+
+  /// Перемещать исходники в Корзину после успешного сжатия.
+  static var trashesSources: Bool {
+    (UserDefaults(suiteName: "app.pangozip.desktop") ?? .standard)
+      .bool(forKey: "compressionTrashSources")
+  }
+
   /// Служебные файлы систем по умолчанию не попадают в создаваемые архивы.
   static var excludesSystemFiles: Bool {
     let defaults = UserDefaults(suiteName: "app.pangozip.desktop") ?? .standard
@@ -64,6 +76,9 @@ struct ArchiveSettingsView: View {
   @AppStorage("compressionEncryptNames") private var encryptsFileNames = true
   @AppStorage("compressionVolumeSize") private var volumeSizeMB = 0
   @AppStorage("excludeSystemFiles") private var excludesSystemFiles = true
+  @AppStorage("compressionSeparateArchives") private var separatesArchives = false
+  @AppStorage("compressionTrashSources") private var trashesSources = false
+  @AppStorage(KeychainArchivePasswords.enabledKey) private var remembersPasswords = false
   @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
   @AppStorage(OperationNotificationPolicy.defaultsKey) private var notifiesOnCompletion = true
   @AppStorage(AppearanceMode.storageKey) private var appearanceMode = AppearanceMode.system.rawValue
@@ -112,6 +127,17 @@ struct ArchiveSettingsView: View {
         )
         .font(.caption).foregroundStyle(.secondary)
       }
+      Section {
+        Toggle(L10n.tr("Отдельный архив для каждого объекта"), isOn: $separatesArchives)
+        Toggle(
+          L10n.tr("Перемещать исходные файлы в Корзину после сжатия"), isOn: $trashesSources)
+        Text(
+          L10n.tr(
+            "Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива."
+          )
+        )
+        .font(.caption).foregroundStyle(.secondary)
+      }
     }
     .formStyle(.grouped)
   }
@@ -154,6 +180,16 @@ struct ArchiveSettingsView: View {
       }
       Section(L10n.tr("Уведомления")) {
         Toggle(L10n.tr("Уведомлять о завершении долгих операций"), isOn: $notifiesOnCompletion)
+      }
+      Section(L10n.tr("Пароли архивов")) {
+        Toggle(L10n.tr("Запомнить пароль в Связке ключей"), isOn: $remembersPasswords)
+        Text(
+          L10n.tr(
+            "Пароль сохраняется в Связке ключей macOS и подставляется при следующем открытии этого архива в окне PangoZip."
+          )
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        Button(L10n.tr("Забыть сохранённые пароли")) { KeychainArchivePasswords().removeAll() }
       }
       if let supportURL = SupportConfiguration.pageURL {
         DevelopmentSupportSection(pageURL: supportURL)

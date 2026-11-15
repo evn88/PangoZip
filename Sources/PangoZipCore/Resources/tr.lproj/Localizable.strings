@@ -400,3 +400,12 @@
 "PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip, arşivleri açan uygulamaları ilk açılışta kaydetti. Özgün ayarlara veya son on anlık görüntüden herhangi birine istediğiniz zaman dönebilirsiniz.";
 "Не удалось вернуть программу для %1$@: %2$@" = "%1$@ için uygulama geri yüklenemedi: %2$@";
 "Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "%1$@ için önceki uygulama bilinmiyor. Finder’da seçin: Bilgi Ver → Birlikte aç.";
+"Кодировка имён файлов" = "Dosya adı kodlaması";
+"Запомнить пароль в Связке ключей" = "Parolayı Anahtar Zinciri’nde anımsa";
+"Пароли архивов" = "Arşiv parolaları";
+"Забыть сохранённые пароли" = "Kayıtlı parolaları unut";
+"Пароль сохраняется в Связке ключей macOS и подставляется при следующем открытии этого архива в окне PangoZip." = "Parola macOS Anahtar Zinciri’nde saklanır ve bu arşivi PangoZip penceresinde bir sonraki açışınızda doldurulur.";
+"Отдельный архив для каждого объекта" = "Her öğe için ayrı arşiv";
+"Перемещать исходные файлы в Корзину после сжатия" = "Sıkıştırmadan sonra kaynak dosyaları Çöp Sepeti’ne taşı";
+"Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Ayrı arşivleri hızlı ZIP ve 7z komutları ile ada oluşturur. Kaynak dosyalar yalnızca hazır arşiv doğrulandıktan sonra Çöp Sepeti’ne taşınır.";
+"Не удалось переместить исходные файлы в Корзину: %1$@" = "Kaynak dosyalar Çöp Sepeti’ne taşınamadı: %1$@";

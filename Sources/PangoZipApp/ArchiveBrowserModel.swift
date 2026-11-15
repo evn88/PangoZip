@@ -149,7 +149,56 @@ final class ArchiveBrowserModel: ObservableObject {
   private var exportFeedbackID: UUID?
 
   /// Принимает отдельный сервис, чтобы сеанс и временные файлы принадлежали этой модели.
-  init(service: ArchiveService = ArchiveService()) { self.service = service }
+  private let passwords: any ArchivePasswordStoring
+  /// Запоминать ли введённый пароль; по умолчанию решает настройка пользователя.
+  private let remembersPasswords: () -> Bool
+  /// Кодировка имён, выбранная вручную для текущего архива; nil — автоопределение.
+  private var nameEncodingOverride: ArchiveNameEncoding?
+
+  init(
+    service: ArchiveService = ArchiveService(),
+    passwords: (any ArchivePasswordStoring)? = nil,
+    remembersPasswords: @escaping () -> Bool = { KeychainArchivePasswords.isEnabled }
+  ) {
+    self.service = service
+    self.passwords = passwords ?? KeychainArchivePasswords()
+    self.remembersPasswords = remembersPasswords
+  }
+
+  /// Заново открывает архив, читая имена в выбранной кодировке; nil возвращает автоопределение.
+  func setNameEncoding(_ encoding: ArchiveNameEncoding?) {
+    guard let url = session?.url, !isNestedArchive, canAct, queuedOperations.isEmpty else {
+      return
+    }
+    let current = password
+    run {
+      guard await self.closeCurrentSession() else { return }
+      self.password = current
+      self.nameEncodingOverride = encoding
+      await self.perform(.open(url))
+    }
+  }
+
+  /// Открывает архив; без введённого пароля пробует сохранённый в Связке ключей.
+  private func openSession(_ url: URL) async throws -> ArchiveSession {
+    do {
+      let result = try await service.open(
+        url, password: password, nameEncoding: nameEncodingOverride)
+      if !password.isEmpty, remembersPasswords() { passwords.save(password, for: url) }
+      return result
+    } catch ArchiveError.passwordRequired where password.isEmpty {
+      guard let saved = passwords.password(for: url) else { throw ArchiveError.passwordRequired }
+      do {
+        let result = try await service.open(
+          url, password: saved, nameEncoding: nameEncodingOverride)
+        password = saved
+        return result
+      } catch {
+        // Сохранённый пароль устарел: пользователь вводит новый в обычном запросе.
+        throw ArchiveError.passwordRequired
+      }
+    }
+  }
 
   var selectedPath: String? { selectedPaths.count == 1 ? selectedPaths.first : nil }
   var selectedEntry: ArchiveEntry? { session?.entries.first { $0.path == selectedPath } }
@@ -219,6 +268,7 @@ final class ArchiveBrowserModel: ObservableObject {
     run {
       guard await self.closeCurrentSession() else { return }
       self.password = suppliedPassword
+      self.nameEncodingOverride = nil
       await self.perform(.open(url))
     }
   }
@@ -249,6 +299,7 @@ final class ArchiveBrowserModel: ObservableObject {
         self.run {
           guard await self.closeCurrentSession() else { return }
           self.password = ""
+          self.nameEncodingOverride = nil
           self.pendingFinderFiles = urls
           await self.perform(.open(url))
         }
@@ -789,7 +840,7 @@ final class ArchiveBrowserModel: ObservableObject {
       case .open(let url):
         operationMessage = nil
         loadState = .loading
-        let result = try await service.open(url, password: password)
+        let result = try await openSession(url)
         if Task.isCancelled {
           try await service.close(result)
           loadState = .idle
@@ -814,12 +865,14 @@ final class ArchiveBrowserModel: ObservableObject {
         operationMessage = L10n.tr("Создаём архив…")
         let proposed = first.deletingLastPathComponent().appendingPathComponent(
           selection.archiveName + "." + format)
-        let result = try await service.createArchive(
+        let outcome = try await service.createArchives(
           from: urls, proposedURL: proposed, format: format, options: ArchivePreferences.options,
-          progress: progressHandler)
-        NSWorkspace.shared.activateFileViewerSelecting([result])
+          separately: ArchivePreferences.separatesArchives,
+          trashesSources: ArchivePreferences.trashesSources, progress: progressHandler)
+        NSWorkspace.shared.activateFileViewerSelecting(outcome.urls)
         operationMessage = L10n.tr(
-          "Создан архив: %1$@", String(describing: result.lastPathComponent))
+          "Создан архив: %1$@", String(describing: outcome.urls.last?.lastPathComponent ?? ""))
+        if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
       case .extract(let urls):
         await settlePreviews()
         var results: [URL] = []

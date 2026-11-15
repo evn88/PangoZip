@@ -400,3 +400,12 @@
 "PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip zapamiętał programy dla archiwów przy pierwszym uruchomieniu. W każdej chwili możesz wrócić do ustawień początkowych lub do dowolnej z dziesięciu ostatnich migawek.";
 "Не удалось вернуть программу для %1$@: %2$@" = "Nie udało się przywrócić programu dla %1$@: %2$@";
 "Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "Poprzedni program dla %1$@ jest nieznany. Wybierz go w Finderze: Informacje → Otwórz w programie.";
+"Кодировка имён файлов" = "Kodowanie nazw plików";
+"Запомнить пароль в Связке ключей" = "Zapamiętaj hasło w pęku kluczy";
+"Пароли архивов" = "Hasła archiwów";
+"Забыть сохранённые пароли" = "Zapomnij zapisane hasła";
+"Пароль сохраняется в Связке ключей macOS и подставляется при следующем открытии этого архива в окне PangoZip." = "Hasło jest zapisywane w pęku kluczy macOS i wstawiane przy następnym otwarciu tego archiwum w oknie PangoZip.";
+"Отдельный архив для каждого объекта" = "Osobne archiwum dla każdego obiektu";
+"Перемещать исходные файлы в Корзину после сжатия" = "Przenoś pliki źródłowe do Kosza po kompresji";
+"Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Osobne archiwa tworzą szybkie polecenia ZIP i 7z oraz wyspa. Pliki źródłowe trafiają do Kosza dopiero po sprawdzeniu gotowego archiwum.";
+"Не удалось переместить исходные файлы в Корзину: %1$@" = "Nie udało się przenieść plików źródłowych do Kosza: %1$@";

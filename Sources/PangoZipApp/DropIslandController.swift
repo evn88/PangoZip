@@ -532,9 +532,12 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private func perform(_ job: Job) async throws -> URL {
     let handler: ArchiveProgressHandler = { [weak self] value in await self?.receive(value) }
     if job.plan.action == .compress, let proposed = job.proposedURL {
-      return try await service.createArchive(
+      let outcome = try await service.createArchives(
         from: job.plan.urls, proposedURL: proposed, format: job.options.format,
-        options: job.options, progress: handler)
+        options: job.options, separately: ArchivePreferences.separatesArchives,
+        trashesSources: ArchivePreferences.trashesSources, progress: handler)
+      if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
+      return outcome.urls.last ?? proposed
     }
     var result = job.plan.urls[0]
     let preferences = ExtractionPreferences.load()

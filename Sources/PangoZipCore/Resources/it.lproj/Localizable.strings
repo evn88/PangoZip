@@ -400,3 +400,12 @@
 "PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip ha memorizzato le app per gli archivi al primo avvio. Puoi tornare in qualsiasi momento alle impostazioni originali o a una delle ultime dieci istantanee.";
 "Не удалось вернуть программу для %1$@: %2$@" = "Impossibile ripristinare l’app per %1$@: %2$@";
 "Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "L’app precedente per %1$@ è sconosciuta. Sceglila nel Finder: Ottieni informazioni → Apri con.";
+"Кодировка имён файлов" = "Codifica dei nomi dei file";
+"Запомнить пароль в Связке ключей" = "Ricorda la password nel portachiavi";
+"Пароли архивов" = "Password degli archivi";
+"Забыть сохранённые пароли" = "Dimentica le password salvate";
+"Пароль сохраняется в Связке ключей macOS и подставляется при следующем открытии этого архива в окне PangoZip." = "La password viene salvata nel portachiavi di macOS e inserita alla prossima apertura di questo archivio nella finestra di PangoZip.";
+"Отдельный архив для каждого объекта" = "Un archivio separato per ogni elemento";
+"Перемещать исходные файлы в Корзину после сжатия" = "Sposta i file originali nel cestino dopo la compressione";
+"Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Gli archivi separati vengono creati dai comandi rapidi ZIP e 7z e dall’isola. I file originali vengono spostati nel cestino solo dopo la verifica dell’archivio finito.";
+"Не удалось переместить исходные файлы в Корзину: %1$@" = "Impossibile spostare i file originali nel cestino: %1$@";

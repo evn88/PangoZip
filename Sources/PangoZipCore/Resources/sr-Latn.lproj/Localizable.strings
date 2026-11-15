@@ -400,3 +400,12 @@
 "PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip je pri prvom pokretanju zapamtio aplikacije za arhive. Na početna podešavanja i na bilo koji od deset poslednjih snimaka možete se vratiti u svakom trenutku.";
 "Не удалось вернуть программу для %1$@: %2$@" = "Nije moguće vratiti aplikaciju za %1$@: %2$@";
 "Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "Prethodna aplikacija za %1$@ nije poznata. Izaberite je u Finderu: Informacije → Otvori pomoću.";
+"Кодировка имён файлов" = "Kodiranje imena datoteka";
+"Запомнить пароль в Связке ключей" = "Zapamti lozinku u Privesku ključeva";
+"Пароли архивов" = "Lozinke arhiva";
+"Забыть сохранённые пароли" = "Zaboravi sačuvane lozinke";
+"Пароль сохраняется в Связке ключей macOS и подставляется при следующем открытии этого архива в окне PangoZip." = "Lozinka se čuva u macOS Privesku ključeva i popunjava pri sledećem otvaranju ove arhive u prozoru PangoZip-a.";
+"Отдельный архив для каждого объекта" = "Zasebna arhiva za svaku stavku";
+"Перемещать исходные файлы в Корзину после сжатия" = "Premesti izvorne datoteke u Otpad nakon kompresije";
+"Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Zasebne arhive prave brze komande ZIP i 7z i ostrvo. Izvorne datoteke se premeštaju u Otpad tek nakon provere gotove arhive.";
+"Не удалось переместить исходные файлы в Корзину: %1$@" = "Nije moguće premestiti izvorne datoteke u Otpad: %1$@";

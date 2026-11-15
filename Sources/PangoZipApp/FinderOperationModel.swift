@@ -204,6 +204,12 @@ final class FinderOperationModel: ObservableObject {
     return true
   }
 
+  /// Запоминает результат для острова; неудача с Корзиной показывается после готового архива.
+  private func finishCreation(_ outcome: ArchiveCreationOutcome) throws {
+    resultURL = outcome.urls.last
+    if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
+  }
+
   /// Проверяет отмену до и после ожидания ввода, не сохраняя пароль между архивами.
   private func askPassword(for url: URL) async throws -> String {
     try Task.checkCancellation()
@@ -279,9 +285,12 @@ final class FinderOperationModel: ObservableObject {
         creationPasswordConfirmation = ""
       }
       showIsland(title: destination.lastPathComponent)
-      resultURL = try await service.createArchive(
-        from: selection.urls, proposedURL: destination, format: options.format, options: options,
-        password: creationPassword, progress: progressHandler)
+      // Имя архива выбрано в диалоге, поэтому он один; исходники убираются по общей настройке.
+      try await finishCreation(
+        service.createArchives(
+          from: selection.urls, proposedURL: destination, format: options.format,
+          options: options, password: creationPassword, separately: false,
+          trashesSources: ArchivePreferences.trashesSources, progress: progressHandler))
     case .createZip, .create7z:
       let selection = FinderSelection(urls: request.urls)
       guard let first = selection.urls.first else { throw ArchiveError.invalidOperation }
@@ -292,9 +301,11 @@ final class FinderOperationModel: ObservableObject {
       let proposed = first.deletingLastPathComponent().appendingPathComponent(
         selection.archiveName + "." + format)
       showIsland(title: proposed.lastPathComponent)
-      resultURL = try await service.createArchive(
-        from: selection.urls, proposedURL: proposed, format: format, options: options,
-        progress: progressHandler)
+      try await finishCreation(
+        service.createArchives(
+          from: selection.urls, proposedURL: proposed, format: format, options: options,
+          separately: ArchivePreferences.separatesArchives,
+          trashesSources: ArchivePreferences.trashesSources, progress: progressHandler))
     case .extract, .extractHere, .extractFiles, .test:
       var destination: URL?
       if request.action == .extractFiles {

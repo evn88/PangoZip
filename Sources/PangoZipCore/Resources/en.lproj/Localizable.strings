@@ -400,3 +400,12 @@
 "PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент." = "PangoZip remembered the apps for archives on first launch. You can return to the original settings or to any of the ten most recent snapshots at any time.";
 "Не удалось вернуть программу для %1$@: %2$@" = "Could not restore the app for %1$@: %2$@";
 "Прежняя программа для %1$@ неизвестна. Выберите её в Finder: «Свойства» → «Открывать в программе»." = "The previous app for %1$@ is unknown. Choose it in Finder: Get Info → Open with.";
+"Кодировка имён файлов" = "File name encoding";
+"Запомнить пароль в Связке ключей" = "Remember password in Keychain";
+"Пароли архивов" = "Archive passwords";
+"Забыть сохранённые пароли" = "Forget saved passwords";
+"Пароль сохраняется в Связке ключей macOS и подставляется при следующем открытии этого архива в окне PangoZip." = "The password is stored in the macOS Keychain and filled in the next time you open this archive in the PangoZip window.";
+"Отдельный архив для каждого объекта" = "Separate archive for each item";
+"Перемещать исходные файлы в Корзину после сжатия" = "Move source files to the Trash after compression";
+"Отдельные архивы создают быстрые команды ZIP и 7z и остров. Исходные файлы перемещаются в Корзину только после проверки готового архива." = "Separate archives are created by the quick ZIP and 7z commands and by the island. Source files are moved to the Trash only after the finished archive has been verified.";
+"Не удалось переместить исходные файлы в Корзину: %1$@" = "Could not move the source files to the Trash: %1$@";
