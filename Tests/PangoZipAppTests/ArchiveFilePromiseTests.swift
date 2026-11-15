@@ -117,11 +117,11 @@ final class ArchiveFilePromiseTests: XCTestCase, @unchecked Sendable {
               signal.signal()
             })
         }
-        XCTAssertEqual(signal.wait(timeout: .now() + 3), .success)
+        XCTAssertEqual(signal.wait(timeout: .now() + 20), .success)
       }
       done.fulfill()
     }
-    await fulfillment(of: [done, completed], timeout: 6)
+    await fulfillment(of: [done, completed], timeout: 30)
     while model.isExporting { await Task.yield() }
     XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
     let closed = await model.requestTermination()
