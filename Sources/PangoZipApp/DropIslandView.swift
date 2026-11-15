@@ -8,7 +8,6 @@ import SwiftUI
 struct DropIslandView: View {
   @ObservedObject var model: DropIslandModel
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @AppStorage(GlassStyle.storageKey) private var glassStyle = GlassStyle.legacy
   @State private var glintTrigger = 0
   @State private var drifts = false
 
@@ -86,13 +85,8 @@ struct DropIslandView: View {
   /// Слои стекла: размытие фона, тонировка, пятна света, свечение хода операции и блики.
   private func glass(_ shape: RoundedRectangle, size: CGSize) -> some View {
     ZStack {
-      if glassStyle == .legacy {
-        shape.fill(.ultraThinMaterial)
-        shape.fill(Self.tint)
-      } else {
-        // Системное стекло с той же тонировкой: белый текст острова должен оставаться читаемым.
-        Color.clear.glassEffect(.regular.tint(Self.tint), in: shape)
-      }
+      shape.fill(.ultraThinMaterial)
+      shape.fill(Self.tint)
       ZStack {
         Circle().fill(Self.skyGlow.opacity(0.30)).frame(width: 190, height: 190)
           .offset(x: drifts ? -50 : -90, y: drifts ? -14 : 10)
