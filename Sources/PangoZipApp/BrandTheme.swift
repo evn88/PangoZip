@@ -118,6 +118,13 @@ final class GlassHeaderView: NSView {
     spotlight.opacity = 0
     for layer in [tint, sheen, spotlight, hairline] { overlay.layer?.addSublayer(layer) }
     overlay.layer?.masksToBounds = true
+    // С .inVisibleRect AppKit сам подгоняет область под видимую часть шапки,
+    // поэтому её не нужно пересоздавать в updateTrackingAreas.
+    addTrackingArea(
+      NSTrackingArea(
+        rect: .zero,
+        options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+        owner: self))
     setAccessibilityElement(false)
     updateTint()
   }
@@ -149,16 +156,6 @@ final class GlassHeaderView: NSView {
     }
   }
 
-  override func updateTrackingAreas() {
-    super.updateTrackingAreas()
-    trackingAreas.forEach(removeTrackingArea)
-    addTrackingArea(
-      NSTrackingArea(
-        rect: .zero,
-        options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-        owner: self))
-  }
-
   override func mouseEntered(with event: NSEvent) { moveSpotlight(event, isVisible: true) }
 
   override func mouseMoved(with event: NSEvent) { moveSpotlight(event, isVisible: true) }
@@ -166,13 +163,16 @@ final class GlassHeaderView: NSView {
   override func mouseExited(with event: NSEvent) { moveSpotlight(event, isVisible: false) }
 
   /// Блик следует за курсором без анимации положения; плавно меняется только его яркость.
+  /// При уменьшении движения блик гаснет, даже если режим включили, пока он был виден.
   private func moveSpotlight(_ event: NSEvent, isVisible: Bool) {
-    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-    let x = convert(event.locationInWindow, from: nil).x
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    spotlight.position = CGPoint(x: x, y: bounds.maxY)
-    CATransaction.commit()
+    let isVisible = isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    if isVisible {
+      let x = convert(event.locationInWindow, from: nil).x
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      spotlight.position = CGPoint(x: x, y: bounds.maxY)
+      CATransaction.commit()
+    }
     spotlight.opacity = isVisible ? 1 : 0
   }
 }
