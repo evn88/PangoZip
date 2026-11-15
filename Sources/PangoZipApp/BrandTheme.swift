@@ -72,6 +72,34 @@ extension NSColor {
   }
 }
 
+/// Прототип для сравнения вживую: самодельное стекло, системное стекло с тонировкой бренда
+/// или полностью системная шапка. Подписи не переводятся, пока вариант не выбран.
+enum GlassStyle: String, CaseIterable, Identifiable {
+  case legacy, tinted, system
+
+  static let storageKey = "prototypeGlassStyle"
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .legacy: "Текущее"
+    case .tinted: "Синее стекло"
+    case .system: "Системное"
+    }
+  }
+}
+
+/// Шапка из системного Liquid Glass с синей тонировкой бренда; блики рисует сама система.
+struct SystemGlassHeaderBackground: View {
+  var body: some View {
+    Color.clear
+      .glassEffect(.regular.tint(Brand.header), in: .rect)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+  }
+}
+
 /// Шапка окна из матового стекла: сквозь синюю тонировку видно то, что лежит под окном.
 struct GlassHeaderBackground: NSViewRepresentable {
   func makeNSView(context: Context) -> GlassHeaderView { GlassHeaderView() }

@@ -82,6 +82,7 @@ struct ArchiveSettingsView: View {
   @AppStorage("hideSystemFiles") private var hidesSystemFiles = true
   @AppStorage(OperationNotificationPolicy.defaultsKey) private var notifiesOnCompletion = true
   @AppStorage(AppearanceMode.storageKey) private var appearanceMode = AppearanceMode.system.rawValue
+  @AppStorage(GlassStyle.storageKey) private var glassStyle = GlassStyle.legacy
 
   var body: some View {
     // Вкладки идут от повседневного к редкому: общий вид, действия с архивами, связь с системой.
@@ -168,6 +169,12 @@ struct ArchiveSettingsView: View {
         }
         .pickerStyle(.segmented).labelsHidden()
         .onChange(of: appearanceMode) { _, mode in AppearanceMode.apply(mode) }
+        // Прототип: переключатель стекла для сравнения вариантов, до выбора не локализуется.
+        Picker(selection: $glassStyle) {
+          ForEach(GlassStyle.allCases) { style in Text(verbatim: style.title).tag(style) }
+        } label: {
+          Text(verbatim: "Стекло (прототип)")
+        }
       }
       Section(L10n.tr("Просмотр архивов")) {
         Toggle(L10n.tr("Скрывать служебные файлы систем"), isOn: $hidesSystemFiles)

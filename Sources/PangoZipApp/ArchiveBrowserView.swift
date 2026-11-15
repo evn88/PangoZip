@@ -15,6 +15,7 @@ struct ArchiveBrowserView: View {
   @State private var showsOperationQueue = false
   @FocusState private var searchFocused: Bool
   @AppStorage(KeychainArchivePasswords.enabledKey) private var remembersPasswords = false
+  @AppStorage(GlassStyle.storageKey) private var glassStyle = GlassStyle.legacy
 
   var body: some View {
     ArchiveSplitView(
@@ -27,15 +28,23 @@ struct ArchiveBrowserView: View {
       primaryToolbar
       secondaryToolbar
     }
-    .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-    .toolbarColorScheme(.dark, for: .windowToolbar)
+    .toolbarBackgroundVisibility(
+      glassStyle == .system ? .automatic : .hidden, for: .windowToolbar
+    )
+    .toolbarColorScheme(glassStyle == .system ? nil : .dark, for: .windowToolbar)
     .background {
       // Стеклянная шапка занимает ровно высоту панели инструментов; сквозь неё виден фон за окном.
       GeometryReader { proxy in
-        GlassHeaderBackground()
-          .frame(height: proxy.safeAreaInsets.top)
-          .frame(maxHeight: .infinity, alignment: .top)
-          .ignoresSafeArea(edges: .top)
+        Group {
+          switch glassStyle {
+          case .legacy: GlassHeaderBackground()
+          case .tinted: SystemGlassHeaderBackground()
+          case .system: EmptyView()
+          }
+        }
+        .frame(height: proxy.safeAreaInsets.top)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(edges: .top)
       }
     }
     .onExitCommand { model.cancelCurrentOperation() }
@@ -84,7 +93,9 @@ struct ArchiveBrowserView: View {
         }
       }
       // Длинное имя архива сокращается в середине и не вытесняет кнопки; полное имя в подсказке.
-      .foregroundStyle(.white).padding(.horizontal, 4)
+      // У полностью системной шапки фон светлый в светлой теме, поэтому цвет текста системный.
+      .foregroundStyle(glassStyle == .system ? AnyShapeStyle(.primary) : AnyShapeStyle(.white))
+      .padding(.horizontal, 4)
       .frame(maxWidth: 340, alignment: .leading).help(windowTitle)
       .accessibilityElement(children: .combine)
     }
