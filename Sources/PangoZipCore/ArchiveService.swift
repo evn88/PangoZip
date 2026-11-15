@@ -34,6 +34,9 @@ public actor ArchiveService {
 
   private struct SessionState: Sendable {
     let url: URL
+    /// Файл, который читает движок: сам архив либо его копия с именами в UTF-8.
+    let source: URL
+    let nameEncoding: ArchiveNameEncoding?
     var fingerprint: FileFingerprint
     var digest: Data?
     var descriptor: Descriptor
@@ -68,7 +71,10 @@ public actor ArchiveService {
   }
 
   /// Создаёт сеанс только для обычного файла, неизменившегося за время чтения списка.
-  public func open(_ url: URL, password: String = "") async throws -> ArchiveSession {
+  /// Имена старых ZIP перекодируются в приватной копии; `nameEncoding` задаёт кодировку вручную.
+  public func open(
+    _ url: URL, password: String = "", nameEncoding: ArchiveNameEncoding? = nil
+  ) async throws -> ArchiveSession {
     guard url.isFileURL else { throw ArchiveError.invalidArchive }
     // Сначала загружаем из облака: иначе чтение меняет метаданные и отпечаток расходится.
     try await CloudFiles.materializeArchive(url)
@@ -78,12 +84,21 @@ public actor ArchiveService {
     let initialGeneration = generation
     let directory = try workspace.sessionDirectory(id)
     do {
-      let descriptor = try await readArchive(url, password: password, in: directory)
+      let repaired = try Self.repairNames(of: url, in: directory, preferred: nameEncoding)
+      var descriptor = try await readArchive(
+        repaired?.url ?? url, password: password, in: directory)
+      if repaired != nil {
+        // Изменение записало бы в исходный архив имена из копии: такой сеанс только для чтения.
+        descriptor = Descriptor(
+          format: descriptor.format, canModify: false, isMultipart: descriptor.isMultipart,
+          volumeCount: descriptor.volumeCount, entries: descriptor.entries)
+      }
       try Task.checkCancellation()
       guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
       guard try fingerprint == FileFingerprint(url) else { throw ArchiveError.archiveChanged }
       let state = SessionState(
-        url: url, fingerprint: fingerprint, descriptor: descriptor,
+        url: url, source: repaired?.url ?? url, nameEncoding: repaired?.encoding,
+        fingerprint: fingerprint, descriptor: descriptor,
         encryption: EncryptionPolicy(
           format: descriptor.format, entries: descriptor.entries, password: password),
         entries: Dictionary(uniqueKeysWithValues: descriptor.entries.map { ($0.path, $0) }))
@@ -118,7 +133,7 @@ public actor ArchiveService {
       let secret = try EnginePassword.reading(password)
       try await runner().run(
         arguments: ["x", "-so", "-spd", "-ssc", "-y", "-bso0", "-bsp0"] + secret.arguments + [
-          "--", state.url.path, entry.path,
+          "--", state.source.path, entry.path,
         ],
         input: secret.input, outputURL: output, limit: previewLimit)
       try Task.checkCancellation()
@@ -540,6 +555,27 @@ public actor ArchiveService {
       .flatMap { UInt64($0.dropFirst(5).trimmingCharacters(in: .whitespaces)) }
   }
 
+  /// Для ZIP с именами в старой кодировке пишет в папку сеанса копию с именами в UTF-8.
+  /// nil — исправлять нечего либо архив устроен сложнее, чем умеет `ZipNameRepair`.
+  private static func repairNames(
+    of url: URL, in directory: URL, preferred: ArchiveNameEncoding?
+  ) throws -> (url: URL, encoding: ArchiveNameEncoding)? {
+    guard let names = ZipNameRepair.legacyNames(in: url),
+      let encoding = preferred ?? ArchiveNameEncoding.detect(names)
+    else { return nil }
+    let copy = directory.appendingPathComponent("names-" + UUID().uuidString + ".zip")
+    do {
+      try ZipNameRepair.rewrite(url, to: copy, using: encoding)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      // Имена не укладываются в выбранную кодировку: архив открывается как есть.
+      try? FileManager.default.removeItem(at: copy)
+      return nil
+    }
+    return (copy, encoding)
+  }
+
   private func readArchive(_ url: URL, password: String, in directory: URL) async throws
     -> Descriptor
   {
@@ -592,7 +628,8 @@ public actor ArchiveService {
     ArchiveSession(
       id: id, url: state.url, entries: state.descriptor.entries,
       roots: try ArchiveListing.tree(from: state.descriptor.entries),
-      format: state.descriptor.format, canModify: state.descriptor.canModify)
+      format: state.descriptor.format, canModify: state.descriptor.canModify,
+      nameEncoding: state.nameEncoding)
   }
 
   /// Подтверждает принадлежность сеанса и неизменность исходного файла перед продолжением операции.
@@ -831,7 +868,7 @@ extension ArchiveService {
     let output = transaction.appendingPathComponent("contents")
     try FileManager.default.createDirectory(
       at: output, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-    var source = url
+    var source = state.source
     var descriptor = state.descriptor
     var verificationStart = 0.0
     // В tar.gz/tgz и аналогах сначала снимаем слой сжатия, затем извлекаем TAR.
@@ -976,7 +1013,7 @@ extension ArchiveService {
     defer { try? workspace.removeTransaction(transaction) }
     let output = transaction.appendingPathComponent("contents")
     try await extractEntries(
-      entries, from: state.url, archiveDescriptor: state.descriptor, to: output,
+      entries, from: state.source, archiveDescriptor: state.descriptor, to: output,
       in: transaction, password: password, quarantineSource: state.url,
       maximumBytes: maximumBytes, reporter: reporter, start: 0)
     let workload = try ArchiveWorkload(entries: entries)
@@ -1025,7 +1062,7 @@ extension ArchiveService {
     defer { try? workspace.removeTransaction(transaction) }
     let contents = transaction.appendingPathComponent("contents")
     try await extractEntries(
-      entries, from: state.url, archiveDescriptor: state.descriptor, to: contents,
+      entries, from: state.source, archiveDescriptor: state.descriptor, to: contents,
       in: transaction, password: password, quarantineSource: state.url,
       maximumBytes: maximumBytes, reporter: reporter, start: 0)
     let output = contents.appendingPathComponent(path)
@@ -1209,7 +1246,7 @@ extension ArchiveService {
         }
       }
       try await extractFile(
-        entry, from: state.url, to: output, password: password, progress: extractProgress)
+        entry, from: state.source, to: output, password: password, progress: extractProgress)
       let record = try await ArchiveChecksums.compute(
         fileAt: output, id: name, name: name, progress: hashProgress)
       try? FileManager.default.removeItem(at: output)

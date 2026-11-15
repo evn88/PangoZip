@@ -50,7 +50,14 @@ struct CompressionSettingsFields: View {
   var levelTitle = L10n.tr("Уровень сжатия")
   var solidTitle = L10n.tr("Сплошное сжатие")
 
-  private static let volumePresets = [10, 25, 100, 500, 1000, 4000]
+  /// Размер тома в мегабайтах 7-Zip и носитель или ограничение, под которое он подобран.
+  private static let volumePresets: [(size: Int, note: String?)] = [
+    (10, nil), (25, "e-mail"), (100, nil), (700, "CD"), (1000, nil), (2047, "FAT16"),
+    (4095, "FAT32"), (4480, "DVD"), (8100, "DVD DL"), (23800, "Blu-ray"),
+  ]
+  private static let customVolumeTag = -1
+  /// Пользователь выбрал «Другой размер…», даже если введённое число совпало с готовым.
+  @State private var isCustomVolume = false
 
   var body: some View {
     Picker(L10n.tr("Профиль"), selection: profileSelection) {
@@ -88,13 +95,18 @@ struct CompressionSettingsFields: View {
         L10n.tr("Для 7z с паролем: скрывает не только содержимое, но и список файлов в архиве.")
       )
       .disabled(!CompressionOptions.supportsFileNameEncryption(format))
-    Picker(L10n.tr("Размер тома"), selection: manual($volumeSizeMB)) {
+    Picker(L10n.tr("Размер тома"), selection: volumeSelection) {
       Text(L10n.tr("Один файл")).tag(0)
-      ForEach(volumeChoices, id: \.self) {
-        Text(L10n.tr("%1$@ МБ", String(describing: $0))).tag($0)
+      ForEach(Self.volumePresets, id: \.size) { preset in
+        Text(Self.volumeTitle(preset.size, note: preset.note)).tag(preset.size)
       }
+      Text(L10n.tr("Другой размер…")).tag(Self.customVolumeTag)
     }
     .disabled(!CompressionOptions.supportsVolumes(format))
+    if showsCustomVolume {
+      TextField(L10n.tr("Размер тома, МБ"), value: customVolumeSize, format: .number)
+        .disabled(!CompressionOptions.supportsVolumes(format))
+    }
   }
 
   private static var solidHelp: String {
@@ -103,9 +115,37 @@ struct CompressionSettingsFields: View {
     )
   }
 
-  /// Готовые размеры плюс текущее значение, если оно пришло из профиля или старых настроек.
-  private var volumeChoices: [Int] {
-    Array(Set(Self.volumePresets + (volumeSizeMB > 0 ? [volumeSizeMB] : []))).sorted()
+  private static func volumeTitle(_ size: Int, note: String?) -> String {
+    let title = L10n.tr("%1$@ МБ", size.formatted())
+    return note.map { title + " (" + $0 + ")" } ?? title
+  }
+
+  /// Поле своего размера видно и для значения не из списка — из профиля или старых настроек.
+  private var showsCustomVolume: Bool {
+    isCustomVolume
+      || (volumeSizeMB > 0 && !Self.volumePresets.contains { $0.size == volumeSizeMB })
+  }
+
+  private var volumeSelection: Binding<Int> {
+    Binding(
+      get: { showsCustomVolume ? Self.customVolumeTag : volumeSizeMB },
+      set: { choice in
+        isCustomVolume = choice == Self.customVolumeTag
+        if !isCustomVolume {
+          manual($volumeSizeMB).wrappedValue = choice
+        } else if volumeSizeMB == 0 {
+          manual($volumeSizeMB).wrappedValue = 100
+        }
+      })
+  }
+
+  /// Свой размер держится в допустимых пределах: ноль означал бы «один файл».
+  private var customVolumeSize: Binding<Int> {
+    Binding(
+      get: { volumeSizeMB },
+      set: {
+        manual($volumeSizeMB).wrappedValue = min(max(1, $0), CompressionOptions.maximumVolumeSizeMB)
+      })
   }
 
   /// Ручное изменение параметра сбрасывает профиль на «Свой».

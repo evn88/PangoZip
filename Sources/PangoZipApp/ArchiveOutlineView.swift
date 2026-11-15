@@ -1,5 +1,6 @@
 import AppKit
 import PangoZipCore
+import QuickLookUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -57,6 +58,9 @@ struct ArchiveOutlineView: NSViewRepresentable {
     NotificationCenter.default.addObserver(
       context.coordinator, selector: #selector(Coordinator.visibleWidthChanged(_:)),
       name: NSView.frameDidChangeNotification, object: scroll.contentView)
+    let model = model
+    outline.canQuickLook = { [weak model] in model?.canQuickLook == true }
+    outline.quickLookChanged = { [weak model] isOpen in model?.setQuickLookOpen(isOpen) }
     context.coordinator.outline = outline
     context.coordinator.update(self)
     return scroll
@@ -89,6 +93,8 @@ struct ArchiveOutlineView: NSViewRepresentable {
     private var fittedWidth: CGFloat?
     private var dragRoots: Set<String> = []
     private var dragSelection: Set<String> = []
+    /// До этого момента строки только что открытого архива проявляются каскадом.
+    private var cascadeDeadline: CFTimeInterval = 0
     private static let dateFormatter: DateFormatter = {
       let formatter = DateFormatter()
       formatter.dateStyle = .short
@@ -189,12 +195,16 @@ struct ArchiveOutlineView: NSViewRepresentable {
     func update(_ newParent: ArchiveOutlineView) {
       parent = newParent
       guard let outline else { return }
+      (outline as? InteractiveOutlineView)?.quickLookURL = parent.model.previewURL
       applyColumnVisibility()
       updating = true
       defer { updating = false }
       if previousRoots != parent.roots || previousSessionID != parent.sessionID {
         if previousSessionID != parent.sessionID {
           expandedPaths.removeAll()
+          if parent.sessionID != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            cascadeDeadline = CACurrentMediaTime() + 0.3
+          }
           // Новый архив сразу готов к управлению с клавиатуры: фокус в списке, а не на панели.
           DispatchQueue.main.async { [weak outline] in
             guard let outline else { return }
@@ -288,6 +298,24 @@ struct ArchiveOutlineView: NSViewRepresentable {
       } else {
         parent.openSelection()
       }
+    }
+    /// Первые строки нового архива всплывают одна за другой; при прокрутке анимации уже нет.
+    func outlineView(_ outlineView: NSOutlineView, didAdd rowView: NSTableRowView, forRow row: Int)
+    {
+      guard CACurrentMediaTime() < cascadeDeadline, row < 24, let layer = rowView.layer else {
+        return
+      }
+      let fade = CABasicAnimation(keyPath: "opacity")
+      fade.fromValue = 0
+      let rise = CABasicAnimation(keyPath: "transform.translation.y")
+      rise.fromValue = 10
+      let group = CAAnimationGroup()
+      group.animations = [fade, rise]
+      group.duration = 0.45
+      group.beginTime = CACurrentMediaTime() + Double(row) * 0.03
+      group.fillMode = .backwards
+      group.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+      layer.add(group, forKey: "cascade")
     }
     /// Подставляет строку с фирменным выделением и чередованием фона.
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
@@ -622,8 +650,23 @@ struct ArchiveOutlineView: NSViewRepresentable {
 }
 
 @MainActor
-final class InteractiveOutlineView: NSOutlineView {
+final class InteractiveOutlineView: NSOutlineView, @preconcurrency QLPreviewPanelDataSource,
+  @preconcurrency QLPreviewPanelDelegate
+{
   var makeContextMenu: ((Int) -> NSMenu?)?
+  /// Можно ли показать «Быстрый просмотр» для текущего выделения.
+  var canQuickLook: () -> Bool = { false }
+  /// Сообщает модели, что панель открылась или закрылась.
+  var quickLookChanged: (Bool) -> Void = { _ in }
+  /// Извлечённый файл выделенной записи; панель перечитывает его при смене выделения.
+  var quickLookURL: URL? {
+    didSet {
+      guard quickLookURL != oldValue, controlsQuickLook else { return }
+      QLPreviewPanel.shared()?.reloadData()
+    }
+  }
+  private var controlsQuickLook = false
+
   /// При появлении в окне забирает фокус, чтобы он не доставался полю или кнопке панели.
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
@@ -635,6 +678,67 @@ final class InteractiveOutlineView: NSOutlineView {
   /// Строит меню для строки под курсором, включая свободное пространство таблицы.
   override func menu(for event: NSEvent) -> NSMenu? {
     makeContextMenu?(row(at: convert(event.locationInWindow, from: nil)))
+  }
+
+  /// Пробел открывает и закрывает «Быстрый просмотр», как в Finder.
+  override func keyDown(with event: NSEvent) {
+    let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    guard event.charactersIgnoringModifiers == " ",
+      modifiers.isDisjoint(with: [.command, .control])
+    else { return super.keyDown(with: event) }
+    toggleQuickLook()
+  }
+
+  private func toggleQuickLook() {
+    guard let panel = QLPreviewPanel.shared() else { return }
+    if QLPreviewPanel.sharedPreviewPanelExists(), panel.isVisible {
+      panel.orderOut(nil)
+    } else if canQuickLook() {
+      panel.makeKeyAndOrderFront(nil)
+    }
+  }
+
+  override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+  // Quick Look вызывает управление панелью на главном потоке, но объявляет его без изоляции.
+  override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    MainActor.assumeIsolated { setQuickLookControl(true) }
+  }
+
+  override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    MainActor.assumeIsolated { setQuickLookControl(false) }
+  }
+
+  private func setQuickLookControl(_ isActive: Bool) {
+    controlsQuickLook = isActive
+    let panel = QLPreviewPanel.shared()
+    panel?.dataSource = isActive ? self : nil
+    panel?.delegate = isActive ? self : nil
+    quickLookChanged(isActive)
+  }
+
+  /// Панель показывает только уже извлечённый файл; пока он готовится, она пуста.
+  func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { quickLookURL == nil ? 0 : 1 }
+
+  func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+    quickLookURL as NSURL?
+  }
+
+  /// Стрелки при открытой панели меняют выделение в таблице, и просмотр переходит к новому файлу.
+  func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
+    guard event.type == .keyDown, event.charactersIgnoringModifiers != " " else { return false }
+    super.keyDown(with: event)
+    return true
+  }
+
+  /// Панель раскрывается из выделенной строки и сворачивается обратно в неё.
+  func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!)
+    -> NSRect
+  {
+    guard selectedRow >= 0, let window else { return .zero }
+    let visible = rect(ofRow: selectedRow).intersection(visibleRect)
+    guard !visible.isEmpty else { return .zero }
+    return window.convertToScreen(convert(visible, to: nil))
   }
 }
 

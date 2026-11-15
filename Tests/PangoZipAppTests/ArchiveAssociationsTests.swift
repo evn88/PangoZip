@@ -3,75 +3,124 @@ import XCTest
 @testable import PangoZipApp
 
 final class ArchiveAssociationsTests: XCTestCase, @unchecked Sendable {
+  private let zip = ArchiveAssociationType(identifier: "public.zip-archive", fileExtension: "zip")
+  private let sevenZip = ArchiveAssociationType(
+    identifier: "org.7-zip.7-zip-archive", fileExtension: "7z")
+  private let pangoZip = URL(fileURLWithPath: "/Applications/PangoZip.app")
+  private let other = URL(fileURLWithPath: "/Applications/Other.app")
+
+  /// Отдельный домен настроек на каждый тест, чтобы снимки не пересекались.
   @MainActor
-  func testApplySelectionChangesOnlySelectedTypes() async {
-    let zip = ArchiveAssociationType(identifier: "public.zip-archive", fileExtension: "zip")
-    let sevenZip = ArchiveAssociationType(
-      identifier: "org.7-zip.7-zip-archive", fileExtension: "7z")
-    let currentApplication = URL(fileURLWithPath: "/Applications/PangoZip.app")
-    let otherApplication = URL(fileURLWithPath: "/Applications/Other.app")
-    let manager = FakeArchiveAssociationsManager(
-      defaults: [
-        zip.identifier: otherApplication,
-        sevenZip.identifier: currentApplication,
-      ], currentApplication: currentApplication)
-    let model = ArchiveAssociationsModel(
-      types: [zip, sevenZip], manager: manager, applicationURL: currentApplication,
+  private func makeStore() -> ArchiveAssociationSnapshotStore {
+    let name = "ArchiveAssociationsTests." + UUID().uuidString
+    let defaults = UserDefaults(suiteName: name)!
+    addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+    return ArchiveAssociationSnapshotStore(defaults: defaults)
+  }
+
+  @MainActor
+  private func makeModel(
+    _ manager: FakeArchiveAssociationsManager, store: ArchiveAssociationSnapshotStore? = nil
+  ) -> ArchiveAssociationsModel {
+    ArchiveAssociationsModel(
+      types: [zip, sevenZip], manager: manager, store: store ?? makeStore(),
+      applicationURL: pangoZip, applicationIdentifier: "app.pangozip.desktop",
       applicationName: "PangoZip")
-    model.selectedTypeIdentifiers = [zip.identifier]
+  }
 
-    await model.applySelection()
+  @MainActor
+  func testRowsReflectSystemHandlerIncludingAnotherPangoZipCopy() {
+    let buildCopy = URL(fileURLWithPath: "/Users/me/build/PangoZip.app")
+    let manager = FakeArchiveAssociationsManager(
+      defaults: [zip.identifier: other, sevenZip.identifier: buildCopy],
+      identifiers: [buildCopy: "app.pangozip.desktop"])
+    let model = makeModel(manager)
 
-    XCTAssertEqual(manager.updatedTypes, [zip.identifier])
-    XCTAssertEqual(model.rows.first { $0.id == zip.identifier }?.defaultApplicationName, "PangoZip")
-    XCTAssertEqual(
-      model.rows.first { $0.id == sevenZip.identifier }?.defaultApplicationName, "PangoZip")
+    XCTAssertEqual(model.rows.map(\.isPangoZipDefault), [false, true])
+    XCTAssertEqual(model.rows.map(\.defaultApplicationName), ["Other", "PangoZip"])
+    XCTAssertFalse(model.areAllAssigned)
+  }
+
+  @MainActor
+  func testEnablingTypeAssignsPangoZipAndDisablingRestoresInitialHandler() async {
+    let manager = FakeArchiveAssociationsManager(
+      defaults: [zip.identifier: other, sevenZip.identifier: other])
+    let model = makeModel(manager)
+    model.captureInitialSnapshotIfNeeded()
+
+    await model.setPangoZipDefault(true, for: zip)
+    XCTAssertEqual(manager.defaults[zip.identifier], pangoZip)
+    XCTAssertEqual(manager.defaults[sevenZip.identifier], other)
+
+    await model.setPangoZipDefault(false, for: zip)
+    XCTAssertEqual(manager.defaults[zip.identifier], other)
     XCTAssertNil(model.errorMessage)
   }
 
   @MainActor
-  func testApplySelectionReportsSystemFailure() async {
-    let zip = ArchiveAssociationType(identifier: "public.zip-archive", fileExtension: "zip")
-    let manager = FakeArchiveAssociationsManager(failingTypes: [zip.identifier])
-    let model = ArchiveAssociationsModel(types: [zip], manager: manager)
-    model.selectedTypeIdentifiers = [zip.identifier]
+  func testDisablingWithoutKnownPreviousHandlerExplainsWhatToDo() async {
+    let manager = FakeArchiveAssociationsManager(defaults: [zip.identifier: pangoZip])
+    let model = makeModel(manager)
+    model.captureInitialSnapshotIfNeeded()
 
-    await model.applySelection()
+    await model.setPangoZipDefault(false, for: zip)
 
-    XCTAssertEqual(manager.updatedTypes, [zip.identifier])
+    XCTAssertTrue(manager.updatedTypes.isEmpty)
     XCTAssertTrue(model.errorMessage?.contains("ZIP") == true)
   }
 
   @MainActor
-  func testSelectAllAndDeselectAll() async {
-    let zip = ArchiveAssociationType(identifier: "public.zip-archive", fileExtension: "zip")
-    let sevenZip = ArchiveAssociationType(
-      identifier: "org.7-zip.7-zip-archive", fileExtension: "7z")
-    let manager = FakeArchiveAssociationsManager()
-    let model = ArchiveAssociationsModel(types: [zip, sevenZip], manager: manager)
-    XCTAssertFalse(model.areAllSelected)
+  func testAssignAllSkipsTypesAlreadyOpenedByPangoZipAndReportsFailures() async {
+    let manager = FakeArchiveAssociationsManager(
+      defaults: [zip.identifier: pangoZip, sevenZip.identifier: other],
+      failingTypes: [sevenZip.identifier])
+    let model = makeModel(manager)
 
-    model.selectedTypeIdentifiers = [zip.identifier]
-    model.selectAll()
-    XCTAssertEqual(model.selectedTypeIdentifiers, [zip.identifier, sevenZip.identifier])
-    XCTAssertTrue(model.areAllSelected)
+    await model.assignAll()
 
-    await model.applySelection()
-    XCTAssertEqual(Set(manager.updatedTypes), [zip.identifier, sevenZip.identifier])
-
-    model.deselectAll()
-    XCTAssertTrue(model.selectedTypeIdentifiers.isEmpty)
-    XCTAssertFalse(model.areAllSelected)
-    // Снятие отметок не вызывает системных изменений.
-    XCTAssertEqual(manager.updatedTypes.count, 2)
+    XCTAssertEqual(manager.updatedTypes, [sevenZip.identifier])
+    XCTAssertTrue(model.errorMessage?.contains("7Z") == true)
   }
 
   @MainActor
-  func testSelectAllWithoutTypesStaysEmpty() {
-    let model = ArchiveAssociationsModel(types: [], manager: FakeArchiveAssociationsManager())
-    model.selectAll()
-    XCTAssertTrue(model.selectedTypeIdentifiers.isEmpty)
-    XCTAssertFalse(model.areAllSelected)
+  func testInitialSnapshotSurvivesNewModelAndRestoresOriginalHandlers() async {
+    let store = makeStore()
+    let manager = FakeArchiveAssociationsManager(
+      defaults: [zip.identifier: other, sevenZip.identifier: other])
+    let first = makeModel(manager, store: store)
+    first.captureInitialSnapshotIfNeeded()
+    await first.assignAll()
+    XCTAssertTrue(first.areAllAssigned)
+
+    // Новая модель имитирует повторный запуск: исходный снимок прежний, а не «всё на PangoZip».
+    let second = makeModel(manager, store: store)
+    second.captureInitialSnapshotIfNeeded()
+    let initial = try? XCTUnwrap(second.snapshots.first)
+    XCTAssertEqual(initial?.isInitial, true)
+    XCTAssertEqual(second.snapshots.count, 1)
+    if let initial { await second.restore(initial) }
+
+    XCTAssertEqual(manager.defaults, [zip.identifier: other, sevenZip.identifier: other])
+    XCTAssertFalse(second.rows.contains(where: \.isPangoZipDefault))
+  }
+
+  @MainActor
+  func testStoreKeepsInitialAndTenNewestSnapshots() {
+    let store = makeStore()
+    let handler = ArchiveAssociationSnapshot.Handler(path: other.path, bundleIdentifier: nil)
+    store.captureInitialIfNeeded([zip.identifier: handler], now: Date(timeIntervalSince1970: 0))
+    store.captureInitialIfNeeded([:], now: Date(timeIntervalSince1970: 1))
+    for index in 1...12 {
+      store.add([:], now: Date(timeIntervalSince1970: Double(index * 100)))
+    }
+
+    let snapshots = store.snapshots
+    XCTAssertEqual(snapshots.count, 11)
+    XCTAssertEqual(snapshots.first?.isInitial, true)
+    XCTAssertEqual(snapshots.first?.handlers, [zip.identifier: handler])
+    XCTAssertEqual(
+      snapshots.dropFirst().map { Int($0.createdAt.timeIntervalSince1970) / 100 },
+      Array((3...12).reversed()))
   }
 
   @MainActor
@@ -91,28 +140,33 @@ final class ArchiveAssociationsTests: XCTestCase, @unchecked Sendable {
 @MainActor
 private final class FakeArchiveAssociationsManager: ArchiveAssociationsManaging {
   var defaults: [String: URL]
+  let identifiers: [URL: String]
   let failingTypes: Set<String>
-  let currentApplication: URL
   private(set) var updatedTypes: [String] = []
 
   init(
-    defaults: [String: URL] = [:], failingTypes: Set<String> = [],
-    currentApplication: URL = URL(fileURLWithPath: "/Applications/PangoZip.app")
+    defaults: [String: URL] = [:], identifiers: [URL: String] = [:], failingTypes: Set<String> = []
   ) {
     self.defaults = defaults
+    self.identifiers = identifiers
     self.failingTypes = failingTypes
-    self.currentApplication = currentApplication
   }
 
   func defaultApplication(for typeIdentifier: String) -> URL? {
     defaults[typeIdentifier]
   }
 
-  func setCurrentApplicationAsDefault(for typeIdentifier: String) async throws {
+  func setDefaultApplication(at applicationURL: URL, for typeIdentifier: String) async throws {
     updatedTypes.append(typeIdentifier)
     if failingTypes.contains(typeIdentifier) {
       throw NSError(domain: "ArchiveAssociationsTests", code: 1)
     }
-    defaults[typeIdentifier] = currentApplication
+    defaults[typeIdentifier] = applicationURL
+  }
+
+  func bundleIdentifier(at applicationURL: URL) -> String? { identifiers[applicationURL] }
+
+  func resolveApplication(_ handler: ArchiveAssociationSnapshot.Handler) -> URL? {
+    URL(fileURLWithPath: handler.path)
   }
 }

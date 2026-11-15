@@ -117,6 +117,9 @@ final class ArchiveBrowserModel: ObservableObject {
   @Published var password = ""
   @Published var isPasswordPromptPresented = false
   @Published private(set) var showsPreview = true
+  /// Открыта ли панель «Быстрый просмотр»: ей нужен извлечённый файл и при скрытой боковой панели.
+  private(set) var isQuickLookOpen = false
+  private var wantsPreview: Bool { showsPreview || isQuickLookOpen }
   @Published private(set) var searchFocusToken = UUID()
   @Published var checksums: ChecksumsModel?
 
@@ -146,7 +149,56 @@ final class ArchiveBrowserModel: ObservableObject {
   private var exportFeedbackID: UUID?
 
   /// Принимает отдельный сервис, чтобы сеанс и временные файлы принадлежали этой модели.
-  init(service: ArchiveService = ArchiveService()) { self.service = service }
+  private let passwords: any ArchivePasswordStoring
+  /// Запоминать ли введённый пароль; по умолчанию решает настройка пользователя.
+  private let remembersPasswords: () -> Bool
+  /// Кодировка имён, выбранная вручную для текущего архива; nil — автоопределение.
+  private var nameEncodingOverride: ArchiveNameEncoding?
+
+  init(
+    service: ArchiveService = ArchiveService(),
+    passwords: (any ArchivePasswordStoring)? = nil,
+    remembersPasswords: @escaping () -> Bool = { KeychainArchivePasswords.isEnabled }
+  ) {
+    self.service = service
+    self.passwords = passwords ?? KeychainArchivePasswords()
+    self.remembersPasswords = remembersPasswords
+  }
+
+  /// Заново открывает архив, читая имена в выбранной кодировке; nil возвращает автоопределение.
+  func setNameEncoding(_ encoding: ArchiveNameEncoding?) {
+    guard let url = session?.url, !isNestedArchive, canAct, queuedOperations.isEmpty else {
+      return
+    }
+    let current = password
+    run {
+      guard await self.closeCurrentSession() else { return }
+      self.password = current
+      self.nameEncodingOverride = encoding
+      await self.perform(.open(url))
+    }
+  }
+
+  /// Открывает архив; без введённого пароля пробует сохранённый в Связке ключей.
+  private func openSession(_ url: URL) async throws -> ArchiveSession {
+    do {
+      let result = try await service.open(
+        url, password: password, nameEncoding: nameEncodingOverride)
+      if !password.isEmpty, remembersPasswords() { passwords.save(password, for: url) }
+      return result
+    } catch ArchiveError.passwordRequired where password.isEmpty {
+      guard let saved = passwords.password(for: url) else { throw ArchiveError.passwordRequired }
+      do {
+        let result = try await service.open(
+          url, password: saved, nameEncoding: nameEncodingOverride)
+        password = saved
+        return result
+      } catch {
+        // Сохранённый пароль устарел: пользователь вводит новый в обычном запросе.
+        throw ArchiveError.passwordRequired
+      }
+    }
+  }
 
   var selectedPath: String? { selectedPaths.count == 1 ? selectedPaths.first : nil }
   var selectedEntry: ArchiveEntry? { session?.entries.first { $0.path == selectedPath } }
@@ -216,6 +268,7 @@ final class ArchiveBrowserModel: ObservableObject {
     run {
       guard await self.closeCurrentSession() else { return }
       self.password = suppliedPassword
+      self.nameEncodingOverride = nil
       await self.perform(.open(url))
     }
   }
@@ -246,6 +299,7 @@ final class ArchiveBrowserModel: ObservableObject {
         self.run {
           guard await self.closeCurrentSession() else { return }
           self.password = ""
+          self.nameEncodingOverride = nil
           self.pendingFinderFiles = urls
           await self.perform(.open(url))
         }
@@ -555,6 +609,23 @@ final class ArchiveBrowserModel: ObservableObject {
     }
   }
 
+  /// «Быстрый просмотр» по пробелу доступен только для одного выделенного файла.
+  var canQuickLook: Bool {
+    guard let entry = selectedEntry else { return false }
+    return !entry.isDirectory && !entry.isSymbolicLink
+  }
+
+  /// Готовит файл для панели «Быстрый просмотр» и прекращает подготовку после её закрытия.
+  func setQuickLookOpen(_ isOpen: Bool) {
+    guard isQuickLookOpen != isOpen else { return }
+    isQuickLookOpen = isOpen
+    if isOpen {
+      if previewURL == nil { selectionChanged() }
+    } else if !showsPreview {
+      cancelPreview(preservingContent: true)
+    }
+  }
+
   /// Меняет токен даже при повторном запросе, чтобы SwiftUI снова перевёл фокус.
   func focusSearch() { searchFocusToken = UUID() }
 
@@ -769,7 +840,7 @@ final class ArchiveBrowserModel: ObservableObject {
       case .open(let url):
         operationMessage = nil
         loadState = .loading
-        let result = try await service.open(url, password: password)
+        let result = try await openSession(url)
         if Task.isCancelled {
           try await service.close(result)
           loadState = .idle
@@ -794,12 +865,14 @@ final class ArchiveBrowserModel: ObservableObject {
         operationMessage = L10n.tr("Создаём архив…")
         let proposed = first.deletingLastPathComponent().appendingPathComponent(
           selection.archiveName + "." + format)
-        let result = try await service.createArchive(
+        let outcome = try await service.createArchives(
           from: urls, proposedURL: proposed, format: format, options: ArchivePreferences.options,
-          progress: progressHandler)
-        NSWorkspace.shared.activateFileViewerSelecting([result])
+          separately: ArchivePreferences.separatesArchives,
+          trashesSources: ArchivePreferences.trashesSources, progress: progressHandler)
+        NSWorkspace.shared.activateFileViewerSelecting(outcome.urls)
         operationMessage = L10n.tr(
-          "Создан архив: %1$@", String(describing: result.lastPathComponent))
+          "Создан архив: %1$@", String(describing: outcome.urls.last?.lastPathComponent ?? ""))
+        if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
       case .extract(let urls):
         await settlePreviews()
         var results: [URL] = []
@@ -1030,7 +1103,7 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Отменяет прежний предпросмотр до проверки нового выделения.
   private func selectionChanged() {
     cancelPreview()
-    guard showsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
+    guard wantsPreview, !isBusy, !isExporting, !isClosing, !isPasswordPromptPresented,
       let entry = selectedEntry,
       !entry.isDirectory, !entry.isSymbolicLink
     else { return }
@@ -1039,7 +1112,7 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Проверяет поколение и идентификатор сеанса перед публикацией извлечённого файла.
   private func startPreview(_ entry: ArchiveEntry) {
-    guard showsPreview, !isBusy, !isExporting, !isClosing, let current = session else { return }
+    guard wantsPreview, !isBusy, !isExporting, !isClosing, let current = session else { return }
     cancelPreview()
     if failedOperation == nil {
       errorMessage = nil

@@ -17,24 +17,11 @@ enum DropIslandPlacement: String, CaseIterable, Identifiable {
     }
   }
 
+  // Размеры одинаковы во всех положениях: от места зависит только точка привязки острова.
   /// Размер ярлычка, который виден, пока курсор далеко.
-  var labelSize: CGSize {
-    switch self {
-    case .top: CGSize(width: 138, height: 32)
-    case .edge: CGSize(width: 40, height: 124)
-    case .cursor: CGSize(width: 52, height: 52)
-    }
-  }
-
+  static let labelSize = CGSize(width: 138, height: 32)
   /// Размер раскрытой площадки для броска.
-  var openSize: CGSize {
-    switch self {
-    case .top: CGSize(width: 440, height: 176)
-    case .edge: CGSize(width: 300, height: 236)
-    case .cursor: CGSize(width: 330, height: 200)
-    }
-  }
-
+  static let openSize = CGSize(width: 340, height: 168)
   static let pillSize = CGSize(width: 370, height: 64)
 }
 
@@ -80,6 +67,8 @@ final class DropIslandModel: ObservableObject {
   @Published var subtitle = ""
   @Published var hint: String?
   @Published var fraction: Double?
+  /// Есть ли результат, который можно показать в Finder после завершения.
+  @Published var canReveal = true
   var cancel: () -> Void = {}
   var reveal: () -> Void = {}
   var dismiss: () -> Void = {}
@@ -88,8 +77,8 @@ final class DropIslandModel: ObservableObject {
 
   func size(for phase: Phase) -> CGSize {
     switch phase {
-    case .hidden, .label: placement.labelSize
-    case .open, .hot: placement.openSize
+    case .hidden, .label: DropIslandPlacement.labelSize
+    case .open, .hot: DropIslandPlacement.openSize
     case .working, .done, .failed: DropIslandPlacement.pillSize
     }
   }
@@ -208,16 +197,12 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       beginSession(urls)
     }
     guard session == .label || session == .open else { return }
-    let mouse = NSEvent.mouseLocation
-    let label = islandRect(for: model.placement.labelSize)
-    let distance = hypot(mouse.x - label.midX, mouse.y - label.midY)
-    // У курсора ярлычок появляется близко, поэтому и раскрывается только вплотную.
-    let near: CGFloat = model.placement == .cursor ? 130 : 260
-    if session == .label, distance < near {
-      session = .open
-    } else if session == .open, distance > near + 70 {
-      session = .label
-    }
+    // Остров раскрывается только вплотную к ярлычку, чтобы не мешать перетаскиванию мимо него.
+    let isOpen = DropIslandProximity.isOpen(
+      wasOpen: session == .open, mouse: NSEvent.mouseLocation,
+      label: islandRect(for: DropIslandPlacement.labelSize),
+      open: islandRect(for: DropIslandPlacement.openSize))
+    session = isOpen ? .open : .label
     refresh()
   }
 
@@ -330,7 +315,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
         height: size.height)
     case .cursor:
       // Площадка рядом с местом захвата, но целиком в пределах экрана.
-      let open = model.placement.openSize
+      let open = DropIslandPlacement.openSize
       let x = min(
         max(dragOrigin.x + 190, frame.minX + open.width / 2 + 12),
         frame.maxX - open.width / 2 - 12)
@@ -409,6 +394,16 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private func hover(_ sender: any NSDraggingInfo) -> NSDragOperation {
     let urls = Self.fileURLs(sender.draggingPasteboard)
     guard !urls.isEmpty else { return [] }
+    // Окно шире острова на поля для тени и анимации: бросок принимает только сам остров.
+    let mouse = NSEvent.mouseLocation
+    let island = islandRect(for: model.size)
+    guard island.contains(mouse) else {
+      if session == .hot {
+        session = .open
+        refresh()
+      }
+      return []
+    }
     draggedURLs = urls
     optionWhileHovering = NSEvent.modifierFlags.contains(.option)
     session = .hot
@@ -537,9 +532,12 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private func perform(_ job: Job) async throws -> URL {
     let handler: ArchiveProgressHandler = { [weak self] value in await self?.receive(value) }
     if job.plan.action == .compress, let proposed = job.proposedURL {
-      return try await service.createArchive(
+      let outcome = try await service.createArchives(
         from: job.plan.urls, proposedURL: proposed, format: job.options.format,
-        options: job.options, progress: handler)
+        options: job.options, separately: ArchivePreferences.separatesArchives,
+        trashesSources: ArchivePreferences.trashesSources, progress: handler)
+      if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
+      return outcome.urls.last ?? proposed
     }
     var result = job.plan.urls[0]
     let preferences = ExtractionPreferences.load()

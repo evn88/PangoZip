@@ -64,12 +64,15 @@ public struct ArchiveSession: Sendable {
   public let roots: [ArchiveNode]
   public let format: String
   public let canModify: Bool
+  /// Кодировка, из которой перекодированы имена; nil — имена прочитаны как есть.
+  public let nameEncoding: ArchiveNameEncoding?
 
   /// Создаёт снимок сеанса; право выполнять операции подтверждает состояние ArchiveService.
   public init(
     id: UUID = UUID(), url: URL, entries: [ArchiveEntry], roots: [ArchiveNode],
-    format: String = "unknown", canModify: Bool = false
+    format: String = "unknown", canModify: Bool = false, nameEncoding: ArchiveNameEncoding? = nil
   ) {
+    self.nameEncoding = nameEncoding
     self.id = id
     self.url = url
     self.entries = entries

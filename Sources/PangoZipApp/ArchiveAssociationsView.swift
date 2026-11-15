@@ -14,15 +14,8 @@ struct ArchiveAssociationsView: View {
         )
         .font(.caption).foregroundStyle(.secondary)
 
-        HStack {
-          Button(L10n.tr("Выбрать все")) { model.selectAll() }
-            .disabled(model.areAllSelected || model.isApplying)
-          Button(L10n.tr("Снять все")) { model.deselectAll() }
-            .disabled(model.selectedTypeIdentifiers.isEmpty || model.isApplying)
-        }
-
         ForEach(model.rows) { row in
-          Toggle(isOn: selection(for: row.type.identifier)) {
+          Toggle(isOn: isDefault(row)) {
             HStack {
               Text(row.type.title)
               Spacer()
@@ -34,6 +27,11 @@ struct ArchiveAssociationsView: View {
           .disabled(model.isApplying)
         }
 
+        Button(L10n.tr("Назначить PangoZip для всех типов")) {
+          Task { await model.assignAll() }
+        }
+        .disabled(model.areAllAssigned || model.isApplying)
+
         if !model.isRunningFromApplications {
           Label(
             L10n.tr(
@@ -44,29 +42,50 @@ struct ArchiveAssociationsView: View {
           .font(.caption).foregroundStyle(.secondary)
         }
 
-        Button(L10n.tr("Назначить PangoZip для выбранных типов")) {
-          Task { await model.applySelection() }
-        }
-        .disabled(model.selectedTypeIdentifiers.isEmpty || model.isApplying)
-
         if let errorMessage = model.errorMessage {
           Text(errorMessage).foregroundStyle(.red).font(.caption)
         }
       }
+
+      Section(L10n.tr("Снимки настроек")) {
+        Text(
+          L10n.tr(
+            "PangoZip запомнил программы для архивов при первом запуске. К исходным настройкам и к любому из десяти последних снимков можно вернуться в любой момент."
+          )
+        )
+        .font(.caption).foregroundStyle(.secondary)
+
+        ForEach(model.snapshots) { snapshot in
+          HStack {
+            VStack(alignment: .leading, spacing: 2) {
+              let date = snapshot.createdAt.formatted(date: .abbreviated, time: .shortened)
+              Text(snapshot.isInitial ? L10n.tr("Исходные настройки") : date)
+              if snapshot.isInitial {
+                Text(date).font(.caption).foregroundStyle(.secondary)
+              }
+            }
+            Spacer()
+            Button(L10n.tr("Вернуть")) { Task { await model.restore(snapshot) } }
+              .disabled(model.isApplying)
+          }
+          .accessibilityElement(children: .combine)
+        }
+
+        Button(L10n.tr("Сохранить снимок"), action: model.saveSnapshot)
+          .disabled(model.isApplying)
+      }
     }
     .formStyle(.grouped)
-    .onAppear(perform: model.refresh)
+    .onAppear {
+      model.captureInitialSnapshotIfNeeded()
+      model.refresh()
+    }
   }
 
-  private func selection(for identifier: String) -> Binding<Bool> {
+  /// Переключатель показывает системное назначение и меняет его сразу, без отдельной кнопки.
+  private func isDefault(_ row: ArchiveAssociationsModel.Row) -> Binding<Bool> {
     Binding(
-      get: { model.selectedTypeIdentifiers.contains(identifier) },
-      set: { isSelected in
-        if isSelected {
-          model.selectedTypeIdentifiers.insert(identifier)
-        } else {
-          model.selectedTypeIdentifiers.remove(identifier)
-        }
-      })
+      get: { row.isPangoZipDefault },
+      set: { isEnabled in Task { await model.setPangoZipDefault(isEnabled, for: row.type) } })
   }
 }

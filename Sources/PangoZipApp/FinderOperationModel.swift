@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 @MainActor
 enum ApplicationMode {
   static var workerFinished = false
+  /// Ход операции показывает остров, поэтому окно фонового процесса скрыто.
+  static var workerShowsIsland = false
   static var isFinderWorker: Bool {
     Bundle.main.bundleIdentifier == "app.pangozip.desktop.worker"
       || ProcessInfo.processInfo.arguments.contains("--finder-worker")
@@ -48,6 +50,10 @@ final class FinderOperationModel: ObservableObject {
   private var feedbackID: UUID?
   private var feedbackKind: OperationKind = .extract
   private var feedbackSubject = ""
+  private let island = OperationIsland()
+  private var islandTitle = ""
+  private var resultURL: URL?
+  private var donePause: Task<Void, Never>?
 
   private var progressHandler: ArchiveProgressHandler {
     { [weak self] value in await self?.receiveProgress(value) }
@@ -57,6 +63,57 @@ final class FinderOperationModel: ObservableObject {
   private func receiveProgress(_ value: ArchiveProgress) {
     progress = value
     beginFeedbackIfNeeded()
+    if ApplicationMode.workerShowsIsland { updateIsland() }
+  }
+
+  /// Переносит ход операции из окна на остров, как после броска файлов на него.
+  private func showIsland(title: String) {
+    islandTitle = title
+    ApplicationMode.workerShowsIsland = true
+    for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
+    updateIsland()
+  }
+
+  /// Строка под именем: этап и процент, пока доля выполнения известна.
+  private func updateIsland() {
+    var stage: String
+    switch feedbackKind {
+    case .create: stage = L10n.tr("Сжимаем…")
+    case .verify: stage = ProgressFormatting.phaseTitle(.verifying)
+    default: stage = L10n.tr("Распаковываем…")
+    }
+    var fraction: Double?
+    if let progress, progress.phase != .preparing, let value = progress.fraction {
+      fraction = value
+      stage += " · \(Int((value * 100).rounded(.down)))%"
+    }
+    island.show(.working, title: islandTitle, subtitle: stage, fraction: fraction)
+  }
+
+  /// Возвращает обычное окно для пароля и ошибок: на острове для них нет места.
+  private func showWindow() {
+    ApplicationMode.workerShowsIsland = false
+    island.hide()
+    NSApp.windows.first { !($0 is NSPanel) }?.makeKeyAndOrderFront(nil)
+  }
+
+  /// Недолго показывает итог на острове; кнопка Finder или выход завершают показ раньше.
+  private func showResultOnIsland() async {
+    guard ApplicationMode.workerShowsIsland else { return }
+    let pause = Task { _ = try? await Task.sleep(for: .seconds(4)) }
+    donePause = pause
+    let url = resultURL
+    island.model.canReveal = url != nil
+    island.model.reveal = {
+      if let url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+      pause.cancel()
+    }
+    island.show(
+      .done, title: url?.lastPathComponent ?? islandTitle, subtitle: L10n.tr("Готово"),
+      fraction: 1)
+    await pause.value
+    donePause = nil
+    island.hide()
   }
 
   /// Отсчёт для уведомления идёт с первого прогресса, а не с ожидания панелей и пароля.
@@ -83,12 +140,14 @@ final class FinderOperationModel: ObservableObject {
     default: feedbackKind = .extract
     }
     feedbackSubject = request.urls.first?.lastPathComponent ?? ""
+    island.model.cancel = { [weak self] in self?.cancel() }
     task = Task {
       do {
         try await execute(request)
         logger.notice("Background operation completed")
         await finishFeedback(.success)
         await service.cleanup()
+        await showResultOnIsland()
         task = nil
         ApplicationMode.workerFinished = true
         NSApp.terminate(nil)
@@ -104,6 +163,7 @@ final class FinderOperationModel: ObservableObject {
         await service.cleanup()
         progress = nil
         errorMessage = error.localizedDescription
+        showWindow()
         task = nil
         NSApp.activate(ignoringOtherApps: true)
       }
@@ -128,6 +188,7 @@ final class FinderOperationModel: ObservableObject {
   /// Освобождает панель и ожидание пароля, чтобы отменённая задача могла завершиться.
   private func cancelTask() {
     task?.cancel()
+    donePause?.cancel()
     panel?.cancel(nil)
     let reply = passwordReply
     passwordReply = nil
@@ -143,6 +204,12 @@ final class FinderOperationModel: ObservableObject {
     return true
   }
 
+  /// Запоминает результат для острова; неудача с Корзиной показывается после готового архива.
+  private func finishCreation(_ outcome: ArchiveCreationOutcome) throws {
+    resultURL = outcome.urls.last
+    if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
+  }
+
   /// Проверяет отмену до и после ожидания ввода, не сохраняя пароль между архивами.
   private func askPassword(for url: URL) async throws -> String {
     try Task.checkCancellation()
@@ -150,6 +217,7 @@ final class FinderOperationModel: ObservableObject {
     message = L10n.tr("Введите пароль: %1$@", String(describing: url.lastPathComponent))
     password = ""
     needsPassword = true
+    showWindow()
     NSApp.activate(ignoringOtherApps: true)
     let answer = await withCheckedContinuation { passwordReply = $0 }
     guard let answer else { throw CancellationError() }
@@ -216,9 +284,13 @@ final class FinderOperationModel: ObservableObject {
         creationPassword = ""
         creationPasswordConfirmation = ""
       }
-      _ = try await service.createArchive(
-        from: selection.urls, proposedURL: destination, format: options.format, options: options,
-        password: creationPassword, progress: progressHandler)
+      showIsland(title: destination.lastPathComponent)
+      // Имя архива выбрано в диалоге, поэтому он один; исходники убираются по общей настройке.
+      try await finishCreation(
+        service.createArchives(
+          from: selection.urls, proposedURL: destination, format: options.format,
+          options: options, password: creationPassword, separately: false,
+          trashesSources: ArchivePreferences.trashesSources, progress: progressHandler))
     case .createZip, .create7z:
       let selection = FinderSelection(urls: request.urls)
       guard let first = selection.urls.first else { throw ArchiveError.invalidOperation }
@@ -228,9 +300,12 @@ final class FinderOperationModel: ObservableObject {
         "Создаём %1$@.%2$@…", String(describing: selection.archiveName), String(describing: format))
       let proposed = first.deletingLastPathComponent().appendingPathComponent(
         selection.archiveName + "." + format)
-      _ = try await service.createArchive(
-        from: selection.urls, proposedURL: proposed, format: format, options: options,
-        progress: progressHandler)
+      showIsland(title: proposed.lastPathComponent)
+      try await finishCreation(
+        service.createArchives(
+          from: selection.urls, proposedURL: proposed, format: format, options: options,
+          separately: ArchivePreferences.separatesArchives,
+          trashesSources: ArchivePreferences.trashesSources, progress: progressHandler))
     case .extract, .extractHere, .extractFiles, .test:
       var destination: URL?
       if request.action == .extractFiles {
@@ -258,6 +333,8 @@ final class FinderOperationModel: ObservableObject {
         var suppliedPassword = ""
         while true {
           try Task.checkCancellation()
+          progress = nil
+          showIsland(title: url.lastPathComponent)
           message =
             request.action == .test
             ? L10n.tr(
@@ -278,6 +355,7 @@ final class FinderOperationModel: ObservableObject {
                 smartExtraction: preferences.smartExtraction,
                 trashesArchive: preferences.trashesArchive, progress: progressHandler)
               revealed.append(outcome.url)
+              resultURL = outcome.url
               trashFailure = trashFailure ?? outcome.trashFailure
             }
             break

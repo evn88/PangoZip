@@ -4,49 +4,26 @@ import ServiceManagement
 import SwiftUI
 
 /// Остров перетаскивания: ярлычок, раскрытая площадка и строка с ходом операции.
+/// Во всех положениях это одно и то же тёмно-синее стекло; от места зависит только привязка.
 struct DropIslandView: View {
   @ObservedObject var model: DropIslandModel
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var glintTrigger = 0
+  @State private var drifts = false
 
-  /// Поля окна вокруг острова — место для тени и пружинящей анимации.
-  static let margin: CGFloat = 28
+  /// Поля окна вокруг острова: в них должны целиком угасать тень и золотое свечение,
+  /// иначе край окна обрезает их прямоугольником.
+  static let margin: CGFloat = 64
 
-  /// Цвета острова: тёмно-синее стекло бренда либо светлое стекло у края экрана.
-  private struct Style {
-    let tint: Color
-    let ink: Color
-    let secondary: Color
-    let accent: Color
-    let border: Color
-    let scheme: ColorScheme
-
-    init(_ placement: DropIslandPlacement) {
-      let gold = Color(nsColor: NSColor(srgbHex: 0xE3A74C))
-      switch placement {
-      case .edge:
-        tint = Color.white.opacity(0.66)
-        ink = Color(nsColor: NSColor(srgbHex: 0x16181D))
-        secondary = Color(nsColor: NSColor(srgbHex: 0x454A55))
-        accent = Color(nsColor: NSColor(srgbHex: 0x8A5410))
-        border = Color.white.opacity(0.9)
-        scheme = .light
-      case .top, .cursor:
-        tint = Color(nsColor: NSColor(srgbHex: 0x101F4A)).opacity(0.84)
-        ink = Color.white.opacity(0.96)
-        secondary = Color.white.opacity(0.74)
-        accent = gold
-        border = placement == .cursor ? gold.opacity(0.6) : Color.white.opacity(0.18)
-        scheme = .dark
-      }
-    }
-  }
-
+  private static let tint = Color(nsColor: NSColor(srgbHex: 0x101F4A)).opacity(0.42)
+  private static let ink = Color.white.opacity(0.96)
+  private static let secondary = Color.white.opacity(0.76)
+  private static let skyGlow = Color(nsColor: NSColor(srgbHex: 0x78BEFF))
   var body: some View {
-    let style = Style(model.placement)
     ZStack(alignment: alignment) {
       Color.clear
       if model.phase != .hidden {
-        island(style).padding(Self.margin).transition(transition)
+        island.padding(Self.margin).transition(transition)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,7 +31,7 @@ struct DropIslandView: View {
       reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.42, dampingFraction: 0.72),
       value: model.phase
     )
-    .environment(\.colorScheme, style.scheme)
+    .environment(\.colorScheme, .dark)
   }
 
   /// Остров растёт от своей точки привязки, поэтому смена размера окна его не сдвигает.
@@ -74,107 +51,166 @@ struct DropIslandView: View {
     }
   }
 
-  private func island(_ style: Style) -> some View {
+  private var island: some View {
     let size = model.size
+    let isHot = model.phase == .hot
     let shape = RoundedRectangle(cornerRadius: min(size.height / 2, 30), style: .continuous)
     return ZStack {
       switch model.phase {
       case .hidden, .label: label.transition(.opacity)
-      case .open, .hot: zone(style).transition(.opacity)
-      case .working, .done, .failed: status(style).transition(.opacity)
+      case .open, .hot: zone.transition(.opacity)
+      case .working, .done, .failed: status.transition(.opacity)
       }
     }
-    .foregroundStyle(style.ink)
+    .foregroundStyle(Self.ink)
     .frame(width: size.width, height: size.height)
-    .background {
-      ZStack {
-        shape.fill(.ultraThinMaterial)
-        shape.fill(style.tint)
-        shape.strokeBorder(style.border, lineWidth: 1)
-      }
-    }
+    .background { glass(shape, size: size) }
     .clipShape(shape)
+    .overlay {
+      shape.strokeBorder(
+        isHot ? Brand.gold : Color.white.opacity(0.34), lineWidth: isHot ? 1.5 : 1)
+    }
     .contentShape(shape)
-    .shadow(color: .black.opacity(0.32), radius: 14, y: 8)
+    .shadow(
+      color: isHot ? Brand.gold.opacity(0.3) : .black.opacity(0.3), radius: isHot ? 16 : 12, y: 6
+    )
+    .scaleEffect(isHot && !reduceMotion ? 1.035 : 1)
+    .onAppear { drifts = true }
+    .onChange(of: model.phase) { old, new in
+      guard !reduceMotion else { return }
+      if new == .done || (new == .open && old == .label) { glintTrigger += 1 }
+    }
+  }
+
+  /// Слои стекла: размытие фона, тонировка, пятна света, свечение хода операции и блики.
+  private func glass(_ shape: RoundedRectangle, size: CGSize) -> some View {
+    ZStack {
+      shape.fill(.ultraThinMaterial)
+      shape.fill(Self.tint)
+      ZStack {
+        Circle().fill(Self.skyGlow.opacity(0.30)).frame(width: 190, height: 190)
+          .offset(x: drifts ? -50 : -90, y: drifts ? -14 : 10)
+        Circle().fill(Brand.gold.opacity(0.26)).frame(width: 170, height: 170)
+          .offset(x: drifts ? 95 : 55, y: drifts ? 12 : -8)
+      }
+      .blur(radius: 26).blendMode(.screen)
+      .animation(
+        reduceMotion ? nil : .easeInOut(duration: 9).repeatForever(autoreverses: true),
+        value: drifts)
+      progressGlow(size)
+      glint(size)
+      LinearGradient(
+        colors: [.white.opacity(0.22), .white.opacity(0.03), .clear], startPoint: .top,
+        endPoint: .bottom)
+    }
+    .accessibilityHidden(true)
+  }
+
+  /// Золотое свечение под стеклом растёт слева направо вместе с ходом операции.
+  @ViewBuilder
+  private func progressGlow(_ size: CGSize) -> some View {
+    if model.phase == .working || model.phase == .done {
+      let isDone = model.phase == .done
+      let fraction = isDone ? 1 : max(0, min(1, model.fraction ?? 0))
+      // Градиент растянут на весь остров, а ход операции открывает его маской с мягким краем:
+      // на малых процентах не остаётся жёсткой полоски.
+      LinearGradient(
+        colors: [Brand.gold.opacity(0.05), Brand.gold.opacity(0.4)], startPoint: .leading,
+        endPoint: .trailing
+      )
+      .mask {
+        LinearGradient(
+          stops: [
+            .init(color: .white, location: 0),
+            .init(color: .white, location: max(0, fraction - 0.12)),
+            .init(color: .clear, location: fraction),
+          ], startPoint: .leading, endPoint: .trailing)
+      }
+      .blendMode(.plusLighter)
+      .opacity(isDone ? 0.5 : 1)
+      .animation(.easeOut(duration: 0.25), value: fraction)
+      .transition(.opacity)
+    }
+  }
+
+  /// Блик проходит по стеклу один раз: при раскрытии площадки и при завершении операции.
+  private func glint(_ size: CGSize) -> some View {
+    LinearGradient(
+      colors: [.clear, .white.opacity(0.34), .clear], startPoint: .leading, endPoint: .trailing
+    )
+    .frame(width: 60, height: size.height * 1.6).rotationEffect(.degrees(20))
+    .keyframeAnimator(initialValue: CGFloat(-1), trigger: glintTrigger) { content, value in
+      content.offset(x: value * (size.width / 2 + 80))
+    } keyframes: { _ in
+      KeyframeTrack { CubicKeyframe(1, duration: 0.9) }
+    }
   }
 
   /// Зверёк без фона; вне собранного приложения ресурс недоступен, тогда берётся значок.
   private static let pangolin =
     Bundle.main.image(forResource: "Pangolin") ?? NSApplication.shared.applicationIconImage
 
-  private func logo(_ side: CGFloat) -> some View {
-    Image(nsImage: Self.pangolin ?? NSImage())
-      .resizable().scaledToFit().frame(width: side, height: side).accessibilityHidden(true)
-  }
-
   /// Ярлычок с логотипом: по нему видно, чей это остров, ещё до раскрытия.
-  @ViewBuilder private var label: some View {
-    let caption = Text(L10n.tr("В архив")).font(.system(size: 12.5, weight: .semibold))
-    switch model.placement {
-    case .top:
-      HStack(spacing: 6) {
-        logo(24)
-        caption
-      }
-      .fixedSize()
-    case .edge:
-      VStack(spacing: 6) {
-        logo(28)
-        caption.fixedSize().rotationEffect(.degrees(90)).frame(width: 20, height: 62)
-      }
-      .fixedSize()
-    case .cursor:
-      logo(40)
+  private var label: some View {
+    HStack(spacing: 6) {
+      Image(nsImage: Self.pangolin ?? NSImage())
+        .resizable().scaledToFit().frame(width: 24, height: 24).accessibilityHidden(true)
+      Text(L10n.tr("В архив")).font(.system(size: 12.5, weight: .semibold))
     }
+    .fixedSize()
   }
 
-  private func zone(_ style: Style) -> some View {
+  private var zone: some View {
     let isHot = model.phase == .hot
     let shape = RoundedRectangle(cornerRadius: 21, style: .continuous)
-    let open = model.placement.openSize
+    let open = DropIslandPlacement.openSize
     return VStack(spacing: 4) {
       Image(systemName: model.isExtraction ? "tray.and.arrow.up" : "tray.and.arrow.down")
-        .font(.system(size: 26, weight: .medium)).foregroundStyle(style.accent)
+        .font(.system(size: 26, weight: .medium)).foregroundStyle(Brand.gold)
+        .scaleEffect(isHot ? 1.15 : 1).symbolEffect(.bounce, value: isHot)
         .accessibilityHidden(true)
       Text(model.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-      Text(model.subtitle).font(.system(size: 12)).foregroundStyle(style.secondary)
+      Text(model.subtitle).font(.system(size: 12)).foregroundStyle(Self.secondary)
         .lineLimit(1).truncationMode(.middle)
       if let hint = model.hint {
         Text(hint).font(.system(size: 11.5)).padding(.horizontal, 10).padding(.vertical, 3)
-          .overlay { Capsule().strokeBorder(style.secondary.opacity(0.5), lineWidth: 1) }
+          .overlay { Capsule().strokeBorder(Self.secondary.opacity(0.5), lineWidth: 1) }
           .padding(.top, 5)
       }
     }
     .padding(.horizontal, 14)
     .frame(width: open.width - 20, height: open.height - 20)
-    .background { shape.fill(style.ink.opacity(isHot ? 0.12 : 0.04)) }
+    .background { shape.fill(Self.ink.opacity(isHot ? 0.14 : 0.05)) }
     .overlay {
       shape.strokeBorder(
-        style.accent, style: StrokeStyle(lineWidth: 1.5, dash: isHot ? [] : [6, 5]))
+        Brand.gold.opacity(isHot ? 1 : 0.9),
+        style: StrokeStyle(lineWidth: 1.5, dash: isHot ? [] : [6, 5]))
     }
-    .animation(.easeOut(duration: 0.15), value: isHot)
+    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHot)
   }
 
-  private func status(_ style: Style) -> some View {
+  private var status: some View {
     HStack(spacing: 12) {
       switch model.phase {
       case .done:
         Image(systemName: "checkmark").font(.system(size: 13, weight: .bold))
           .foregroundStyle(Brand.onGold).frame(width: 30, height: 30)
           .background(Brand.gold, in: Circle()).accessibilityHidden(true)
+          .transition(.scale(scale: 0.2).combined(with: .opacity))
       case .failed:
         Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 20))
-          .foregroundStyle(style.accent).frame(width: 30, height: 30).accessibilityHidden(true)
-      default: ring(style)
+          .foregroundStyle(Brand.gold).frame(width: 30, height: 30).accessibilityHidden(true)
+      default: ring
       }
       VStack(alignment: .leading, spacing: 2) {
         Text(model.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
           .truncationMode(.middle)
-        Text(model.subtitle).font(.system(size: 12)).foregroundStyle(style.secondary)
+        Text(model.subtitle).font(.system(size: 12)).foregroundStyle(Self.secondary)
           .lineLimit(model.phase == .failed ? 2 : 1).help(model.subtitle)
       }
       Spacer(minLength: 4)
       switch model.phase {
+      case .done where !model.canReveal: EmptyView()
       case .done:
         Button(L10n.tr("Показать в Finder"), action: model.reveal)
           .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
@@ -189,11 +225,10 @@ struct DropIslandView: View {
   }
 
   /// Единственное кольцо острова показывает ход операции, как и в окне архива.
-  @ViewBuilder
-  private func ring(_ style: Style) -> some View {
+  @ViewBuilder private var ring: some View {
     if let fraction = model.fraction {
       ZStack {
-        Circle().stroke(style.secondary.opacity(0.35), lineWidth: 4)
+        Circle().stroke(Self.secondary.opacity(0.35), lineWidth: 4)
         Circle().trim(from: 0, to: max(0.02, min(1, fraction)))
           .stroke(Brand.gold, style: StrokeStyle(lineWidth: 4, lineCap: .round))
           .rotationEffect(.degrees(-90))

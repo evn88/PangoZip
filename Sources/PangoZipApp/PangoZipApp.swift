@@ -150,6 +150,8 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
       finderSetupTask = Task { await finderIntegration.prepare() }
       DropIslandController.shared.applySettings()
       WatchedFolderMonitor.shared.reload()
+      // Исходные программы для архивов запоминаются до того, как пользователь что-то изменит.
+      ArchiveAssociationsModel().captureInitialSnapshotIfNeeded()
       hideWindowsAfterLoginLaunch()
     }
   }
@@ -180,8 +182,9 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
 
   /// С островом или слежением за папками приложение остаётся в фоне; иначе завершается с последним окном.
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    ApplicationMode.isFinderWorker
-      || (!DropIslandSettings.isEnabled && !WatchedFolderMonitor.isActive)
+    // Фоновый процесс прячет окно, пока ход операции показывает остров: это не повод завершаться.
+    if ApplicationMode.isFinderWorker { return !ApplicationMode.workerShowsIsland }
+    return !DropIslandSettings.isEnabled && !WatchedFolderMonitor.isActive
   }
 
   /// Откладывает системное завершение до асинхронной очистки и ответа о рабочих копиях.
