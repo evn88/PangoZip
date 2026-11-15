@@ -19,7 +19,8 @@ public struct SourceTrashFailure: LocalizedError, Equatable {
 
 extension ArchiveService {
   /// Создаёт общий архив либо отдельный на каждый объект в папке `proposedURL`.
-  /// Исходники уходят в Корзину только после того, как их архив создан и проверен.
+  /// Исходники уходят в Корзину только после того, как созданы и проверены все архивы:
+  /// объект из одного пакета может лежать внутри папки из другого.
   public func createArchives(
     from urls: [URL], proposedURL: URL, format: String, options: CompressionOptions? = nil,
     password: String = "", separately: Bool, trashesSources: Bool,
@@ -47,8 +48,13 @@ extension ArchiveService {
         try await createArchive(
           from: batch.sources, proposedURL: batch.proposed, format: format, options: options,
           password: password, progress: progress))
-      guard trashesSources else { continue }
-      for source in batch.sources {
+    }
+    if trashesSources {
+      // Вложенный объект уходит в Корзину вместе со своей выбранной папкой.
+      let roots = sources.filter { source in
+        !sources.contains { $0 != source && source.path.hasPrefix($0.path + "/") }
+      }
+      for source in roots {
         do {
           try trash(source)
         } catch {

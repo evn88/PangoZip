@@ -128,7 +128,9 @@ public enum ZipNameRepair {
     let flags: UInt16
     let name: Data
     let localOffset: Int
-    /// Имя без признака UTF-8, с не-ASCII байтами и без юникодного дубля в дополнительном поле.
+    /// Имя с не-ASCII байтами без признака UTF-8 и без юникодного дубля в дополнительном поле.
+    let lacksUnicodeFlag: Bool
+    /// Такое имя, которое к тому же не читается как UTF-8: его нужно перекодировать.
     let isLegacy: Bool
   }
 
@@ -148,9 +150,7 @@ public enum ZipNameRepair {
     defer { try? handle.close() }
     guard let layout = try? read(handle) else { return nil }
     let names = layout.entries.filter(\.isLegacy).map(\.name)
-    guard !names.isEmpty, names.contains(where: { String(data: $0, encoding: .utf8) == nil })
-    else { return nil }
-    return names
+    return names.isEmpty ? nil : names
   }
 
   /// Пишет копию архива с именами в UTF-8. Сжатые данные копируются без изменений.
@@ -194,9 +194,10 @@ public enum ZipNameRepair {
           utf8.count <= Int(UInt16.max)
         else { throw ArchiveError.invalidArchive }
         name = utf8
-        header.setUInt16(header.uint16(6) | 0x0800, at: 6)
         header.setUInt16(UInt16(name.count), at: 26)
       }
+      // Имя, уже записанное в UTF-8 без признака, не перекодируется, а только помечается.
+      if entry.lacksUnicodeFlag { header.setUInt16(header.uint16(6) | 0x0800, at: 6) }
       newOffsets[index] = written
       newNames[index] = name
       try target.write(contentsOf: header + name)
@@ -210,7 +211,7 @@ public enum ZipNameRepair {
       var record = entry.record
       let tail = record.subdata(in: (46 + entry.name.count)..<record.count)
       record = record.subdata(in: 0..<46)
-      if entry.isLegacy { record.setUInt16(entry.flags | 0x0800, at: 8) }
+      if entry.lacksUnicodeFlag { record.setUInt16(entry.flags | 0x0800, at: 8) }
       record.setUInt16(UInt16(newNames[index].count), at: 28)
       guard newOffsets[index] < Int(UInt32.max) else { throw ArchiveError.outputLimit }
       record.setUInt32(UInt32(newOffsets[index]), at: 42)
@@ -270,11 +271,13 @@ public enum ZipNameRepair {
       let name = record.subdata(in: 46..<(46 + nameLength))
       let extra = record.subdata(in: (46 + nameLength)..<(46 + nameLength + extraLength))
       let flags = record.uint16(8)
+      let lacksUnicodeFlag =
+        flags & 0x0800 == 0 && name.contains { $0 >= 0x80 } && !hasUnicodePath(extra)
       entries.append(
         Entry(
           record: record, flags: flags, name: name, localOffset: Int(localOffset),
-          isLegacy: flags & 0x0800 == 0 && name.contains { $0 >= 0x80 }
-            && !hasUnicodePath(extra)))
+          lacksUnicodeFlag: lacksUnicodeFlag,
+          isLegacy: lacksUnicodeFlag && String(data: name, encoding: .utf8) == nil))
       cursor += length
     }
     guard cursor == directory.count, Set(entries.map(\.localOffset)).count == entries.count else {

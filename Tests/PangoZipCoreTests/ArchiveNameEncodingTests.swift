@@ -125,6 +125,26 @@ final class ArchiveNameEncodingTests: XCTestCase {
     await service.cleanup()
   }
 
+  func testNamesAlreadyInUtf8AreNotReencodedNextToLegacyOnes() async throws {
+    let url = try makeZip(
+      "mixed.zip",
+      files: [
+        (try XCTUnwrap("Отчёт.txt".data(using: cfEncoding(.dosRussian))), "старое"),
+        (Data("Заметки.txt".utf8), "новое"),
+      ])
+    XCTAssertEqual(ZipNameRepair.legacyNames(in: url)?.count, 1)
+    let service = ArchiveService()
+
+    let session = try await service.open(url)
+
+    XCTAssertEqual(session.nameEncoding?.codePage, 866)
+    XCTAssertEqual(Set(session.entries.map(\.path)), ["Отчёт.txt", "Заметки.txt"])
+    let entry = try XCTUnwrap(session.entries.first { $0.path == "Заметки.txt" })
+    let file = try await service.materialize(entry, in: session)
+    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "новое")
+    await service.cleanup()
+  }
+
   func testOpeningLegacyArchiveRepairsNamesAndKeepsOriginalUntouched() async throws {
     let url = try makeZip(
       "legacy.zip",

@@ -52,6 +52,31 @@ final class ArchiveCreationBatchTests: XCTestCase {
     XCTAssertEqual(second.entries.map(\.path), ["Second.txt"])
   }
 
+  func testSeparateModeTrashesNothingUntilEveryArchiveExists() async throws {
+    let folder = root.appendingPathComponent("Folder")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let inner = folder.appendingPathComponent("Inner.txt")
+    try Data("inner".utf8).write(to: inner)
+    let log = TrashLog()
+    // Настоящее удаление показало бы преждевременный вызов: второй архив не нашёл бы объект.
+    let remove: @Sendable (URL) throws -> Void = { url in
+      try log.trash(url)
+      try FileManager.default.removeItem(at: url)
+    }
+
+    let outcome = try await service.createArchives(
+      from: [folder.standardizedFileURL, inner.standardizedFileURL],
+      proposedURL: root.appendingPathComponent("Both.zip"), format: "zip", separately: true,
+      trashesSources: true, trash: remove)
+
+    XCTAssertEqual(outcome.urls.map(\.lastPathComponent), ["Folder.zip", "Inner.zip"])
+    XCTAssertNil(outcome.trashFailure)
+    // Вложенный файл уходит вместе с папкой, отдельно его не трогают.
+    XCTAssertEqual(log.names, ["Folder"])
+    let folderArchive = try await service.open(outcome.urls[0])
+    XCTAssertTrue(folderArchive.entries.contains { $0.path == "Folder/Inner.txt" })
+  }
+
   func testCombinedModeTrashesSourcesOnlyAfterArchiveExists() async throws {
     let sources = [try file("First.txt"), try file("Second.txt")]
     let log = TrashLog()
