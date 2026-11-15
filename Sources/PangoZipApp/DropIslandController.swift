@@ -75,6 +75,14 @@ final class DropIslandModel: ObservableObject {
 
   var size: CGSize { size(for: phase) }
 
+  /// Присваивает только новое значение: `@Published` оповещает подписчиков при любой записи,
+  /// даже если значение не изменилось.
+  func update<Value: Equatable>(
+    _ keyPath: ReferenceWritableKeyPath<DropIslandModel, Value>, to value: Value
+  ) {
+    if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+  }
+
   func size(for phase: Phase) -> CGSize {
     switch phase {
     case .hidden, .label: DropIslandPlacement.labelSize
@@ -97,6 +105,20 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     case idle, working, done, failed
   }
 
+  /// Всё, что нужно подписи площадки, для одного набора файлов; описания — по состоянию Option.
+  private struct PlanCache {
+    struct Description {
+      let isExtraction: Bool
+      let subtitle: String
+      let hint: String?
+    }
+
+    let urls: [URL]
+    let defaultFolder: URL?
+    let format: String
+    var descriptions: [Bool: Description] = [:]
+  }
+
   private struct Job {
     let plan: DropIslandPlan
     let proposedURL: URL?
@@ -115,6 +137,12 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private var panel: NSPanel?
   private var dragChangeAtMouseDown = 0
   private var draggedURLs: [URL] = []
+  /// Счётчик drag-pasteboard, с которого прочитаны `draggedURLs`: пока он не изменился,
+  /// повторно читать pasteboard незачем.
+  private var draggedChangeCount: Int?
+  /// План броска на время перетаскивания: опрос идёт 20 раз в секунду, а сборка плана
+  /// обращается к файловой системе и настройкам.
+  private var planCache: PlanCache?
   /// Option в момент последнего опроса: клавишу часто отпускают одновременно с кнопкой мыши.
   private var optionWhileHovering = false
   private var visibleFrame = NSRect.zero
@@ -192,7 +220,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     if session == .none {
       let board = NSPasteboard(name: .drag)
       guard board.changeCount != dragChangeAtMouseDown else { return }
-      let urls = Self.fileURLs(board)
+      let urls = draggedFileURLs(board)
       guard !urls.isEmpty else { return }
       beginSession(urls)
     }
@@ -225,8 +253,25 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private func endSession() {
     guard session != .none else { return }
     session = .none
-    draggedURLs = []
+    forgetDrag()
     refresh()
+  }
+
+  private func forgetDrag() {
+    draggedURLs = []
+    draggedChangeCount = nil
+    planCache = nil
+  }
+
+  /// Файлы перетаскивания; pasteboard читается заново, только когда его содержимое сменилось.
+  private func draggedFileURLs(_ board: NSPasteboard) -> [URL] {
+    if board.changeCount == draggedChangeCount, !draggedURLs.isEmpty { return draggedURLs }
+    let urls = Self.fileURLs(board)
+    if !urls.isEmpty {
+      draggedURLs = urls
+      draggedChangeCount = board.changeCount
+    }
+    return urls
   }
 
   private static func fileURLs(_ board: NSPasteboard) -> [URL] {
@@ -252,9 +297,9 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     switch phase {
     case .label, .open, .hot: describeDrop(isHot: phase == .hot)
     case .working, .done, .failed:
-      model.title = workTitle
-      model.subtitle = workSubtitle
-      model.hint = nil
+      model.update(\.title, to: workTitle)
+      model.update(\.subtitle, to: workSubtitle)
+      model.update(\.hint, to: nil)
     case .hidden: break
     }
     guard phase != model.phase else { return }
@@ -266,39 +311,60 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   /// Подписи площадки: что произойдёт при броске и что изменит клавиша Option.
   private func describeDrop(isHot: Bool) {
     let option = NSEvent.modifierFlags.contains(.option)
-    guard
-      let plan = DropIslandPlan(
-        urls: draggedURLs, optionPressed: option, defaultFolder: DropIslandSettings.defaultFolder)
-    else { return }
-    let isExtraction = plan.action == .extract
-    let name = plan.resultName(format: ArchivePreferences.options.format)
-    model.isExtraction = isExtraction
-    if !isHot {
-      model.title = L10n.tr("Перетащите сюда")
+    guard let description = dropDescription(optionPressed: option) else { return }
+    let isExtraction = description.isExtraction
+    let title =
+      !isHot
+      ? L10n.tr("Перетащите сюда")
+      : isExtraction ? L10n.tr("Отпустите — распакуем") : L10n.tr("Отпустите — сожмём")
+    // Опрос повторяет одни и те же значения: присваиваем только изменения, иначе остров
+    // со всеми слоями стекла перерисовывается на каждом тике.
+    model.update(\.isExtraction, to: isExtraction)
+    model.update(\.title, to: title)
+    model.update(\.subtitle, to: description.subtitle)
+    model.update(\.hint, to: description.hint)
+  }
+
+  /// Подпись места и подсказка Option для текущего набора файлов; пересчитываются,
+  /// только когда меняется набор или состояние Option.
+  private func dropDescription(optionPressed option: Bool) -> PlanCache.Description? {
+    if let planCache, planCache.urls == draggedURLs {
+      if let cached = planCache.descriptions[option] { return cached }
     } else {
-      model.title =
-        isExtraction ? L10n.tr("Отпустите — распакуем") : L10n.tr("Отпустите — сожмём")
+      planCache = PlanCache(
+        urls: draggedURLs, defaultFolder: DropIslandSettings.defaultFolder,
+        format: ArchivePreferences.options.format)
     }
+    guard var cache = planCache,
+      let plan = DropIslandPlan(
+        urls: cache.urls, optionPressed: option, defaultFolder: cache.defaultFolder)
+    else { return nil }
+    let isExtraction = plan.action == .extract
+    let name = plan.resultName(format: cache.format)
+    let subtitle: String
     if isExtraction {
       if let name {
         let parent = plan.urls[0].deletingLastPathComponent().lastPathComponent
-        model.subtitle = parent + " / " + name + " /"
+        subtitle = parent + " / " + name + " /"
       } else {
-        model.subtitle = L10n.tr(
+        subtitle = L10n.tr(
           "Архивов: %1$@ — каждый в свою папку", String(describing: plan.urls.count))
       }
     } else if case .directory(let directory) = plan.destination, let name {
-      model.subtitle = directory.lastPathComponent + " / " + name
+      subtitle = directory.lastPathComponent + " / " + name
     } else {
-      model.subtitle = L10n.tr("Место сохранения выберете сами")
+      subtitle = L10n.tr("Место сохранения выберете сами")
     }
-    if option {
-      model.hint = nil
-    } else {
-      model.hint =
-        plan.containsOnlyArchives
+    let hint: String? =
+      option
+      ? nil
+      : plan.containsOnlyArchives
         ? L10n.tr("⌥ — сжать в новый архив") : L10n.tr("⌥ — выбрать место")
-    }
+    let description = PlanCache.Description(
+      isExtraction: isExtraction, subtitle: subtitle, hint: hint)
+    cache.descriptions[option] = description
+    planCache = cache
+    return description
   }
 
   /// Прямоугольник острова на экране для заданного размера.
@@ -392,7 +458,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
 
   /// Вызывается периодически, поэтому нажатие Option отражается в подписи без движения мыши.
   private func hover(_ sender: any NSDraggingInfo) -> NSDragOperation {
-    let urls = Self.fileURLs(sender.draggingPasteboard)
+    let urls = draggedFileURLs(sender.draggingPasteboard)
     guard !urls.isEmpty else { return [] }
     // Окно шире острова на поля для тени и анимации: бросок принимает только сам остров.
     let mouse = NSEvent.mouseLocation
@@ -404,7 +470,6 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       }
       return []
     }
-    draggedURLs = urls
     optionWhileHovering = NSEvent.modifierFlags.contains(.option)
     session = .hot
     refresh()
@@ -421,7 +486,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     else { return false }
     optionWhileHovering = false
     session = .none
-    draggedURLs = []
+    forgetDrag()
     refresh()
     Task { await accept(plan) }
     return true
@@ -567,7 +632,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     if let feedbackID {
       OperationFeedback.shared.update(feedbackID, fraction: DockProgress.fraction(of: progress))
     }
-    model.fraction = progress.fraction
+    model.update(\.fraction, to: progress.fraction)
     updateStage()
   }
 
