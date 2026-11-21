@@ -58,7 +58,10 @@ final class ArchiveLargeSourceTests: XCTestCase, @unchecked Sendable {
     XCTAssertNotNil(first, "Сжатие не началось")
     // Подготовка только читает метаданные: счёт идёт на секунды, а не на минуты копирования.
     if let first { XCTAssertLessThan(first, 30) }
-    XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: output.path).isEmpty)
+    if limit != nil {
+      // После отмены не остаётся ни архива, ни рабочей папки.
+      XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: output.path).isEmpty)
+    }
   }
 }
 
