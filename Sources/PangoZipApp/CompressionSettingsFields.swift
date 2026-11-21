@@ -116,7 +116,9 @@ struct CompressionSettingsFields: View {
     if let row, row.title != nil {
       row.control
         .labelsHidden()
-        .frame(width: CompactSettingsRow.controlWidth)
+        // Меню и поля прижаты к левому краю колонки: иначе узкое меню встаёт по центру ячейки.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: CompactSettingsRow.controlWidth, alignment: .leading)
         .opacity(row.hidden ? 0 : 1)
         .accessibilityHidden(row.hidden)
     } else if let row {
