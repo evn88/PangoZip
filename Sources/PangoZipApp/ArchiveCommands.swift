@@ -5,9 +5,17 @@ import SwiftUI
 struct ArchiveCommands: Commands {
   @ObservedObject var model: ArchiveBrowserModel
   @FocusedValue(\.dismissAboutWindow) private var dismissAboutWindow
+  @Environment(\.openWindow) private var openWindow
 
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
+      Button(L10n.tr("Новый архив…")) {
+        // Окно могло быть закрыто, пока PangoZip работает в фоне ради острова.
+        openWindow(id: "main")
+        model.newArchive()
+      }
+      .keyboardShortcut("n", modifiers: .command)
+      .disabled(!model.canStartNewArchive)
       Button(L10n.tr("Открыть архив…"), action: model.chooseArchive)
         .keyboardShortcut("o", modifiers: .command)
         .disabled(!model.canAct)
@@ -24,7 +32,7 @@ struct ArchiveCommands: Commands {
       } else {
         Button(L10n.tr("Закрыть архив"), action: model.closeArchive)
           .keyboardShortcut("w", modifiers: .command)
-          .disabled(model.session == nil && !model.isBusy || model.isClosing)
+          .disabled(!model.canCloseArchive)
       }
     }
     CommandGroup(replacing: .help) {
@@ -41,13 +49,16 @@ struct ArchiveCommands: Commands {
 
       Button(L10n.tr("Добавить файлы и папки…"), action: model.chooseFilesToAdd)
         .keyboardShortcut("a", modifiers: [.command, .shift])
-        .disabled(!model.canQueueModifications)
+        .disabled(!model.canAddFiles)
       Button(L10n.tr("Извлечь выбранное…"), action: model.extractSelected)
         .keyboardShortcut("e", modifiers: [.command, .shift])
         .disabled(!model.canQueueOperations || model.selectedPaths.isEmpty)
-      Button(L10n.tr("Удалить выбранное…"), action: model.deleteSelected)
-        .keyboardShortcut(.delete, modifiers: .command)
-        .disabled(!model.canQueueModifications || model.selectedPaths.isEmpty)
+      Button(
+        model.isDrafting ? L10n.tr("Убрать из списка") : L10n.tr("Удалить выбранное…"),
+        action: model.deleteSelected
+      )
+      .keyboardShortcut(.delete, modifiers: .command)
+      .disabled(!model.canRemoveSelection)
       Divider()
       Button(L10n.tr("Проверить архив"), action: model.verifyArchive)
         .keyboardShortcut("t", modifiers: [.command, .option])

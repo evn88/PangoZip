@@ -20,7 +20,7 @@ final class ArchiveBrowserModel: ObservableObject {
     case save
     case autosave([ArchiveEdit])
     case undo
-    case create([URL], String)
+    case create([URL], ArchiveCreationChoice)
     case extract([URL])
     case export([String], URL)
     case verify
@@ -122,6 +122,14 @@ final class ArchiveBrowserModel: ObservableObject {
   private var wantsPreview: Bool { showsPreview || isQuickLookOpen }
   @Published private(set) var searchFocusToken = UUID()
   @Published var checksums: ChecksumsModel?
+  /// Файлы и папки будущего архива; nil — черновик нового архива не начат.
+  @Published private(set) var draft: [URL]?
+  @Published var draftSelection: Set<URL> = []
+  /// Пока открыто окно создания архива, другие действия ждут его закрытия.
+  @Published private(set) var isCreationDialogPresented = false
+  private let creationDialog = ArchiveCreationDialog()
+  /// Спрашивает имя, место и параметры нового архива; nil — пользователь передумал.
+  var chooseCreation: @MainActor ([URL]) async -> ArchiveCreationChoice? = { _ in nil }
 
   private let service: ArchiveService
   private var autosaveTask: Task<Void, Never>?
@@ -163,6 +171,12 @@ final class ArchiveBrowserModel: ObservableObject {
     self.service = service
     self.passwords = passwords ?? KeychainArchivePasswords()
     self.remembersPasswords = remembersPasswords
+    chooseCreation = { [creationDialog] items in
+      await creationDialog.present(
+        message: L10n.tr("Создать новый архив из добавленных файлов и папок."),
+        directory: items.first?.deletingLastPathComponent(),
+        archiveName: FinderSelection(urls: items).archiveName, window: NSApp.mainWindow)
+    }
   }
 
   /// Заново открывает архив, читая имена в выбранной кодировке; nil возвращает автоопределение.
@@ -210,7 +224,7 @@ final class ArchiveBrowserModel: ObservableObject {
   }
   var canAct: Bool {
     !isUpdatePending && !isBusy && !isExporting && !isClosing && !isPasswordPromptPresented
-      && activePanel == nil
+      && activePanel == nil && !isCreationDialogPresented
   }
   var canQueueOperations: Bool {
     !isUpdatePending && !isClosing && !isExporting && !isPasswordPromptPresented
@@ -225,6 +239,18 @@ final class ArchiveBrowserModel: ObservableObject {
   var canUndoLastChange: Bool {
     canModify && hasUndo && activeEdits.isEmpty && queuedOperations.isEmpty
   }
+  var isDrafting: Bool { draft != nil }
+  var canEditDraft: Bool { canAct && isDrafting }
+  /// Новый архив начинается только без ожидающих операций над текущим.
+  var canStartNewArchive: Bool { canAct && queuedOperations.isEmpty }
+  var canAddFiles: Bool { canQueueModifications || canEditDraft }
+  var canRemoveSelection: Bool {
+    isDrafting
+      ? canEditDraft && !draftSelection.isEmpty
+      : canQueueModifications && !selectedPaths.isEmpty
+  }
+  var canCreateFromDraft: Bool { canEditDraft && draft?.isEmpty == false }
+  var canCloseArchive: Bool { (session != nil || isBusy || isDrafting) && !isClosing }
   var canOpenSelection: Bool {
     canAct && selectedEntry.map { !$0.isDirectory && !$0.isSymbolicLink } == true
   }
@@ -326,6 +352,92 @@ final class ArchiveBrowserModel: ObservableObject {
         ) { _, _ in }
       }
     default: FinderServices.launchWorker(request)
+    }
+  }
+
+  /// Закрывает текущий архив и начинает пустой черновик, куда собираются файлы нового архива.
+  func newArchive() {
+    guard canStartNewArchive else { return }
+    run {
+      guard await self.closeCurrentSession() else { return }
+      self.startDraft(with: [])
+    }
+  }
+
+  /// Файлы, брошенные в окно без открытого архива: один архив открывается,
+  /// всё остальное начинает или пополняет черновик нового архива.
+  func receiveDroppedFiles(_ urls: [URL]) {
+    let files = urls.filter(\.isFileURL)
+    guard canAct, session == nil, !files.isEmpty else { return }
+    if isDrafting {
+      addToDraft(files)
+    } else if files.count == 1, FinderSelection.isArchive(files[0]) {
+      open(files[0])
+    } else {
+      startDraft(with: files)
+    }
+  }
+
+  /// Пополняет черновик без повторов; сами файлы не копируются до создания архива.
+  func addToDraft(_ urls: [URL]) {
+    guard let current = draft else { return }
+    let combined = FinderSelection(urls: current + urls).urls
+    if combined != current { draft = combined }
+  }
+
+  /// Убирает объекты только из черновика: файлы на диске остаются нетронутыми.
+  func removeFromDraft(_ urls: Set<URL>) {
+    guard canEditDraft, !urls.isEmpty else { return }
+    draft?.removeAll { urls.contains($0) }
+    draftSelection.subtract(urls)
+  }
+
+  /// Забывает собранный список, не трогая сами файлы.
+  func discardDraft() {
+    draft = nil
+    draftSelection = []
+  }
+
+  /// Спрашивает имя, место и параметры сжатия, затем создаёт архив и открывает его в окне.
+  func createArchiveFromDraft() {
+    guard canCreateFromDraft, let items = draft else { return }
+    isCreationDialogPresented = true
+    Task { [weak self] in
+      guard let self else { return }
+      let choice = await self.chooseCreation(items)
+      self.isCreationDialogPresented = false
+      guard let choice, self.draft != nil else {
+        self.drainIncomingRequests()
+        return
+      }
+      self.start(.create(items, choice))
+    }
+  }
+
+  private func startDraft(with urls: [URL]) {
+    errorMessage = nil
+    operationMessage = nil
+    draftSelection = []
+    draft = []
+    addToDraft(urls)
+  }
+
+  /// Выбор файлов и папок для черновика нового архива.
+  private func chooseFilesForDraft() {
+    guard canEditDraft else { return }
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = true
+    panel.allowsMultipleSelection = true
+    panel.prompt = L10n.tr("Добавить")
+    activePanel = panel
+    panel.begin { [weak self] response in
+      Task { @MainActor in
+        guard let self else { return }
+        self.activePanel = nil
+        if response == .OK { self.addToDraft(panel.urls) }
+        self.drainIncomingRequests()
+      }
     }
   }
 
@@ -482,6 +594,10 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Запоминает папку вставки до выбора файлов и повторно проверяет возможность записи.
   func chooseFilesToAdd() {
+    if isDrafting {
+      chooseFilesForDraft()
+      return
+    }
     guard canQueueModifications else { return }
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
@@ -505,6 +621,10 @@ final class ArchiveBrowserModel: ObservableObject {
 
   /// Не удаляет объекты с активными рабочими копиями, включая вложенные файлы.
   func deleteSelected() {
+    if isDrafting {
+      removeFromDraft(draftSelection)
+      return
+    }
     guard canQueueModifications, !selectedPaths.isEmpty else { return }
     let alert = NSAlert()
     alert.messageText = L10n.tr("Удалить выбранные объекты из архива?")
@@ -761,7 +881,9 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Название архива или исходного файла, которое попадёт в уведомление.
   private func feedbackSubject(for operation: Operation) -> String {
     switch operation {
-    case .create(let urls, _), .extract(let urls):
+    case .create(_, let choice):
+      choice.destination.lastPathComponent
+    case .extract(let urls):
       urls.first?.lastPathComponent ?? ""
     default:
       session?.url.lastPathComponent ?? ""
@@ -858,21 +980,29 @@ final class ArchiveBrowserModel: ObservableObject {
             return
           }
         }
-      case .create(let urls, let format):
-        await settlePreviews()
-        let selection = FinderSelection(urls: urls)
-        guard let first = urls.first else { throw ArchiveError.invalidOperation }
-        operationMessage = L10n.tr("Создаём архив…")
-        let proposed = first.deletingLastPathComponent().appendingPathComponent(
-          selection.archiveName + "." + format)
+      case .create(let urls, let choice):
+        let name = choice.destination.lastPathComponent
+        operationMessage = L10n.tr("Создаём %1$@…", String(describing: name))
         let outcome = try await service.createArchives(
-          from: urls, proposedURL: proposed, format: format, options: ArchivePreferences.options,
-          separately: ArchivePreferences.separatesArchives,
+          from: urls, proposedURL: choice.destination, format: choice.options.format,
+          options: choice.options, password: choice.password, separately: false,
           trashesSources: ArchivePreferences.trashesSources, progress: progressHandler)
-        NSWorkspace.shared.activateFileViewerSelecting(outcome.urls)
-        operationMessage = L10n.tr(
-          "Создан архив: %1$@", String(describing: outcome.urls.last?.lastPathComponent ?? ""))
-        if let failure = outcome.trashFailure { throw SourceTrashFailure(message: failure) }
+        // Черновик выполнил свою задачу: дальше файлы добавляются уже в готовый архив.
+        discardDraft()
+        guard let created = outcome.urls.first else { throw ArchiveError.invalidArchive }
+        password = choice.password
+        nameEncodingOverride = nil
+        await perform(.open(created))
+        if errorMessage == nil {
+          operationMessage = L10n.tr(
+            "Создан архив: %1$@", String(describing: outcome.urls.last?.lastPathComponent ?? name))
+        }
+        if let failure = outcome.trashFailure {
+          // Архив уже создан: «Повторить» не должен создавать его второй раз.
+          errorMessage = SourceTrashFailure(message: failure).localizedDescription
+          failedOperation = nil
+        }
+        return
       case .extract(let urls):
         await settlePreviews()
         var results: [URL] = []
@@ -1234,6 +1364,7 @@ final class ArchiveBrowserModel: ObservableObject {
       return false
     }
     await replaceSession(nil)
+    discardDraft()
     operationMessage = nil
     activeEdits.removeAll()
     stopWatchingCopies()
@@ -1258,6 +1389,7 @@ final class ArchiveBrowserModel: ObservableObject {
       if !terminate || !didClose { drainIncomingRequests() }
     }
     activePanel?.cancel(nil)
+    creationDialog.cancel()
     checksums?.cancel()
     checksums = nil
     await settleExports()
@@ -1275,6 +1407,7 @@ final class ArchiveBrowserModel: ObservableObject {
       return false
     }
     await replaceSession(nil)
+    discardDraft()
     operationMessage = nil
     activeEdits.removeAll()
     stopWatchingCopies()

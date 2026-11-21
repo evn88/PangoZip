@@ -52,10 +52,14 @@ struct ArchiveBrowserView: View {
     }
   }
 
-  private var windowTitle: String { model.session?.url.lastPathComponent ?? "PangoZip" }
+  private var windowTitle: String {
+    if model.session == nil && model.isDrafting { return L10n.tr("Новый архив") }
+    return model.session?.url.lastPathComponent ?? "PangoZip"
+  }
 
   private var windowSubtitle: String {
-    model.session.map {
+    if model.session == nil && model.isDrafting { return L10n.tr("Архив ещё не создан") }
+    return model.session.map {
       $0.format.uppercased()
         + ($0.canModify && !model.isNestedArchive ? "" : L10n.tr(" — Только чтение"))
     } ?? ""
@@ -125,7 +129,7 @@ struct ArchiveBrowserView: View {
         Label(L10n.tr("Добавить"), systemImage: "plus").labelStyle(.titleAndIcon)
           .padding(.horizontal, Self.toolbarLabelInset)
       }
-      .help(L10n.tr("Добавить файлы и папки (⌘⇧A)")).disabled(!model.canQueueModifications)
+      .help(L10n.tr("Добавить файлы и папки (⌘⇧A)")).disabled(!model.canAddFiles)
     }
     ToolbarSpacer(.fixed)
     ToolbarItemGroup(placement: .automatic) {
@@ -141,8 +145,11 @@ struct ArchiveBrowserView: View {
         .disabled(!model.canModify || !model.canOpenSelection)
       Button(L10n.tr("Удалить выбранное…"), systemImage: "trash", action: model.deleteSelected)
         .labelStyle(.iconOnly)
-        .help(L10n.tr("Удалить выбранное (⌘⌫)"))
-        .disabled(!model.canQueueModifications || model.selectedPaths.isEmpty)
+        .help(
+          model.isDrafting
+            ? L10n.tr("Убрать из списка") : L10n.tr("Удалить выбранное (⌘⌫)")
+        )
+        .disabled(!model.canRemoveSelection)
     }
     if !model.activeEdits.isEmpty {
       ToolbarSpacer(.fixed)
@@ -176,10 +183,14 @@ struct ArchiveBrowserView: View {
   /// Собирает редкие действия в одно меню, чтобы на панели остались только частые.
   private var moreMenu: some View {
     Menu {
+      Button(
+        L10n.tr("Новый архив…"), systemImage: "plus.rectangle.on.folder", action: model.newArchive
+      )
+      .disabled(!model.canStartNewArchive)
       Button(L10n.tr("Открыть архив…"), systemImage: "archivebox", action: model.chooseArchive)
         .disabled(!model.canAct)
       Button(L10n.tr("Закрыть архив"), systemImage: "xmark.circle", action: model.closeArchive)
-        .disabled(model.session == nil && !model.isBusy || model.isClosing)
+        .disabled(!model.canCloseArchive)
       Divider()
       Button(
         L10n.tr("Откатить последнее изменение архива"), systemImage: "arrow.uturn.backward",
@@ -309,6 +320,8 @@ struct ArchiveBrowserView: View {
             .allowsHitTesting(false)
           }
         }
+    } else if model.isDrafting {
+      ArchiveDraftView(model: model)
     } else if model.loadState == .loading {
       VStack(spacing: 16) {
         ProgressView()
@@ -324,16 +337,21 @@ struct ArchiveBrowserView: View {
           .background(Brand.header, in: RoundedRectangle(cornerRadius: 16))
           .accessibilityHidden(true)
         Text(L10n.tr("Откройте архив")).font(.largeTitle.weight(.bold)).padding(.top, 6)
-        Text(L10n.tr("Перетащите архив в окно, чтобы просмотреть и извлечь файлы."))
+        Text(L10n.tr("Перетащите архив, чтобы открыть его, или файлы, чтобы создать новый архив."))
           .font(.body).foregroundStyle(.secondary)
         if let message = model.errorMessage {
           Text(message).foregroundStyle(.red).textSelection(.enabled)
         }
-        Button(action: model.chooseArchive) {
-          Text(L10n.tr("Выбрать архив…")).fontWeight(.semibold).foregroundStyle(Brand.onGold)
+        HStack(spacing: 12) {
+          Button(action: model.chooseArchive) {
+            Text(L10n.tr("Выбрать архив…")).fontWeight(.semibold).foregroundStyle(Brand.onGold)
+          }
+          .buttonStyle(.borderedProminent).tint(Brand.gold)
+          .disabled(!model.canAct)
+          Button(L10n.tr("Новый архив…"), action: model.newArchive)
+            .disabled(!model.canStartNewArchive)
         }
-        .buttonStyle(.borderedProminent).tint(Brand.gold).controlSize(.extraLarge)
-        .disabled(!model.canAct).padding(.top, 10)
+        .controlSize(.extraLarge).padding(.top, 10)
       }
       .padding(40).frame(maxWidth: 520, alignment: .leading)
       .background(
@@ -478,6 +496,9 @@ struct ArchiveBrowserView: View {
         Text(L10n.tr("Готово"))
       }
       Spacer(minLength: 8)
+      if model.session == nil, let draft = model.draft {
+        Text(L10n.tr("Объектов: %1$@", String(describing: draft.count))).monospacedDigit()
+      }
       if let session = model.session {
         Text(L10n.tr("Объектов: %1$@", String(describing: session.entries.count))).monospacedDigit()
         Text(L10n.tr("Выбрано: %1$@", String(describing: model.selectedPaths.count)))
@@ -516,14 +537,11 @@ struct ArchiveBrowserView: View {
     .padding(24).frame(width: 400)
   }
 
-  /// Принимает один архив только без открытого сеанса; загрузка URL завершается асинхронно.
+  /// Без открытого архива окно принимает файлы: один архив открывается,
+  /// остальное попадает в черновик нового архива. Загрузка URL завершается асинхронно.
   private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-    guard model.canAct, model.session == nil, providers.count == 1, let provider = providers.first
-    else { return false }
-    _ = provider.loadObject(ofClass: URL.self) { url, _ in
-      guard let url else { return }
-      Task { @MainActor in model.open(url) }
-    }
+    guard model.canAct, model.session == nil, !providers.isEmpty else { return false }
+    DroppedFilesCollector.collect(providers) { model.receiveDroppedFiles($0) }
     return true
   }
 }

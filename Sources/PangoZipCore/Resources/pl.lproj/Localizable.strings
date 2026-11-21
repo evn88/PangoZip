@@ -93,7 +93,6 @@
 "Читаем содержимое архива…" = "Odczytywanie zawartości archiwum…";
 "Отмена" = "Anuluj";
 "Откройте архив" = "Otwórz archiwum";
-"Перетащите архив в окно, чтобы просмотреть и извлечь файлы." = "Przeciągnij archiwum do okna, aby przeglądać i rozpakowywać pliki.";
 "Выбрать архив…" = "Wybierz archiwum…";
 "Предпросмотр" = "Podgląd";
 "Скрыть предпросмотр (⌘⇧P)" = "Ukryj podgląd (⌘⇧P)";
@@ -412,3 +411,13 @@
 "PangoZip назван в честь панголинов. Все восемь их видов находятся под угрозой исчезновения." = "Nazwa PangoZip pochodzi od łuskowców (pangolinów). Wszystkie osiem gatunków jest zagrożonych wyginięciem.";
 "Как им помочь: Pangolin Crisis Fund" = "Jak im pomóc: Pangolin Crisis Fund";
 "Независимый фонд Wildlife Conservation Network. Откроется в браузере." = "Niezależny fundusz Wildlife Conservation Network. Otworzy się w przeglądarce.";
+"Новый архив…" = "Nowe archiwum…";
+"Новый архив" = "Nowe archiwum";
+"Архив ещё не создан" = "Archiwum jeszcze nie utworzone";
+"Убрать из списка" = "Usuń z listy";
+"Файлы нового архива" = "Pliki nowego archiwum";
+"Создать архив…" = "Utwórz archiwum…";
+"Перетащите в окно файлы и папки, которые нужно сжать." = "Przeciągnij do okna pliki i foldery, które chcesz skompresować.";
+"Перетащите сюда ещё файлы или уберите лишние клавишей ⌫." = "Upuść tu więcej plików lub usuń zbędne klawiszem ⌫.";
+"Создать новый архив из добавленных файлов и папок." = "Utwórz nowe archiwum z dodanych plików i folderów.";
+"Перетащите архив, чтобы открыть его, или файлы, чтобы создать новый архив." = "Przeciągnij archiwum, aby je otworzyć, lub pliki, aby utworzyć nowe archiwum.";
