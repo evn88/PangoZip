@@ -49,6 +49,9 @@ struct CompressionSettingsFields: View {
   var formatTitle = L10n.tr("Формат архива")
   var levelTitle = L10n.tr("Уровень сжатия")
   var solidTitle = L10n.tr("Сплошное сжатие")
+  /// Поля, которые компактная раскладка ставит в правую колонку после флажков.
+  /// Если они заданы, блок занимает две колонки с подписями слева вместо списка настроек.
+  var compactTrailing: AnyView?
 
   /// Размер тома в мегабайтах 7-Zip и носитель или ограничение, под которое он подобран.
   private static let volumePresets: [(size: Int, note: String?)] = [
@@ -60,16 +63,54 @@ struct CompressionSettingsFields: View {
   @State private var isCustomVolume = false
 
   var body: some View {
+    if let compactTrailing {
+      HStack(alignment: .top, spacing: 20) {
+        Form {
+          profilePicker
+          formatPicker
+          levelPicker
+          volumePicker
+          // Строка своего размера занята всегда, чтобы высота панели сохранения не прыгала.
+          customVolumeField
+            .opacity(showsCustomVolume ? 1 : 0)
+            .disabled(!showsCustomVolume)
+            .accessibilityHidden(!showsCustomVolume)
+        }
+        Form {
+          solidToggle
+          fileNameEncryptionToggle
+          compactTrailing
+        }
+      }
+      .formStyle(.columns)
+    } else {
+      profilePicker
+      formatPicker
+      levelPicker
+      solidToggle
+      fileNameEncryptionToggle
+      volumePicker
+      if showsCustomVolume { customVolumeField }
+    }
+  }
+
+  private var profilePicker: some View {
     Picker(L10n.tr("Профиль"), selection: profileSelection) {
       ForEach(CompressionProfile.builtIn) { Text($0.title).tag($0.id) }
       Text(CompressionProfile.title(for: CompressionProfile.customID))
         .tag(CompressionProfile.customID)
     }
+  }
+
+  private var formatPicker: some View {
     Picker(formatTitle, selection: manual($format)) {
       ForEach(CompressionOptions.supportedFormats, id: \.self) {
         Text(ArchiveFormatPresentation.title(for: $0)).tag($0)
       }
     }
+  }
+
+  private var levelPicker: some View {
     Picker(levelTitle, selection: manual($level)) {
       Text(L10n.tr("Без сжатия")).tag(0)
       Text(L10n.tr("Быстрая")).tag(1)
@@ -78,6 +119,9 @@ struct CompressionSettingsFields: View {
       Text(L10n.tr("Ультра")).tag(9)
     }
     .disabled(!CompressionOptions.supportsLevel(format))
+  }
+
+  private var solidToggle: some View {
     Toggle(isOn: manual($solid)) {
       HStack(spacing: 6) {
         Text(solidTitle)
@@ -90,11 +134,17 @@ struct CompressionSettingsFields: View {
     .accessibilityLabel(solidTitle)
     .accessibilityHint(Self.solidHelp)
     .disabled(!CompressionOptions.supportsSolid(format))
+  }
+
+  private var fileNameEncryptionToggle: some View {
     Toggle(L10n.tr("Шифровать имена файлов"), isOn: manual($encryptsFileNames))
       .help(
         L10n.tr("Для 7z с паролем: скрывает не только содержимое, но и список файлов в архиве.")
       )
       .disabled(!CompressionOptions.supportsFileNameEncryption(format))
+  }
+
+  private var volumePicker: some View {
     Picker(L10n.tr("Размер тома"), selection: volumeSelection) {
       Text(L10n.tr("Один файл")).tag(0)
       ForEach(Self.volumePresets, id: \.size) { preset in
@@ -103,10 +153,11 @@ struct CompressionSettingsFields: View {
       Text(L10n.tr("Другой размер…")).tag(Self.customVolumeTag)
     }
     .disabled(!CompressionOptions.supportsVolumes(format))
-    if showsCustomVolume {
-      TextField(L10n.tr("Размер тома, МБ"), value: customVolumeSize, format: .number)
-        .disabled(!CompressionOptions.supportsVolumes(format))
-    }
+  }
+
+  private var customVolumeField: some View {
+    TextField(L10n.tr("Размер тома, МБ"), value: customVolumeSize, format: .number)
+      .disabled(!CompressionOptions.supportsVolumes(format))
   }
 
   private static var solidHelp: String {
