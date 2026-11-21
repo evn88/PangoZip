@@ -124,24 +124,28 @@ actor ArchiveProgressReporter {
   }
 
   /// Переводит проценты команды в общий прогресс и оценку байтов без преждевременных 100% транзакции.
+  /// Счётчик файлов и текущее имя берутся из строки движка, если вызывающий не задал свои.
   nonisolated func engine(
     phase: ArchiveProgress.Phase, from start: Double, to end: Double,
     totalBytes: UInt64, baseBytes: UInt64 = 0, itemBytes: UInt64? = nil,
     completedFiles: Int? = nil, totalFiles: Int? = nil, currentFile: String? = nil,
     outputURL: URL? = nil
-  ) -> (@Sendable (Double) async -> Void)? {
+  ) -> (@Sendable (EngineProgressUpdate) async -> Void)? {
     guard handler != nil else { return nil }
-    return { fraction in
+    return { update in
+      let fraction = update.fraction
       let safe = fraction.isFinite ? min(1, max(0, fraction)) : 0
       let item = itemBytes ?? totalBytes
       let bytes = Self.scaledBytes(item, fraction: safe)
       let sum = baseBytes.addingReportingOverflow(bytes)
       let processed = min(totalBytes, sum.overflow ? UInt64.max : sum.partialValue)
+      // Движок считает начатые файлы: текущий ещё не завершён.
+      let started = update.files.map { max(0, $0 - 1) }
       await self.report(
         phase: phase, fraction: start + safe * (end - start), processedBytes: processed,
         totalBytes: totalBytes,
-        completedFiles: completedFiles,
-        totalFiles: totalFiles, currentFile: currentFile, outputURL: outputURL,
+        completedFiles: completedFiles ?? (totalFiles == nil ? nil : started),
+        totalFiles: totalFiles, currentFile: currentFile ?? update.file, outputURL: outputURL,
         estimated: safe > 0 && safe < 1)
     }
   }

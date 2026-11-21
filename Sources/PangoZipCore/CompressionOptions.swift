@@ -17,7 +17,7 @@ public struct CompressionOptions: Sendable, Equatable {
   /// Шифровать имена файлов (`-mhe=on`); действует только для 7z с паролем.
   public let encryptsFileNames: Bool
 
-  /// Ограничивает параметры поддерживаемыми значениями; нулевое число потоков выбирает движок.
+  /// Ограничивает параметры поддерживаемыми значениями; нулевое число потоков — автоматический режим.
   public init(
     format: String = "zip", level: Int = 5, solid: Bool = true, threads: Int = 0,
     excludesSystemFiles: Bool = true, volumeSizeMB: Int? = nil, encryptsFileNames: Bool = true
@@ -47,11 +47,25 @@ public struct CompressionOptions: Sendable, Equatable {
   /// Имена файлов шифруются только в 7z.
   public static func supportsFileNameEncryption(_ format: String) -> Bool { format == "7z" }
 
+  /// Число потоков в автоматическом режиме: около четверти ядер остаётся системе и интерфейсу.
+  public static func automaticThreads(
+    processors: Int = ProcessInfo.processInfo.activeProcessorCount
+  ) -> Int {
+    max(1, processors - max(1, processors / 4))
+  }
+
   /// Ключи сжатия; для tar и wim пусты, для tar.gz и tar.xz относятся к внешнему слою.
-  var arguments: [String] {
+  var arguments: [String] { arguments(processors: ProcessInfo.processInfo.activeProcessorCount) }
+
+  /// В автоматическом режиме число потоков — верхняя граница (`d`): движок сам уменьшает его,
+  /// чтобы уложиться в половину оперативной памяти. Явно выбранное число передаётся как есть.
+  func arguments(processors: Int) -> [String] {
     guard Self.supportsLevel(format) else { return [] }
-    return ["-mx=\(level)", threads == 0 ? "-mmt=on" : "-mmt=\(threads)"]
-      + (format == "7z" ? [solid ? "-ms=on" : "-ms=off"] : [])
+    let threading =
+      threads == 0
+      ? ["-mmt=d\(Self.automaticThreads(processors: processors))", "-mmemuse=p50"]
+      : ["-mmt=\(threads)"]
+    return ["-mx=\(level)"] + threading + (format == "7z" ? [solid ? "-ms=on" : "-ms=off"] : [])
   }
 
   /// Ключ размера тома 7zz, например `-v25m`.

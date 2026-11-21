@@ -8,7 +8,9 @@
 "Предпросмотр ссылок, папок и специальных файлов недоступен." = "Bağlantılar, klasörler ve özel dosyalar önizlenemiyor.";
 "Файл превышает лимит предпросмотра 200 МБ." = "Dosya, 200 MB önizleme sınırını aşıyor.";
 "Движок превысил допустимый объём данных. Операция остановлена." = "Motor izin verilen veri miktarını aştı. İşlem durduruldu.";
-"Обработка архива заняла больше двух минут. Операция остановлена." = "Arşiv işleme iki dakikadan uzun sürdü. İşlem durduruldu.";
+"Операция заняла слишком много времени и была остановлена." = "İşlem çok uzun sürdü ve durduruldu.";
+"Файлы изменились во время архивации. Повторите, когда они перестанут меняться." = "Dosyalar arşivleme sırasında değişti. Değişmeleri durduğunda yeniden deneyin.";
+"Недостаточно свободного места на диске. Операция остановлена." = "Diskte yeterli boş alan yok. İşlem durduruldu.";
 "Архив изменился на диске. Откройте его заново." = "Arşiv diskte değişti. Yeniden açın.";
 "Не удалось однозначно извлечь выбранный файл." = "Seçilen dosya kesin olarak çıkarılamadı.";
 "Этот формат архива доступен только для чтения. Изменение поддерживается для ZIP, 7z и TAR." = "Bu arşiv biçimi salt okunurdur. ZIP, 7z ve TAR arşivleri değiştirilebilir.";

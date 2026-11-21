@@ -8,7 +8,9 @@
 "Предпросмотр ссылок, папок и специальных файлов недоступен." = "Preview is unavailable for links, folders, and special files.";
 "Файл превышает лимит предпросмотра 200 МБ." = "The file exceeds the 200 MB preview limit.";
 "Движок превысил допустимый объём данных. Операция остановлена." = "The engine exceeded the output limit. The operation was stopped.";
-"Обработка архива заняла больше двух минут. Операция остановлена." = "Processing the archive took longer than two minutes. The operation was stopped.";
+"Операция заняла слишком много времени и была остановлена." = "The operation took too long and was stopped.";
+"Файлы изменились во время архивации. Повторите, когда они перестанут меняться." = "Files changed while they were being archived. Try again once they stop changing.";
+"Недостаточно свободного места на диске. Операция остановлена." = "There is not enough free disk space. The operation was stopped.";
 "Архив изменился на диске. Откройте его заново." = "The archive has changed on disk. Open it again.";
 "Не удалось однозначно извлечь выбранный файл." = "Could not extract the selected file unambiguously.";
 "Этот формат архива доступен только для чтения. Изменение поддерживается для ZIP, 7z и TAR." = "This archive format is read-only. ZIP, 7z, and TAR archives can be modified.";

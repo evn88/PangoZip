@@ -8,7 +8,9 @@
 "Предпросмотр ссылок, папок и специальных файлов недоступен." = "Pregled linkova, fascikli i posebnih datoteka nije dostupan.";
 "Файл превышает лимит предпросмотра 200 МБ." = "Datoteka premašuje ograničenje pregleda od 200 MB.";
 "Движок превысил допустимый объём данных. Операция остановлена." = "Mehanizam je premašio dozvoljenu količinu podataka. Operacija je zaustavljena.";
-"Обработка архива заняла больше двух минут. Операция остановлена." = "Obrada arhive trajala je duže od dva minuta. Operacija je zaustavljena.";
+"Операция заняла слишком много времени и была остановлена." = "Operacija je trajala predugo i zaustavljena je.";
+"Файлы изменились во время архивации. Повторите, когда они перестанут меняться." = "Datoteke su se promenile tokom arhiviranja. Pokušajte ponovo kada prestanu da se menjaju.";
+"Недостаточно свободного места на диске. Операция остановлена." = "Nema dovoljno slobodnog prostora na disku. Operacija je zaustavljena.";
 "Архив изменился на диске. Откройте его заново." = "Arhiva je izmenjena na disku. Otvorite je ponovo.";
 "Не удалось однозначно извлечь выбранный файл." = "Izabrana datoteka ne može se izdvojiti na jednoznačan način.";
 "Этот формат архива доступен только для чтения. Изменение поддерживается для ZIP, 7z и TAR." = "Ovaj format arhive je samo za čitanje. Izmena je podržana za ZIP, 7z i TAR.";

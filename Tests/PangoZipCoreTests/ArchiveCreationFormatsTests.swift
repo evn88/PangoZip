@@ -152,7 +152,8 @@ final class ArchiveCreationFormatsTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(CompressionOptions(format: "tar", level: 9).arguments, [])
     XCTAssertEqual(CompressionOptions(format: "wim", level: 9).arguments, [])
     XCTAssertEqual(
-      CompressionOptions(format: "tar.gz", level: 6, solid: false).arguments, ["-mx=6", "-mmt=on"])
+      CompressionOptions(format: "tar.gz", level: 6, solid: false).arguments(processors: 4),
+      ["-mx=6", "-mmt=d3", "-mmemuse=p50"])
     XCTAssertNil(CompressionOptions(format: "tar.xz", volumeSizeMB: 10).volumeSizeMB)
     XCTAssertEqual(CompressionOptions(format: "7z", volumeSizeMB: 25).volumeArguments, ["-v25m"])
     XCTAssertNil(CompressionOptions(format: "zip", volumeSizeMB: 0).volumeSizeMB)

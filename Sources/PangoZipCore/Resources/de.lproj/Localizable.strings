@@ -8,7 +8,9 @@
 "Предпросмотр ссылок, папок и специальных файлов недоступен." = "Die Vorschau für Links, Ordner und spezielle Dateien ist nicht verfügbar.";
 "Файл превышает лимит предпросмотра 200 МБ." = "Die Datei überschreitet das Vorschau-Limit von 200 MB.";
 "Движок превысил допустимый объём данных. Операция остановлена." = "Die Engine hat das Ausgabelimit überschritten. Der Vorgang wurde abgebrochen.";
-"Обработка архива заняла больше двух минут. Операция остановлена." = "Die Verarbeitung des Archivs dauerte länger als zwei Minuten. Der Vorgang wurde abgebrochen.";
+"Операция заняла слишком много времени и была остановлена." = "Der Vorgang dauerte zu lange und wurde abgebrochen.";
+"Файлы изменились во время архивации. Повторите, когда они перестанут меняться." = "Dateien wurden während der Archivierung geändert. Versuchen Sie es erneut, sobald sie sich nicht mehr ändern.";
+"Недостаточно свободного места на диске. Операция остановлена." = "Nicht genügend freier Speicherplatz. Der Vorgang wurde abgebrochen.";
 "Архив изменился на диске. Откройте его заново." = "Das Archiv wurde auf dem Datenträger geändert. Öffnen Sie es erneut.";
 "Не удалось однозначно извлечь выбранный файл." = "Die ausgewählte Datei konnte nicht eindeutig entpackt werden.";
 "Этот формат архива доступен только для чтения. Изменение поддерживается для ZIP, 7z и TAR." = "Dieses Archivformat ist schreibgeschützt. ZIP-, 7z- und TAR-Archive können geändert werden.";
