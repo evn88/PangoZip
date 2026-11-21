@@ -66,7 +66,7 @@ final class ArchiveCreationDialog: ObservableObject {
     }
     saveDelegate = delegate
     chooser.delegate = delegate
-    chooser.accessoryView = NSHostingView(rootView: ArchiveCreationOptionsView(model: self))
+    chooser.accessoryView = savePanelAccessory(ArchiveCreationOptionsView(model: self))
     panel = chooser
     updateCreationFormat()
     let response = await withCheckedContinuation { continuation in
@@ -126,29 +126,45 @@ private final class NewArchiveSaveDelegate: NSObject, NSOpenSavePanelDelegate {
   }
 }
 
+/// Компактные параметры в две колонки: панель сохранения оставляет место для выбора папки.
 private struct ArchiveCreationOptionsView: View {
   @ObservedObject var model: ArchiveCreationDialog
   var body: some View {
-    Form {
-      CompressionSettingsFields(
-        profile: $model.creationProfile, format: $model.creationFormat,
-        level: $model.creationLevel, solid: $model.creationSolid,
-        encryptsFileNames: $model.creationEncryptsFileNames,
-        volumeSizeMB: $model.creationVolumeSizeMB)
-      Picker(L10n.tr("Потоки"), selection: $model.creationThreads) {
-        Text(L10n.tr("Автоматически")).tag(0)
-        ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
-      }
-      let supportsPassword = CompressionOptions.supportsPassword(model.creationFormat)
-      SecureField(L10n.tr("Пароль (необязательно)"), text: $model.creationPassword)
-        .disabled(!supportsPassword)
-      SecureField(L10n.tr("Повторите пароль"), text: $model.creationPasswordConfirmation)
-        .disabled(!supportsPassword)
-      if !supportsPassword {
-        Text(L10n.tr("Этот формат не поддерживает пароль."))
-          .font(.caption).foregroundStyle(.secondary)
-      }
-    }
-    .formStyle(.grouped).frame(width: 440, height: 440)
+    CompressionSettingsFields(
+      profile: $model.creationProfile, format: $model.creationFormat,
+      level: $model.creationLevel, solid: $model.creationSolid,
+      encryptsFileNames: $model.creationEncryptsFileNames,
+      volumeSizeMB: $model.creationVolumeSizeMB,
+      compactTrailing: AnyView(trailingFields)
+    )
+    .padding(.horizontal, 20).padding(.vertical, 12)
+    .fixedSize()
   }
+
+  @ViewBuilder private var trailingFields: some View {
+    Picker(L10n.tr("Потоки"), selection: $model.creationThreads) {
+      Text(L10n.tr("Автоматически")).tag(0)
+      ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
+    }
+    let supportsPassword = CompressionOptions.supportsPassword(model.creationFormat)
+    // Подпись о неподдерживаемом пароле ушла в подсказку: строка меняла бы высоту панели.
+    let passwordHelp = supportsPassword ? "" : L10n.tr("Этот формат не поддерживает пароль.")
+    SecureField(L10n.tr("Пароль (необязательно)"), text: $model.creationPassword)
+      .disabled(!supportsPassword).help(passwordHelp)
+    SecureField(L10n.tr("Повторите пароль"), text: $model.creationPasswordConfirmation)
+      .disabled(!supportsPassword).help(passwordHelp)
+  }
+}
+
+/// Оборачивает SwiftUI в обычный NSView постоянного размера.
+/// Развёрнутая NSSavePanel растягивает accessory view по своей ширине. NSHostingView,
+/// поставленный напрямую, после этого перестаёт принимать щелчки: ни один элемент
+/// не нажимается. Контейнер сохраняет свой размер, а панель центрирует его.
+@MainActor
+func savePanelAccessory(_ content: some View) -> NSView {
+  let hosting = NSHostingView(rootView: content)
+  hosting.frame.size = hosting.fittingSize
+  let container = NSView(frame: hosting.frame)
+  container.addSubview(hosting)
+  return container
 }
