@@ -85,7 +85,7 @@ struct ArchiveSourceScan: Sendable, Equatable {
       switch type {
       case S_IFDIR:
         if !isVolatile { mix(name, kind: 1, values: []) }
-        for child in try FileManager.default.contentsOfDirectory(atPath: path).sorted() {
+        for child in try Self.entries(of: path).sorted() {
           let childName = name + "/" + child
           let isSystem = SystemFiles.isSystemName(child)
           if isSystem, skipsSystemFiles {
@@ -116,6 +116,25 @@ struct ArchiveSourceScan: Sendable, Equatable {
       default:
         throw ArchiveError.unsupportedEntry
       }
+    }
+
+    /// Читает каталог через readdir: FileManager в macOS скрывает AppleDouble «._Имя», а движок
+    /// видит их и без точного исключения положил бы в архив.
+    private static func entries(of path: String) throws -> [String] {
+      guard let directory = opendir(path) else {
+        throw CocoaError(
+          errno == ENOENT ? .fileReadNoSuchFile : .fileReadUnknown,
+          userInfo: [NSFilePathErrorKey: path])
+      }
+      defer { closedir(directory) }
+      var names: [String] = []
+      while let entry = readdir(directory) {
+        let name = withUnsafeBytes(of: entry.pointee.d_name) { raw in
+          String(decoding: raw.prefix(Int(entry.pointee.d_namlen)), as: UTF8.self)
+        }
+        if name != ".", name != ".." { names.append(name) }
+      }
+      return names
     }
 
     private mutating func count(_ size: UInt64) throws {

@@ -19,7 +19,8 @@ final class ArchiveLargeSourceTests: XCTestCase, @unchecked Sendable {
     let format = environment["PANGOZIP_LARGE_FORMAT"] ?? "zip"
     let level = environment["PANGOZIP_LARGE_LEVEL"].flatMap(Int.init) ?? 5
     let limit = environment["PANGOZIP_LARGE_SECONDS"].flatMap(Double.init)
-    let parent = environment["PANGOZIP_LARGE_OUTPUT"].map { URL(fileURLWithPath: $0) }
+    let parent =
+      environment["PANGOZIP_LARGE_OUTPUT"].map { URL(fileURLWithPath: $0) }
       ?? FileManager.default.temporaryDirectory
     let output = parent.appendingPathComponent("pangozip-large-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)

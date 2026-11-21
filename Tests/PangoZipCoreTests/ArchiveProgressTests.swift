@@ -26,7 +26,8 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(
       parser.consume(Data("  3% 7 + Folder/ name with  spaces .txt".utf8)),
       [EngineProgressUpdate(fraction: 0.03, files: 7, file: "Folder/ name with  spaces .txt")])
-    let erase = String(repeating: "\u{8}", count: 5) + "     " + String(repeating: "\u{8}", count: 5)
+    let erase =
+      String(repeating: "\u{8}", count: 5) + "     " + String(repeating: "\u{8}", count: 5)
     XCTAssertEqual(
       parser.consume(Data((erase + "  3% 8 + 2024 report.pdf").utf8)),
       [EngineProgressUpdate(fraction: 0.03, files: 8, file: "2024 report.pdf")])

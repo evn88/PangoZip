@@ -766,10 +766,13 @@ extension ArchiveService {
     guard !sources.isEmpty else { throw ArchiveError.invalidOperation }
     // Движок читает файлы прямо с их места: копия во временную папку удвоила бы запись на диск
     // и отложила бы начало сжатия на всё время копирования. Обход смотрит только метаданные.
+    // Явный тип замыкания: в тернарном операторе компилятор не выводит асинхронный тип.
+    var counting: (@Sendable (Int) async -> Void)?
+    if progress != nil {
+      counting = { count in await reporter.report(phase: .preparing, totalFiles: count) }
+    }
     let scan = try await ArchiveSourceScan.scan(
-      sources, skippingSystemFiles: compression.excludesSystemFiles,
-      progress: progress == nil
-        ? nil : { count in await reporter.report(phase: .preparing, totalFiles: count) })
+      sources, skippingSystemFiles: compression.excludesSystemFiles, progress: counting)
     let bytes = scan.bytes
     let files = scan.files
     let list = transaction.appendingPathComponent("items.list")
