@@ -137,7 +137,7 @@ private struct ArchiveCreationOptionsView: View {
       volumeSizeMB: $model.creationVolumeSizeMB,
       compactTrailing: trailingRows
     )
-    .padding(.horizontal, 20).padding(.vertical, 12)
+    .padding(.horizontal, 16).padding(.vertical, 12)
     .fixedSize()
   }
 

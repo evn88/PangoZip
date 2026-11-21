@@ -98,7 +98,7 @@ struct CompressionSettingsFields: View {
       ForEach(0..<max(leading.count, right.count), id: \.self) { index in
         GridRow(alignment: .firstTextBaseline) {
           compactCells(index < leading.count ? leading[index] : nil)
-          compactCells(index < right.count ? right[index] : nil, gap: 16)
+          compactCells(index < right.count ? right[index] : nil, gap: 12)
         }
       }
     }
@@ -264,7 +264,7 @@ struct CompressionSettingsFields: View {
 /// Без подписи (флажок) элемент стоит в колонке полей под остальными.
 struct CompactSettingsRow {
   /// Ширина полей и всплывающих меню: одинаковая, чтобы края колонки совпадали.
-  static let controlWidth: CGFloat = 170
+  static let controlWidth: CGFloat = 150
   let title: String?
   let hidden: Bool
   let control: AnyView
