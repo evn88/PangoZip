@@ -143,6 +143,7 @@ private struct ArchiveCreationOptionsView: View {
 
   private var trailingRows: [CompactSettingsRow] {
     let supportsPassword = CompressionOptions.supportsPassword(model.creationFormat)
+    // Подпись стоит слева, поэтому подсказка внутри поля пустая: длинная обрезалась бы.
     // Подпись о неподдерживаемом пароле ушла в подсказку: строка меняла бы высоту панели.
     let passwordHelp = supportsPassword ? "" : L10n.tr("Этот формат не поддерживает пароль.")
     let threadsTitle = L10n.tr("Потоки")
@@ -157,11 +158,11 @@ private struct ArchiveCreationOptionsView: View {
         }),
       CompactSettingsRow(
         passwordTitle,
-        SecureField(passwordTitle, text: $model.creationPassword)
+        SecureField(passwordTitle, text: $model.creationPassword, prompt: Text(""))
           .disabled(!supportsPassword).help(passwordHelp)),
       CompactSettingsRow(
         confirmationTitle,
-        SecureField(confirmationTitle, text: $model.creationPasswordConfirmation)
+        SecureField(confirmationTitle, text: $model.creationPasswordConfirmation, prompt: Text(""))
           .disabled(!supportsPassword).help(passwordHelp)),
     ]
   }
