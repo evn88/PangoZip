@@ -421,3 +421,6 @@
 "Перетащите сюда ещё файлы или уберите лишние клавишей ⌫." = "Prevucite ovde još datoteka ili uklonite višak tasterom ⌫.";
 "Создать новый архив из добавленных файлов и папок." = "Kreirajte novu arhivu od dodatih datoteka i fascikli.";
 "Перетащите архив, чтобы открыть его, или файлы, чтобы создать новый архив." = "Prevucite arhivu da biste je otvorili ili datoteke da biste kreirali novu arhivu.";
+"Отказаться от нового архива?" = "Odustati od nove arhive?";
+"Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Lista od %1$@ stavki biće zaboravljena. Same datoteke na disku se ne menjaju.";
+"Отказаться" = "Odustani";

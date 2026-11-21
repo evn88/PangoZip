@@ -421,3 +421,6 @@
 "Перетащите сюда ещё файлы или уберите лишние клавишей ⌫." = "Suelte aquí más archivos o quite los que sobren con ⌫.";
 "Создать новый архив из добавленных файлов и папок." = "Crear un archivo nuevo con los archivos y carpetas añadidos.";
 "Перетащите архив, чтобы открыть его, или файлы, чтобы создать новый архив." = "Arrastre un archivo comprimido para abrirlo, o archivos para crear uno nuevo.";
+"Отказаться от нового архива?" = "¿Descartar el nuevo archivo?";
+"Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Se olvidará la lista de %1$@ elementos. Los archivos en el disco no cambiarán.";
+"Отказаться" = "Descartar";

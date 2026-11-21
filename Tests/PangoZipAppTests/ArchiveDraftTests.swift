@@ -116,4 +116,34 @@ final class ArchiveDraftTests: XCTestCase, @unchecked Sendable {
     XCTAssertNil(model.session)
     XCTAssertTrue(model.canCreateFromDraft)
   }
+
+  /// Открытие другого архива не стирает собранный черновик без согласия пользователя.
+  @MainActor
+  func testOpeningArchiveAsksBeforeDiscardingDraft() async throws {
+    let source = try file("note.txt")
+    let archive = try await service.createArchive(
+      from: [source], proposedURL: root.appendingPathComponent("other.zip"), format: "zip")
+    let loose = try file("loose.txt")
+    let model = ArchiveBrowserModel(service: service)
+    var asked: [Int] = []
+    var answer = false
+    model.confirmDiscardingDraft = { count in
+      asked.append(count)
+      return answer
+    }
+    model.receiveDroppedFiles([loose])
+    model.open(archive)
+    while model.isBusy { await Task.yield() }
+    XCTAssertEqual(asked, [1])
+    XCTAssertEqual(model.draft, [loose.standardizedFileURL])
+    XCTAssertNil(model.session)
+    answer = true
+    model.open(archive)
+    while model.isBusy { await Task.yield() }
+    XCTAssertEqual(asked, [1, 1])
+    XCTAssertNil(model.draft)
+    XCTAssertNotNil(model.session)
+    let closed = await model.requestTermination()
+    XCTAssertTrue(closed)
+  }
 }

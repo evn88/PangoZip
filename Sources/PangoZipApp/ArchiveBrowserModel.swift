@@ -130,6 +130,17 @@ final class ArchiveBrowserModel: ObservableObject {
   private let creationDialog = ArchiveCreationDialog()
   /// Спрашивает имя, место и параметры нового архива; nil — пользователь передумал.
   var chooseCreation: @MainActor ([URL]) async -> ArchiveCreationChoice? = { _ in nil }
+  /// Спрашивает, можно ли забыть собранный черновик; в тестах подменяется.
+  var confirmDiscardingDraft: @MainActor (Int) -> Bool = { count in
+    let alert = NSAlert()
+    alert.messageText = L10n.tr("Отказаться от нового архива?")
+    alert.informativeText = L10n.tr(
+      "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся.",
+      String(describing: count))
+    alert.addButton(withTitle: L10n.tr("Отказаться"))
+    alert.addButton(withTitle: L10n.tr("Отмена"))
+    return alert.runModal() == .alertFirstButtonReturn
+  }
 
   private let service: ArchiveService
   private var autosaveTask: Task<Void, Never>?
@@ -412,6 +423,12 @@ final class ArchiveBrowserModel: ObservableObject {
       }
       self.start(.create(items, choice))
     }
+  }
+
+  /// Пустой черновик закрывается молча; собранный список забывается только с согласия.
+  private func confirmDraftReplacement() -> Bool {
+    guard let draft, !draft.isEmpty else { return true }
+    return confirmDiscardingDraft(draft.count)
   }
 
   private func startDraft(with urls: [URL]) {
@@ -1354,7 +1371,9 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Не сбрасывает сеанс, если пользователь отменил закрытие или очистка завершилась ошибкой.
   private func closeCurrentSession() async -> Bool {
     await settlePreviews()
-    guard !Task.isCancelled, await confirmWorkingCopies() else { return false }
+    guard !Task.isCancelled, confirmDraftReplacement(), await confirmWorkingCopies() else {
+      return false
+    }
     await settlePreviews()
     guard !Task.isCancelled else { return false }
     do {
@@ -1397,7 +1416,7 @@ final class ArchiveBrowserModel: ObservableObject {
     actionTask?.cancel()
     await actionTask?.value
     await settlePreviews()
-    guard await confirmWorkingCopies() else { return false }
+    guard confirmDraftReplacement(), await confirmWorkingCopies() else { return false }
     await settlePreviews()
     guard !Task.isCancelled else { return false }
     do {
