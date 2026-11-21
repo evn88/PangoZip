@@ -112,7 +112,13 @@ struct ArchiveSourceScan: Sendable, Equatable {
         }
       case S_IFLNK:
         try count(size)
-        if !isVolatile { mix(name, kind: 3, values: [size]) }
+        if !isVolatile {
+          // Длина пути не меняется при замене цели на другую той же длины, поэтому в отпечаток
+          // входит сама цель ссылки.
+          let target = try FileManager.default.destinationOfSymbolicLink(atPath: path)
+          mix(name, kind: 3, values: [size])
+          mix(target, kind: 4, values: [])
+        }
       default:
         throw ArchiveError.unsupportedEntry
       }
