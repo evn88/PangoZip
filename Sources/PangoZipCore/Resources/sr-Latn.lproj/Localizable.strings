@@ -93,7 +93,6 @@
 "Читаем содержимое архива…" = "Čitanje sadržaja arhive…";
 "Отмена" = "Otkaži";
 "Откройте архив" = "Otvori arhivu";
-"Перетащите архив в окно, чтобы просмотреть и извлечь файлы." = "Prevucite arhivu u prozor da biste pregledali i izdvojili datoteke.";
 "Выбрать архив…" = "Izaberi arhivu…";
 "Предпросмотр" = "Pregled";
 "Скрыть предпросмотр (⌘⇧P)" = "Sakrij pregled (⌘⇧P)";
@@ -412,3 +411,16 @@
 "PangoZip назван в честь панголинов. Все восемь их видов находятся под угрозой исчезновения." = "PangoZip je dobio ime po pangolinima. Svih osam njihovih vrsta ugroženo je izumiranjem.";
 "Как им помочь: Pangolin Crisis Fund" = "Kako im pomoći: Pangolin Crisis Fund";
 "Независимый фонд Wildlife Conservation Network. Откроется в браузере." = "Nezavisni fond organizacije Wildlife Conservation Network. Otvara se u pregledaču.";
+"Новый архив…" = "Nova arhiva…";
+"Новый архив" = "Nova arhiva";
+"Архив ещё не создан" = "Arhiva još nije kreirana";
+"Убрать из списка" = "Ukloni sa liste";
+"Файлы нового архива" = "Datoteke nove arhive";
+"Создать архив…" = "Kreiraj arhivu…";
+"Перетащите в окно файлы и папки, которые нужно сжать." = "Prevucite u prozor datoteke i fascikle koje treba sažeti.";
+"Перетащите сюда ещё файлы или уберите лишние клавишей ⌫." = "Prevucite ovde još datoteka ili uklonite višak tasterom ⌫.";
+"Создать новый архив из добавленных файлов и папок." = "Kreirajte novu arhivu od dodatih datoteka i fascikli.";
+"Перетащите архив, чтобы открыть его, или файлы, чтобы создать новый архив." = "Prevucite arhivu da biste je otvorili ili datoteke da biste kreirali novu arhivu.";
+"Отказаться от нового архива?" = "Odustati od nove arhive?";
+"Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Lista od %1$@ stavki biće zaboravljena. Same datoteke na disku se ne menjaju.";
+"Отказаться" = "Odustani";

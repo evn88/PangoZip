@@ -93,7 +93,6 @@
 "Читаем содержимое архива…" = "Archivinhalt wird gelesen…";
 "Отмена" = "Abbrechen";
 "Откройте архив" = "Archiv öffnen";
-"Перетащите архив в окно, чтобы просмотреть и извлечь файлы." = "Ziehen Sie ein Archiv in das Fenster, um Dateien anzuzeigen und zu entpacken.";
 "Выбрать архив…" = "Archiv auswählen…";
 "Предпросмотр" = "Vorschau";
 "Скрыть предпросмотр (⌘⇧P)" = "Vorschau ausblenden (⌘⇧P)";
@@ -412,3 +411,16 @@
 "PangoZip назван в честь панголинов. Все восемь их видов находятся под угрозой исчезновения." = "PangoZip ist nach den Schuppentieren (Pangolinen) benannt. Alle acht Arten sind vom Aussterben bedroht.";
 "Как им помочь: Pangolin Crisis Fund" = "So können Sie helfen: Pangolin Crisis Fund";
 "Независимый фонд Wildlife Conservation Network. Откроется в браузере." = "Ein unabhängiger Fonds des Wildlife Conservation Network. Wird im Browser geöffnet.";
+"Новый архив…" = "Neues Archiv…";
+"Новый архив" = "Neues Archiv";
+"Архив ещё не создан" = "Archiv noch nicht erstellt";
+"Убрать из списка" = "Aus der Liste entfernen";
+"Файлы нового архива" = "Dateien für das neue Archiv";
+"Создать архив…" = "Archiv erstellen…";
+"Перетащите в окно файлы и папки, которые нужно сжать." = "Ziehen Sie die Dateien und Ordner, die komprimiert werden sollen, in das Fenster.";
+"Перетащите сюда ещё файлы или уберите лишние клавишей ⌫." = "Ziehen Sie weitere Dateien hierher oder entfernen Sie überzählige mit ⌫.";
+"Создать новый архив из добавленных файлов и папок." = "Neues Archiv aus den hinzugefügten Dateien und Ordnern erstellen.";
+"Перетащите архив, чтобы открыть его, или файлы, чтобы создать новый архив." = "Ziehen Sie ein Archiv hierher, um es zu öffnen, oder Dateien, um ein neues Archiv zu erstellen.";
+"Отказаться от нового архива?" = "Neues Archiv verwerfen?";
+"Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Die Liste mit %1$@ Objekten wird verworfen. Die Dateien selbst bleiben unverändert.";
+"Отказаться" = "Verwerfen";
