@@ -466,7 +466,28 @@ struct ArchiveBrowserView: View {
     return [session.url.lastPathComponent] + components
   }
 
-  /// Ход операции показывает только кнопка очереди; здесь остаются путь, счётчики и сообщения.
+  /// Скорость и оценка оставшегося времени: долгую операцию видно без открытия очереди.
+  @ViewBuilder
+  private var operationTiming: some View {
+    if let progress = model.operationProgress,
+      [.compressing, .verifying, .extracting].contains(progress.phase)
+    {
+      if let speed = progress.bytesPerSecond {
+        Text(ProgressFormatting.speed(speed)).monospacedDigit().lineLimit(1)
+          .foregroundStyle(.secondary).help(L10n.tr("Средняя скорость"))
+      }
+      if progress.remainingSeconds != nil {
+        Label(
+          ProgressFormatting.eta(progress.remainingSeconds, phase: progress.phase),
+          systemImage: "hourglass"
+        )
+        .monospacedDigit().lineLimit(1).foregroundStyle(.secondary)
+        .help(L10n.tr("Осталось на этапе"))
+      }
+    }
+  }
+
+  /// Процент показывает кнопка очереди; здесь путь, счётчики, сообщения и время операции.
   private var statusBar: some View {
     HStack(spacing: 12) {
       if model.isClosing {
@@ -475,6 +496,7 @@ struct ArchiveBrowserView: View {
       } else if model.isBusy || model.isExporting {
         Text(model.operationMessage ?? L10n.tr("Выполняем операцию…"))
           .lineLimit(1).truncationMode(.middle)
+        operationTiming
       } else if let message = model.errorMessage {
         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
         Text(message).textSelection(.enabled).lineLimit(3).help(message)
