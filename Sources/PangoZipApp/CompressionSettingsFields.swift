@@ -49,9 +49,9 @@ struct CompressionSettingsFields: View {
   var formatTitle = L10n.tr("Формат архива")
   var levelTitle = L10n.tr("Уровень сжатия")
   var solidTitle = L10n.tr("Сплошное сжатие")
-  /// Поля, которые компактная раскладка ставит в правую колонку после флажков.
+  /// Строки, которые компактная раскладка ставит в начало правой колонки, перед флажками.
   /// Если они заданы, блок занимает две колонки с подписями слева вместо списка настроек.
-  var compactTrailing: AnyView?
+  var compactTrailing: [CompactSettingsRow]?
 
   /// Размер тома в мегабайтах 7-Zip и носитель или ограничение, под которое он подобран.
   private static let volumePresets: [(size: Int, note: String?)] = [
@@ -64,25 +64,7 @@ struct CompressionSettingsFields: View {
 
   var body: some View {
     if let compactTrailing {
-      HStack(alignment: .top, spacing: 20) {
-        Form {
-          profilePicker
-          formatPicker
-          levelPicker
-          volumePicker
-          // Строка своего размера занята всегда, чтобы высота панели сохранения не прыгала.
-          customVolumeField
-            .opacity(showsCustomVolume ? 1 : 0)
-            .disabled(!showsCustomVolume)
-            .accessibilityHidden(!showsCustomVolume)
-        }
-        Form {
-          solidToggle
-          fileNameEncryptionToggle
-          compactTrailing
-        }
-      }
-      .formStyle(.columns)
+      compactGrid(trailing: compactTrailing)
     } else {
       profilePicker
       formatPicker
@@ -91,6 +73,56 @@ struct CompressionSettingsFields: View {
       fileNameEncryptionToggle
       volumePicker
       if showsCustomVolume { customVolumeField }
+    }
+  }
+
+  /// Одна сетка вместо двух независимых форм: строки обеих колонок стоят на одной высоте,
+  /// а у полей постоянная ширина, поэтому блок не шире панели сохранения при любом языке.
+  private func compactGrid(trailing: [CompactSettingsRow]) -> some View {
+    // Строка своего размера занята всегда, чтобы высота панели сохранения не прыгала.
+    let customVolume = CompactSettingsRow(
+      L10n.tr("Размер тома, МБ"), hidden: !showsCustomVolume,
+      customVolumeField.disabled(!showsCustomVolume))
+    let leading = [
+      CompactSettingsRow(L10n.tr("Профиль"), profilePicker),
+      CompactSettingsRow(formatTitle, formatPicker),
+      CompactSettingsRow(levelTitle, levelPicker),
+      CompactSettingsRow(L10n.tr("Размер тома"), volumePicker),
+      customVolume,
+    ]
+    let right =
+      trailing + [
+        CompactSettingsRow(nil, solidToggle), CompactSettingsRow(nil, fileNameEncryptionToggle),
+      ]
+    return Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
+      ForEach(0..<max(leading.count, right.count), id: \.self) { index in
+        GridRow(alignment: .firstTextBaseline) {
+          compactCells(index < leading.count ? leading[index] : nil)
+          compactCells(index < right.count ? right[index] : nil, gap: 16)
+        }
+      }
+    }
+  }
+
+  /// Подпись и поле одной колонки. Подписанные поля прячут свою подпись и получают общую
+  /// ширину; флажок без подписи оставляет свой текст и встаёт в колонку полей.
+  @ViewBuilder
+  private func compactCells(_ row: CompactSettingsRow?, gap: CGFloat = 0) -> some View {
+    Text(row?.title ?? "")
+      .padding(.leading, gap)
+      .gridColumnAlignment(.trailing)
+      .opacity(row?.hidden == true ? 0 : 1)
+      .accessibilityHidden(row?.title == nil || row?.hidden == true)
+    if let row, row.title != nil {
+      row.control
+        .labelsHidden()
+        .frame(width: CompactSettingsRow.controlWidth)
+        .opacity(row.hidden ? 0 : 1)
+        .accessibilityHidden(row.hidden)
+    } else if let row {
+      row.control.fixedSize()
+    } else {
+      Color.clear.frame(width: CompactSettingsRow.controlWidth, height: 0)
     }
   }
 
@@ -223,5 +255,21 @@ struct CompressionSettingsFields: View {
         }
         profile = id
       })
+  }
+}
+
+/// Строка компактной сетки параметров: подпись слева и элемент управления постоянной ширины.
+/// Без подписи (флажок) элемент стоит в колонке полей под остальными.
+struct CompactSettingsRow {
+  /// Ширина полей и всплывающих меню: одинаковая, чтобы края колонки совпадали.
+  static let controlWidth: CGFloat = 170
+  let title: String?
+  let hidden: Bool
+  let control: AnyView
+
+  init(_ title: String?, hidden: Bool = false, _ control: some View) {
+    self.title = title
+    self.hidden = hidden
+    self.control = AnyView(control)
   }
 }
