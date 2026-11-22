@@ -1,0 +1,10 @@
+{
+  "en": [
+    "Create a new archive right from the main window: File → New Archive… (⌘N), or drop files into an empty window. Add or remove files, then choose the name, format, compression and password.",
+    "The options in the Add to Archive window can be clicked again, and they now fit in two compact columns."
+  ],
+  "ru": [
+    "Новый архив можно создать прямо из главного окна: «Файл → Новый архив…» (⌘N) или перетащите файлы в пустое окно. Добавьте или уберите файлы, затем выберите имя, формат, сжатие и пароль.",
+    "В окне «Добавить в архив» снова нажимаются все параметры, и они помещаются в две компактные колонки."
+  ]
+}
