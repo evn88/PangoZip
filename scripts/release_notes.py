@@ -126,11 +126,8 @@ def collect(root, start, end, fetch_body):
     """Без заметок возвращает None, и выпуск использует нейтральный список по умолчанию."""
     parts = []
     for number in pull_requests(root, start, end):
-        try:
-            changes = parse(fetch_body(number))
-        except (subprocess.CalledProcessError, OSError) as error:
-            print(f"warning: cannot read pull request #{number}: {error}", file=sys.stderr)
-            continue
+        # Ошибка чтения останавливает выпуск: неполный список записался бы в релизный коммит навсегда.
+        changes = parse(fetch_body(number))
         if changes is None:
             print(f"warning: pull request #{number} has no release notes section", file=sys.stderr)
         parts.append(changes)
