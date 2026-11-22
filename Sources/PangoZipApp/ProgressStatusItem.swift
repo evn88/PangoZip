@@ -50,7 +50,7 @@ final class ProgressCardModel: ObservableObject {
 /// Оставшееся время одной-двумя единицами: точность до секунды в строке меню только мельтешит.
 enum ShortDuration {
   static func string(_ seconds: TimeInterval) -> String {
-    // Больше суток оценка всё равно неточна; предел защищает от переполнения Int.
+    // Дольше 100 часов оценка всё равно неточна; предел защищает от переполнения Int.
     let value = seconds.isFinite ? min(max(0, seconds), 360_000) : 0
     let duration: Duration
     let units: Set<Duration.UnitsFormatStyle.Unit>
