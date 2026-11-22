@@ -84,8 +84,9 @@ final class OperationIsland {
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-    let hosting = NSHostingView(rootView: DropIslandView(model: model))
+    let hosting = IslandHostingView(rootView: DropIslandView(model: model))
     hosting.sizingOptions = []
+    hosting.onScroll = { [weak model] event in model?.scroll(event) ?? false }
     panel.contentView = hosting
     return panel
   }

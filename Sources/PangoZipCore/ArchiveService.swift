@@ -54,6 +54,8 @@ public actor ArchiveService {
   }
 
   private let executableURL: URL?
+  /// Пауза долгих операций этого сервиса: сжатия, проверки и извлечения.
+  public nonisolated let pause = EnginePause()
   private let workspace = TemporaryWorkspace()
   private var sessions: [UUID: SessionState] = [:]
   private var busy: Set<UUID> = []
@@ -685,7 +687,10 @@ public actor ArchiveService {
     guard let executableURL, FileManager.default.isExecutableFile(atPath: executableURL.path) else {
       throw ArchiveError.engineUnavailable
     }
-    return EngineProcess(executableURL: executableURL, timeout: timeout, priority: priority)
+    var process = EngineProcess(executableURL: executableURL, timeout: timeout, priority: priority)
+    // Пауза касается только долгих операций; список архива и предпросмотр не ждут.
+    if priority == .background { process.pause = pause }
+    return process
   }
 
   /// Переводит обычные Unix-права из текстового режима, не восстанавливая специальные биты.
@@ -729,7 +734,7 @@ extension ArchiveService {
       finder.update(update)
       await observer?(update)
     }
-    let reporter = ArchiveProgressReporter(progress)
+    let reporter = ArchiveProgressReporter(progress, pause: pause)
     await reporter.report(phase: .preparing)
     guard CompressionOptions.supportedFormats.contains(format), !urls.isEmpty,
       proposedURL.isFileURL
@@ -914,7 +919,7 @@ extension ArchiveService {
     directory: URL? = nil, createsSubfolder: Bool = true, smartExtraction: Bool = false,
     progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
-    let reporter = ArchiveProgressReporter(progress)
+    let reporter = ArchiveProgressReporter(progress, pause: pause)
     await reporter.report(phase: .preparing)
     try await CloudFiles.materializeArchive(url, progress: progress)
     let session = try await open(url, password: password)
@@ -1014,7 +1019,7 @@ extension ArchiveService {
   public func testArchive(
     _ url: URL, password: String = "", progress: ArchiveProgressHandler? = nil
   ) async throws {
-    let reporter = ArchiveProgressReporter(progress)
+    let reporter = ArchiveProgressReporter(progress, pause: pause)
     await reporter.report(phase: .preparing)
     let session = try await open(url, password: password)
     defer {
@@ -1059,7 +1064,7 @@ extension ArchiveService {
     maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
     progress: ArchiveProgressHandler? = nil
   ) async throws -> [URL] {
-    let reporter = ArchiveProgressReporter(progress)
+    let reporter = ArchiveProgressReporter(progress, pause: pause)
     await reporter.report(phase: .preparing)
     let state = try await checkedState(session)
     guard directory.isFileURL else { throw ArchiveError.invalidOperation }
@@ -1108,7 +1113,7 @@ extension ArchiveService {
     chooseUniqueName: Bool = false, maximumBytes: UInt64 = 100 * 1024 * 1024 * 1024,
     progress: ArchiveProgressHandler? = nil
   ) async throws -> URL {
-    let reporter = ArchiveProgressReporter(progress)
+    let reporter = ArchiveProgressReporter(progress, pause: pause)
     await reporter.report(phase: .preparing)
     let state = try await checkedState(session)
     guard !busy.contains(session.id), destination.isFileURL else {
@@ -1259,7 +1264,7 @@ extension ArchiveService {
     of paths: [String], in session: ArchiveSession, password: String = "",
     progress: ArchiveProgressHandler? = nil
   ) async throws -> [ChecksumRecord] {
-    let reporter = ArchiveProgressReporter(progress)
+    let reporter = ArchiveProgressReporter(progress, pause: pause)
     await reporter.report(phase: .preparing)
     let state = try await checkedState(session)
     guard !busy.contains(session.id) else { throw ArchiveError.operationInProgress }

@@ -20,6 +20,11 @@ public enum L10n {
     #endif
   }()
 
+  /// Язык интерфейса: время и числа форматируются им же, а не языком системы.
+  public static var locale: Locale {
+    Locale(identifier: bundle.preferredLocalizations.first ?? "en")
+  }
+
   /// Строковые позиционные подстановки позволяют переводчику менять порядок аргументов.
   public static func tr(_ key: String, _ values: String...) -> String {
     let format = bundle.localizedString(forKey: key, value: nil, table: nil)

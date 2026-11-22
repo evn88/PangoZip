@@ -26,6 +26,8 @@ struct EngineProcess: Sendable {
   /// nil — без предела: длительность операции определяет объём данных, а не часы.
   let timeout: TimeInterval?
   var priority: EnginePriority = .interactive
+  /// Пауза сервиса: пока она включена, все этапы конвейера остановлены.
+  var pause: EnginePause?
 
   /// Передаёт прогресс асинхронно; отмена дожидается завершения процесса перед возвратом ошибки.
   func run(
@@ -150,8 +152,31 @@ struct EngineProcess: Sendable {
       let processors = ProcessInfo.processInfo.activeProcessorCount
       var nextLoadSample = Date()
       var lastUpdate: EngineProgressUpdate?
+      var stopped = false
       while running.contains(where: { $0.process.isRunning }) {
         try Task.checkCancellation()
+        let paused = pause?.isPaused == true
+        if paused != stopped {
+          stopped = paused
+          for item in running where item.process.isRunning {
+            kill(item.process.processIdentifier, paused ? SIGSTOP : SIGCONT)
+          }
+          if !paused {
+            // Замер через паузу показал бы простой движка как нехватку процессора.
+            if monitor.isYielding, var update = lastUpdate {
+              update.isYielding = false
+              lastUpdate = update
+              progress?(update)
+            }
+            monitor = EngineLoadMonitor()
+            nextLoadSample = Date()
+          }
+        }
+        if stopped {
+          // Остановленный движок не пишет ни вывода, ни прогресса: проверять нечего.
+          Thread.sleep(forTimeInterval: 0.05)
+          continue
+        }
         if let deadline, Date() >= deadline { throw ArchiveError.timedOut }
         guard try fileSize(outputURL) <= limit else { throw ArchiveError.outputLimit }
         if let validateOutput, Date() >= nextValidation {
@@ -249,6 +274,8 @@ struct EngineProcess: Sendable {
   /// Даёт процессу завершиться после SIGTERM, затем принудительно останавливает и ожидает выход.
   private func stop(_ process: Process) {
     guard process.isRunning else { return }
+    // Остановленный на паузе процесс получит SIGTERM только после продолжения.
+    kill(process.processIdentifier, SIGCONT)
     process.terminate()
     let deadline = Date().addingTimeInterval(0.5)
     while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }

@@ -427,3 +427,11 @@
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Se olvidará la lista de %1$@ elementos. Los archivos en el disco no cambiarán.";
 "Отказаться" = "Descartar";
 "Операция уступает процессор другим программам" = "La operación cede el procesador a otras apps";
+"Пауза" = "Pausa";
+"Возобновить" = "Reanudar";
+"На паузе" = "En pausa";
+"Осталось %1$@" = "Quedan %1$@";
+"Оцениваем время…" = "Calculando el tiempo…";
+"Показать остров" = "Mostrar la isla";
+"Смахните, чтобы убрать в строку меню" = "Desliza para mover a la barra de menús";
+"Убрать в строку меню" = "Mover a la barra de menús";

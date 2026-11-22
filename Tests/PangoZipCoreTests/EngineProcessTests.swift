@@ -203,6 +203,51 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     } catch { XCTAssertEqual(error as? ArchiveError, .diskFull) }
   }
 
+  /// Движок на паузе стоит, пока паузу не снимут, и затем завершается штатно.
+  func testPauseStopsEngineUntilResumed() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript("/bin/sleep 0.1; printf 'done'", in: directory)
+    let pause = EnginePause()
+    pause.pause()
+    var runner = EngineProcess(executableURL: script, timeout: 30)
+    runner.pause = pause
+    let output = directory.appendingPathComponent("out")
+    let started = Date()
+    let task = Task { try await runner.run(arguments: [], outputURL: output, limit: 100) }
+    try await Task.sleep(for: .milliseconds(700))
+    pause.resume()
+    try await task.value
+    XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.7)
+    XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "done")
+    XCTAssertGreaterThanOrEqual(pause.pausedTime(at: EnginePause.uptime), 0.6)
+  }
+
+  /// Отмена останавливает и движок, замерший на паузе.
+  func testCancellationStopsPausedEngine() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript("exec /bin/sleep 10", in: directory)
+    let pause = EnginePause()
+    var runner = EngineProcess(executableURL: script, timeout: 120)
+    runner.pause = pause
+    let started = Date()
+    let task = Task {
+      try await runner.run(
+        arguments: [], outputURL: directory.appendingPathComponent("out"), limit: 100)
+    }
+    try await Task.sleep(for: .milliseconds(100))
+    pause.pause()
+    try await Task.sleep(for: .milliseconds(200))
+    task.cancel()
+    do {
+      try await task.value
+      XCTFail("Expected cancellation")
+    } catch is CancellationError {
+      XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+    }
+  }
+
   /// Выделяет временный каталог для изолированного процесса движка.
   private func makeDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
