@@ -94,9 +94,12 @@ public enum ArchiveListing {
   }
 
   /// Разрешает только относительный путь без пустых компонентов, переходов и управляющих символов.
+  /// Двоеточие допустимо: так macOS хранит «/», набранный в имени в Finder («m/tel» → «m:tel»),
+  /// и разделителем пути в POSIX оно не является. Обратный слеш запрещён: архивы из Windows
+  /// используют его как разделитель, и при распаковке он мог бы стать переходом между папками.
   public static func validatePath(_ path: String) throws {
     let components = path.split(separator: "/", omittingEmptySubsequences: false)
-    guard !path.isEmpty, !path.contains("\\"), !path.contains(":"), components.count <= 128,
+    guard !path.isEmpty, !path.contains("\\"), components.count <= 128,
       !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
       components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
     else {
