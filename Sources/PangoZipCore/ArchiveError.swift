@@ -23,6 +23,8 @@ public enum ArchiveError: LocalizedError, Equatable, Sendable {
   case cloudDownloadFailed
   case cloudOffline
   case cloudDownloadTimedOut
+  case sourceChanged
+  case diskFull
 
   public var errorDescription: String? {
     switch self {
@@ -40,7 +42,7 @@ public enum ArchiveError: LocalizedError, Equatable, Sendable {
     case .unsupportedEntry: L10n.tr("Предпросмотр ссылок, папок и специальных файлов недоступен.")
     case .fileTooLarge: L10n.tr("Файл превышает лимит предпросмотра 200 МБ.")
     case .outputLimit: L10n.tr("Движок превысил допустимый объём данных. Операция остановлена.")
-    case .timedOut: L10n.tr("Обработка архива заняла больше двух минут. Операция остановлена.")
+    case .timedOut: L10n.tr("Операция заняла слишком много времени и была остановлена.")
     case .archiveChanged: L10n.tr("Архив изменился на диске. Откройте его заново.")
     case .extractionMismatch: L10n.tr("Не удалось однозначно извлечь выбранный файл.")
     case .readOnlyArchive:
@@ -62,6 +64,10 @@ public enum ArchiveError: LocalizedError, Equatable, Sendable {
       L10n.tr("Нет подключения к сети: файл из облака не загружен. Подключитесь и повторите.")
     case .cloudDownloadTimedOut:
       L10n.tr("Загрузка из облака не продвигается. Проверьте подключение к сети и повторите.")
+    case .sourceChanged:
+      L10n.tr(
+        "Файлы изменились во время архивации. Повторите, когда они перестанут меняться.")
+    case .diskFull: L10n.tr("Недостаточно свободного места на диске. Операция остановлена.")
     case .sessionExpired: L10n.tr("Сеанс архива завершён. Откройте архив заново.")
     }
   }

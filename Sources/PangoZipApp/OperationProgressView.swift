@@ -101,8 +101,19 @@ struct OperationProgressView: View {
       Text(ProgressFormatting.eta(value.remainingSeconds, phase: value.phase))
         .help(L10n.tr("Осталось на этапе"))
     }
+    if value.isYielding, value.phase != .finalizing { YieldingBadge() }
   }
 
+}
+
+/// Неброский значок: операция идёт медленнее, потому что процессор заняли другие программы.
+struct YieldingBadge: View {
+  var body: some View {
+    Image(systemName: "tortoise")
+      .foregroundStyle(.secondary)
+      .help(L10n.tr("Операция уступает процессор другим программам"))
+      .accessibilityLabel(L10n.tr("Операция уступает процессор другим программам"))
+  }
 }
 
 enum ProgressFormatting {

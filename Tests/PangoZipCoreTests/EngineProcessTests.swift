@@ -62,7 +62,7 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     let task = Task {
       try await runner.run(
         arguments: [], outputURL: output, limit: 100,
-        progress: { await samples.record($0) })
+        progress: { await samples.record($0.fraction) })
     }
     let deadline = Date().addingTimeInterval(3)
     while await samples.values.isEmpty, Date() < deadline {
@@ -91,7 +91,7 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     do {
       try await EngineProcess(executableURL: script, timeout: 2).run(
         arguments: [], outputURL: directory.appendingPathComponent("out"), limit: 100,
-        progress: { await samples.record($0) })
+        progress: { await samples.record($0.fraction) })
       XCTFail("Expected error")
     } catch { XCTAssertEqual(error as? ArchiveError, .invalidArchive) }
     let values = await samples.values
@@ -119,6 +119,90 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     XCTAssertLessThan(Date().timeIntervalSince(started), 3)
   }
 
+  /// Без заданного предела процесс работает сколько нужно, а длинный журнал прогресса
+  /// (мегабайты за часы работы) не считается превышением объёма вывода.
+  func testLongProgressOutputIsNotLimitedAndThereIsNoDefaultTimeout() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    // 40 000 перерисовок по 64 байта — больше прежнего предела в 1 МБ.
+    let script = try makeScript(
+      """
+      i=0
+      line='  7% 12 + some/long/file/name/that/pads/the/progress/record.bin'
+      while [ $i -lt 40000 ]; do printf '%s\\b\\b' "$line" >&2; i=$((i+1)); done
+      printf ' 99%% 13 + last.bin' >&2
+      """, in: directory)
+    let samples = EngineUpdates()
+    try await EngineProcess(executableURL: script, timeout: nil).run(
+      arguments: [], outputURL: directory.appendingPathComponent("out"), limit: 100,
+      progress: { await samples.record($0) })
+    let values = await samples.values
+    XCTAssertEqual(
+      values.first,
+      EngineProgressUpdate(
+        fraction: 0.07, files: 12, file: "some/long/file/name/that/pads/the/progress/record.bin"))
+    XCTAssertTrue(
+      values.contains(EngineProgressUpdate(fraction: 0.99, files: 13, file: "last.bin")))
+    XCTAssertEqual(values.last, EngineProgressUpdate(fraction: 1))
+  }
+
+  /// Конвейер передаёт stdout первого этапа второму, а прогресс берёт у первого.
+  func testPipelineStreamsFirstStageIntoSecondAndReportsFirstStageProgress() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript(
+      """
+      if [ "$1" = produce ]; then
+        printf ' 50%% 1 + a.txt' >&2
+        printf 'stream payload'
+      else
+        printf ' 80%%' >&2
+        /bin/cat > "$2"
+        printf 'log'
+      fi
+      """, in: directory)
+    let samples = EngineUpdates()
+    let received = directory.appendingPathComponent("received")
+    let log = directory.appendingPathComponent("out")
+    try await EngineProcess(executableURL: script, timeout: 15).run(
+      stages: [
+        EngineStage(arguments: ["produce"]),
+        EngineStage(arguments: ["consume", received.path]),
+      ], outputURL: log, limit: 100, progress: { await samples.record($0) })
+    XCTAssertEqual(try Data(contentsOf: received), Data("stream payload".utf8))
+    XCTAssertEqual(try Data(contentsOf: log), Data("log".utf8))
+    let values = await samples.values
+    XCTAssertEqual(values.map(\.fraction), [0.5, 1])
+  }
+
+  /// Сбой любого этапа конвейера — ошибка всей операции, даже если последний этап завершился успешно.
+  func testPipelineFailsWhenFirstStageFails() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript(
+      "if [ \"$1\" = produce ]; then exit 2; else /bin/cat > /dev/null; fi", in: directory)
+    do {
+      try await EngineProcess(executableURL: script, timeout: 15).run(
+        stages: [EngineStage(arguments: ["produce"]), EngineStage(arguments: ["consume"])],
+        outputURL: directory.appendingPathComponent("out"), limit: 100)
+      XCTFail("Expected error")
+    } catch { XCTAssertEqual(error as? ArchiveError, .invalidArchive) }
+  }
+
+  /// Нехватка места на диске отличается от повреждённого архива.
+  func testDiskFullIsReportedSeparately() async throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let script = try makeScript(
+      "printf ' 10%% 1 + a\\b\\b\\nERROR: errno=28 : No space left on device\\n' >&2; exit 2",
+      in: directory)
+    do {
+      try await EngineProcess(executableURL: script, timeout: 15).run(
+        arguments: [], outputURL: directory.appendingPathComponent("out"), limit: 100)
+      XCTFail("Expected error")
+    } catch { XCTAssertEqual(error as? ArchiveError, .diskFull) }
+  }
+
   /// Выделяет временный каталог для изолированного процесса движка.
   private func makeDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -133,6 +217,12 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     return url
   }
+}
+
+private actor EngineUpdates {
+  private(set) var values: [EngineProgressUpdate] = []
+  /// Сохраняет обновление вместе со счётчиком файлов и именем.
+  func record(_ value: EngineProgressUpdate) { values.append(value) }
 }
 
 private actor EngineSamples {

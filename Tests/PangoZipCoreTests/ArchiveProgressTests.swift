@@ -7,10 +7,46 @@ final class ArchiveProgressTests: XCTestCase, @unchecked Sendable {
   func testParserHandlesSplitPercentAndTerminalRedrawWithoutReadingFilenamesAsProgress() {
     var parser = EngineProgressParser()
     XCTAssertEqual(parser.consume(Data("  1".utf8)), [])
-    XCTAssertEqual(parser.consume(Data("2% + file 99%.txt".utf8)), [0.12])
-    XCTAssertEqual(parser.consume(Data("\u{8}\u{8}    \u{8}  45% 2 file".utf8)), [0.45])
-    XCTAssertEqual(parser.consume(Data("\r  40%\nERROR 90%\n101%\n  100%".utf8)), [1])
+    XCTAssertEqual(
+      parser.consume(Data("2% + file 99%.txt".utf8)),
+      [EngineProgressUpdate(fraction: 0.12, file: "file 99%.txt")])
+    XCTAssertEqual(
+      parser.consume(Data("\u{8}\u{8}    \u{8}  45% 2 file".utf8)),
+      [EngineProgressUpdate(fraction: 0.45, files: 2, file: "file")])
+    XCTAssertEqual(
+      parser.consume(Data("\r  40%\nERROR 90%\n101%\n  100%".utf8)),
+      [EngineProgressUpdate(fraction: 1)])
     XCTAssertEqual(parser.consume(Data("\r 100%".utf8)), [])
+    XCTAssertEqual(String(decoding: parser.messages, as: UTF8.self), "ERROR 90%\n101%\n")
+  }
+
+  /// Счётчик файлов, команда и имя читаются из записи; смена файла при том же проценте видна.
+  func testParserReportsFileCountAndCurrentNameBetweenPercentSteps() {
+    var parser = EngineProgressParser()
+    XCTAssertEqual(
+      parser.consume(Data("  3% 7 + Folder/ name with  spaces .txt".utf8)),
+      [EngineProgressUpdate(fraction: 0.03, files: 7, file: "Folder/ name with  spaces .txt")])
+    let erase =
+      String(repeating: "\u{8}", count: 5) + "     " + String(repeating: "\u{8}", count: 5)
+    XCTAssertEqual(
+      parser.consume(Data((erase + "  3% 8 + 2024 report.pdf").utf8)),
+      [EngineProgressUpdate(fraction: 0.03, files: 8, file: "2024 report.pdf")])
+    // Повтор той же записи и стирающие пробелы новых событий не дают.
+    XCTAssertEqual(parser.consume(Data((erase + "  3% 8 + 2024 report.pdf").utf8)), [])
+    XCTAssertEqual(
+      parser.consume(Data((erase + "  4% 8 T 2024 report.pdf").utf8)),
+      [EngineProgressUpdate(fraction: 0.04, files: 8, file: "2024 report.pdf")])
+    // Запись, разорванная между чтениями, уточняется следующим чтением.
+    XCTAssertEqual(
+      parser.consume(Data((erase + "  5% 9 + par").utf8)),
+      [EngineProgressUpdate(fraction: 0.05, files: 9, file: "par")])
+    XCTAssertEqual(
+      parser.consume(Data("t.bin".utf8)),
+      [EngineProgressUpdate(fraction: 0.05, files: 9, file: "part.bin")])
+    // Сообщение без перевода строки в конце вывода сохраняется для разбора ошибки.
+    XCTAssertEqual(parser.consume(Data((erase + "\nERROR: Wrong password").utf8)), [])
+    XCTAssertEqual(parser.finish(), [])
+    XCTAssertEqual(String(decoding: parser.messages, as: UTF8.self), "ERROR: Wrong password\n")
   }
 
   /// Проверяет монотонность прогресса и целостность двоичных данных в реальных операциях.

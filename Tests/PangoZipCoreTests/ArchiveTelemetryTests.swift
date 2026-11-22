@@ -55,8 +55,8 @@ final class ArchiveTelemetryTests: XCTestCase, @unchecked Sendable {
       reporter.engine(
         phase: .extracting, from: 0.1, to: 0.99, totalBytes: UInt64.max,
         itemBytes: UInt64.max, completedFiles: 0, totalFiles: 1, currentFile: "Huge.bin"))
-    await callback(0.5)
-    await callback(1)
+    await callback(EngineProgressUpdate(fraction: 0.5, files: 1, file: "ignored.bin"))
+    await callback(EngineProgressUpdate(fraction: 1))
     let values = await samples.values
     XCTAssertTrue(values[0].bytesAreEstimated)
     XCTAssertLessThan(try XCTUnwrap(values[0].processedBytes), UInt64.max)
@@ -65,6 +65,24 @@ final class ArchiveTelemetryTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(values[1].completedFiles, 0)
     XCTAssertFalse(values[1].bytesAreEstimated)
     XCTAssertEqual(values[1].currentFile, "Huge.bin")
+  }
+}
+
+extension ArchiveTelemetryTests {
+  /// Без своих значений вызывающего счётчик и имя берутся из строки движка: начатый файл не завершён.
+  func testReporterUsesEngineFileCountAndName() async throws {
+    let samples = TelemetrySamples()
+    let reporter = ArchiveProgressReporter { await samples.record($0) }
+    let callback = try XCTUnwrap(
+      reporter.engine(phase: .compressing, from: 0, to: 0.9, totalBytes: 1_000, totalFiles: 4))
+    await callback(EngineProgressUpdate(fraction: 0.5, files: 3, file: "Folder/third.bin"))
+    await callback(EngineProgressUpdate(fraction: 0.6, files: 9, file: nil))
+    let values = await samples.values
+    XCTAssertEqual(values[0].completedFiles, 2)
+    XCTAssertEqual(values[0].currentFile, "Folder/third.bin")
+    XCTAssertEqual(values[0].processedBytes, 500)
+    XCTAssertEqual(values[0].fraction, 0.45)
+    XCTAssertEqual(values[1].completedFiles, 4)
   }
 }
 
