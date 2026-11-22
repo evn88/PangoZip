@@ -138,6 +138,42 @@ final class ArchiveSourceScanTests: XCTestCase, @unchecked Sendable {
     await service.cleanup()
   }
 
+  /// Имя с «/», набранным в Finder, хранится на диске с двоеточием («m/tel» → «m:tel»).
+  /// Такой файл архивируется, открывается и распаковывается под тем же именем,
+  /// а не обрывает создание ошибкой о небезопасном пути после сжатия.
+  func testCreationKeepsNamesWithColonFromFinderSlash() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent("Backups")
+    try FileManager.default.createDirectory(
+      at: folder.appendingPathComponent("Apps"), withIntermediateDirectories: true)
+    try Data("ipa".utf8).write(to: folder.appendingPathComponent("Apps/Moj m:tel 2.9.3.ipa"))
+    try Data("app".utf8).write(to: folder.appendingPathComponent("Apps/Moj m:tel.imazingapp"))
+    let service = ArchiveService(executableURL: engine)
+    let expected = [
+      "Backups", "Backups/Apps", "Backups/Apps/Moj m:tel 2.9.3.ipa",
+      "Backups/Apps/Moj m:tel.imazingapp",
+    ]
+    for format in ["7z", "zip", "tar"] {
+      let archive = try await service.createArchive(
+        from: [folder], proposedURL: root.appendingPathComponent("out." + format), format: format)
+      let session = try await service.open(archive)
+      XCTAssertEqual(session.entries.map(\.path).sorted(), expected, format)
+      try await service.close(session)
+      let destination = root.appendingPathComponent("extracted-" + format)
+      try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+      let output = try await service.extractArchive(archive, directory: destination)
+      let found = try XCTUnwrap(FileManager.default.enumerator(atPath: output.path))
+        .compactMap { $0 as? String }.sorted()
+      XCTAssertTrue(found.contains("Backups/Apps/Moj m:tel 2.9.3.ipa"), "\(format): \(found)")
+      XCTAssertEqual(
+        try Data(
+          contentsOf: output.appendingPathComponent("Backups/Apps/Moj m:tel.imazingapp")),
+        Data("app".utf8), format)
+    }
+    await service.cleanup()
+  }
+
   /// Одинаковые имена из разных папок не могут занять одно место в корне архива.
   func testCreationRejectsEqualTopLevelNamesFromDifferentFolders() async throws {
     let root = try fixture()
