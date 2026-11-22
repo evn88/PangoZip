@@ -29,6 +29,14 @@ public final class EnginePause: Sendable {
     }
   }
 
+  /// Держит операцию между запусками движка, пока пауза не снята или задача не отменена:
+  /// подготовка файлов и публикация результата тоже не идут на паузе.
+  func waitWhilePaused() async {
+    while isPaused, !Task.isCancelled {
+      try? await Task.sleep(for: .milliseconds(100))
+    }
+  }
+
   /// Суммарное время на паузе к моменту `uptime`, включая ещё не закончившуюся паузу.
   func pausedTime(at uptime: TimeInterval) -> TimeInterval {
     state.withLock { $0.accumulated + ($0.pausedAt.map { max(0, uptime - $0) } ?? 0) }

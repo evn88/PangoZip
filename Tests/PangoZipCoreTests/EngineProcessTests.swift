@@ -223,6 +223,22 @@ final class EngineProcessTests: XCTestCase, @unchecked Sendable {
     XCTAssertGreaterThanOrEqual(pause.pausedTime(at: EnginePause.uptime), 0.6)
   }
 
+  /// Шаги без движка тоже ждут снятия паузы: сообщение о ходе не уходит, пока она включена.
+  func testReporterWaitsWhilePaused() async throws {
+    let pause = EnginePause()
+    pause.pause()
+    let samples = EngineSamples()
+    let reporter = ArchiveProgressReporter({ await samples.record($0.fraction ?? 0) }, pause: pause)
+    let task = Task { await reporter.report(phase: .preparing, fraction: 0.5) }
+    try await Task.sleep(for: .milliseconds(300))
+    let whilePaused = await samples.values
+    XCTAssertEqual(whilePaused, [])
+    pause.resume()
+    await task.value
+    let afterResume = await samples.values
+    XCTAssertEqual(afterResume, [0.5])
+  }
+
   /// Отмена останавливает и движок, замерший на паузе.
   func testCancellationStopsPausedEngine() async throws {
     let directory = try makeDirectory()

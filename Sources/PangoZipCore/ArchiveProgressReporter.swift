@@ -106,6 +106,8 @@ actor ArchiveProgressReporter {
     outputURL: URL? = nil, estimated: Bool = false, yielding: Bool = false
   ) async {
     guard let handler else { return }
+    // Каждый шаг операции сообщает о ходе: здесь она и встаёт, если движок сейчас не запущен.
+    await pause?.waitWhilePaused()
     let now = ProcessInfo.processInfo.systemUptime
     let paused = pause?.pausedTime(at: now) ?? 0
     if previousPhase != phase || previousTotal != totalBytes
