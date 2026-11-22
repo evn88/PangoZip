@@ -103,6 +103,9 @@ final class FinderFileProgress: @unchecked Sendable {
     progress = nil
     guard let placeholder else { return }
     self.placeholder = nil
+    // Настоящий архив под этим именем зарегистрирует публикация; после ошибки или отмены
+    // запись не должна скрыть от наблюдаемой папки чужой архив с тем же именем.
+    OwnOutputRegistry.shared.unregister(placeholder.url)
     var info = stat()
     guard lstat(placeholder.url.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
       info.st_dev == placeholder.device, info.st_ino == placeholder.inode, info.st_size == 0

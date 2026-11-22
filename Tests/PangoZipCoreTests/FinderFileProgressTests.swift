@@ -33,6 +33,7 @@ final class FinderFileProgressTests: XCTestCase, @unchecked Sendable {
     progress.update(ArchiveProgress(phase: .compressing, fraction: 0.5, totalFiles: 3))
     progress.finish()
     XCTAssertFalse(FileManager.default.fileExists(atPath: placeholder.path))
+    XCTAssertFalse(OwnOutputRegistry.shared.contains(placeholder))
     XCTAssertEqual(try String(contentsOf: proposed, encoding: .utf8), "busy")
     progress.finish()
   }
