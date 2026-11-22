@@ -224,6 +224,7 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;unsafe&lt;/script&gt;", descriptions["ru"])
         self.assertEqual(descriptions["ru"].count("<li>"), 2)
         self.assertIn('lang="ja"', descriptions["ja"])
+        self.assertIn("Short update notes.", descriptions["ja"])
         self.assertIn("<ul>", descriptions["ja"])
         self.assertFalse(item.findall("{http://www.andymatuschak.org/xml-namespaces/sparkle}releaseNotesLink"))
         for text in descriptions.values():

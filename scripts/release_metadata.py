@@ -62,8 +62,10 @@ def localize_update_feed(path, changes):
     for child in list(item):
         if child.tag in ("description", namespace + "releaseNotesLink", namespace + "fullReleaseNotesLink"):
             item.remove(child)
+    # Без перевода показываем настоящий английский список, а не «техническое обновление».
+    english = changes["en"] if changes is not DEFAULT_CHANGES else None
     for language, fallback in DEFAULT_CHANGES.items():
-        lines = changes.get(language, fallback)
+        lines = changes.get(language, english or fallback)
         content = "".join("<li>" + html.escape(line) + "</li>" for line in lines)
         node = ET.SubElement(item, "description", {"{http://www.w3.org/XML/1998/namespace}lang": language})
         node.text = (f'<html lang="{language}"><head><meta charset="utf-8">'
