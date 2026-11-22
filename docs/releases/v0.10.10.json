@@ -1,0 +1,10 @@
+{
+  "en": [
+    "While an archive is being created, Finder now shows it right away with a progress indicator next to its name, just like the built-in Archive Utility.",
+    "The update window now lists what changed in each new version."
+  ],
+  "ru": [
+    "Пока создаётся архив, Finder сразу показывает его с индикатором прогресса рядом с именем, как у встроенной «Утилиты архивов».",
+    "Окно обновления теперь показывает, что изменилось в новой версии."
+  ]
+}
