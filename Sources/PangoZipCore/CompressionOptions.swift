@@ -47,11 +47,12 @@ public struct CompressionOptions: Sendable, Equatable {
   /// Имена файлов шифруются только в 7z.
   public static func supportsFileNameEncryption(_ format: String) -> Bool { format == "7z" }
 
-  /// Число потоков в автоматическом режиме: около четверти ядер остаётся системе и интерфейсу.
+  /// Число потоков в автоматическом режиме: все ядра. Интерфейсу и другим программам процессор
+  /// уступает планировщик: движок работает классом utility и получает всё только в простое.
   public static func automaticThreads(
     processors: Int = ProcessInfo.processInfo.activeProcessorCount
   ) -> Int {
-    max(1, processors - max(1, processors / 4))
+    max(1, processors)
   }
 
   /// Ключи сжатия; для tar и wim пусты, для tar.gz и tar.xz относятся к внешнему слою.
