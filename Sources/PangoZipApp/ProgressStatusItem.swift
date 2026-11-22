@@ -248,10 +248,9 @@ enum RingImage {
       if key.isPaused {
         NSColor.black.setFill()
         for offset in [-1.75, 1.75] {
-          NSBezierPath(
-            roundedRect: NSRect(x: center.x + offset - 0.75, y: center.y - 2.5, width: 1.5, height: 5),
-            xRadius: 0.75, yRadius: 0.75
-          ).fill()
+          let bar = NSRect(
+            x: center.x + offset - 0.75, y: center.y - 2.5, width: 1.5, height: 5)
+          NSBezierPath(roundedRect: bar, xRadius: 0.75, yRadius: 0.75).fill()
         }
       }
       return true
