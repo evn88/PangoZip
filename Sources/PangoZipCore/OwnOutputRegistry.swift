@@ -28,5 +28,11 @@ public final class OwnOutputRegistry: Sendable {
     }
   }
 
+  /// Забывает путь: объект под ним так и не был опубликован.
+  public func unregister(_ url: URL) {
+    let key = Self.key(url)
+    state.withLock { items in items[key] = nil }
+  }
+
   private static func key(_ url: URL) -> String { url.standardizedFileURL.path }
 }

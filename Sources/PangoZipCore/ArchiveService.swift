@@ -719,8 +719,16 @@ extension ArchiveService {
   /// Копирует выбранные объекты, проверяет созданный архив и публикует его под свободным именем.
   public func createArchive(
     from urls: [URL], proposedURL: URL, format: String, options: CompressionOptions? = nil,
-    password: String = "", progress: ArchiveProgressHandler? = nil
+    password: String = "", progress observer: ArchiveProgressHandler? = nil
   ) async throws -> URL {
+    // Тот же прогресс публикуется для пустого файла под именем будущего архива: Finder рисует
+    // рядом с ним круговой индикатор. Поэтому строка прогресса движка нужна всегда.
+    let finder = FinderFileProgress()
+    defer { finder.finish() }
+    let progress: ArchiveProgressHandler? = { update in
+      finder.update(update)
+      await observer?(update)
+    }
     let reporter = ArchiveProgressReporter(progress)
     await reporter.report(phase: .preparing)
     guard CompressionOptions.supportedFormats.contains(format), !urls.isEmpty,
@@ -787,6 +795,10 @@ extension ArchiveService {
     // Многотомный результат: 7zz добавляет к имени .001, .002 и так далее.
     let firstVolume = URL(fileURLWithPath: working.path + ".001")
     let measured = settings.volumeSizeMB == nil ? working : firstVolume
+    let target =
+      finder.reserve(
+        proposed: proposedURL, format: format, volumes: settings.volumeSizeMB != nil,
+        sources: sources.map(\.url)) ?? proposedURL
     await reporter.report(
       phase: .compressing, fraction: 0, processedBytes: 0, totalBytes: bytes, totalFiles: files)
     let secret = try EnginePassword.writing(password)
@@ -872,19 +884,21 @@ extension ArchiveService {
       completedFiles: files, totalFiles: files, outputURL: primary)
     try Task.checkCancellation()
     guard initialGeneration == generation else { throw ArchiveError.sessionExpired }
+    // Место пустого файла освобождается прямо перед переносом: архив занимает то же имя.
+    finder.finish()
     let result: URL
     if !volumes.isEmpty || isCompressedTar {
       // Составные расширения и наборы томов публикуются под общим свободным именем.
-      let stem = ArchiveOutput.stem(of: proposedURL, removing: "." + format)
+      let stem = ArchiveOutput.stem(of: target, removing: "." + format)
       let prefix = "working"
       let items =
         volumes.isEmpty
         ? [(source: working, suffix: "." + format)]
         : volumes.map { (source: $0, suffix: String($0.lastPathComponent.dropFirst(prefix.count))) }
       result = try ArchiveOutput.publishSet(
-        items, parent: proposedURL.deletingLastPathComponent(), stem: stem)[0]
+        items, parent: target.deletingLastPathComponent(), stem: stem)[0]
     } else {
-      result = try ArchiveOutput.publish(working, proposed: proposedURL, isDirectory: false)
+      result = try ArchiveOutput.publish(working, proposed: target, isDirectory: false)
     }
     await reporter.report(
       phase: .finalizing, fraction: 1, processedBytes: bytes, totalBytes: bytes,
