@@ -20,6 +20,8 @@ public struct ArchiveProgress: Sendable, Equatable {
   public let elapsedSeconds: TimeInterval
   public let updatedAt: Date
   public let bytesAreEstimated: Bool
+  /// Операция почти стоит, потому что процессор заняли другие программы.
+  public let isYielding: Bool
 
   /// Ограничивает известную долю диапазоном 0…1; нечисловое значение означает неизвестный прогресс.
   public init(
@@ -27,7 +29,7 @@ public struct ArchiveProgress: Sendable, Equatable {
     totalBytes: UInt64? = nil, completedFiles: Int? = nil, totalFiles: Int? = nil,
     currentFile: String? = nil, outputBytes: UInt64? = nil, bytesPerSecond: Double? = nil,
     remainingSeconds: TimeInterval? = nil, elapsedSeconds: TimeInterval = 0,
-    updatedAt: Date = Date(), bytesAreEstimated: Bool = false
+    updatedAt: Date = Date(), bytesAreEstimated: Bool = false, isYielding: Bool = false
   ) {
     self.phase = phase
     self.fraction = fraction.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil }
@@ -43,6 +45,7 @@ public struct ArchiveProgress: Sendable, Equatable {
     self.elapsedSeconds = elapsedSeconds.isFinite ? max(0, elapsedSeconds) : 0
     self.updatedAt = updatedAt
     self.bytesAreEstimated = bytesAreEstimated
+    self.isYielding = isYielding
   }
 }
 
@@ -51,6 +54,8 @@ struct EngineProgressUpdate: Sendable, Equatable {
   var fraction: Double
   var files: Int?
   var file: String?
+  /// Движок уступает процессор другим программам; выставляет запуск, а не разбор строки.
+  var isYielding = false
 }
 
 // 7zz перерисовывает строку через backspace; запись может разрываться между чтениями.

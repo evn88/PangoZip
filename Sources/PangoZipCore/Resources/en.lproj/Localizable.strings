@@ -426,3 +426,4 @@
 "Отказаться от нового архива?" = "Discard the new archive?";
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "The list of %1$@ items will be forgotten. The files themselves stay unchanged.";
 "Отказаться" = "Discard";
+"Операция уступает процессор другим программам" = "The operation is yielding the processor to other apps";

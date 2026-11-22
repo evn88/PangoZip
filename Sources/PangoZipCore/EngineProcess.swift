@@ -144,6 +144,12 @@ struct EngineProcess: Sendable {
       }
       let deadline = timeout.map { Date().addingTimeInterval($0) }
       var nextValidation = Date.distantPast
+      // Нехватку процессора показывают только долгие операции с наблюдаемым прогрессом.
+      var monitor = EngineLoadMonitor()
+      let watchesLoad = priority == .background && progress != nil
+      let processors = ProcessInfo.processInfo.activeProcessorCount
+      var nextLoadSample = Date()
+      var lastUpdate: EngineProgressUpdate?
       while running.contains(where: { $0.process.isRunning }) {
         try Task.checkCancellation()
         if let deadline, Date() >= deadline { throw ArchiveError.timedOut }
@@ -155,11 +161,26 @@ struct EngineProcess: Sendable {
           nextValidation = Date().addingTimeInterval(
             max(0.1, 20 * Date().timeIntervalSince(started)))
         }
-        drain(&running, progress: progress)
+        var changed = false
+        if watchesLoad, Date() >= nextLoadSample {
+          nextLoadSample = Date().addingTimeInterval(EngineLoadMonitor.interval)
+          let processes = running.map(\.process.processIdentifier)
+          if let reading = EngineLoadMonitor.read(processes: processes) {
+            changed = monitor.record(reading, processors: processors)
+          }
+        }
+        var updates = drain(&running)
+        // Смена состояния публикуется сразу: без процессора движок может долго молчать.
+        if updates.isEmpty, changed, let lastUpdate { updates = [lastUpdate] }
+        for var update in updates {
+          update.isYielding = monitor.isYielding
+          lastUpdate = update
+          progress?(update)
+        }
         Thread.sleep(forTimeInterval: 0.03)
       }
       for item in running { item.process.waitUntilExit() }
-      drain(&running, progress: progress, finishing: true)
+      for update in drain(&running, finishing: true) { progress?(update) }
       try Task.checkCancellation()
       try validateOutput?()
       guard try fileSize(outputURL) <= limit else { throw ArchiveError.outputLimit }
@@ -192,11 +213,11 @@ struct EngineProcess: Sendable {
     if let progress { progress(EngineProgressUpdate(fraction: 1)) }
   }
 
-  /// Вычитывает накопившийся stderr всех этапов; прогресс публикует только первый.
-  private func drain(
-    _ running: inout [Running], progress: (@Sendable (EngineProgressUpdate) -> Void)?,
-    finishing: Bool = false
-  ) {
+  /// Вычитывает накопившийся stderr всех этапов; возвращает прогресс первого этапа.
+  private func drain(_ running: inout [Running], finishing: Bool = false)
+    -> [EngineProgressUpdate]
+  {
+    var published: [EngineProgressUpdate] = []
     var buffer = [UInt8](repeating: 0, count: 65_536)
     for index in running.indices where !running[index].drained {
       let descriptor = running[index].errors.fileDescriptor
@@ -214,8 +235,9 @@ struct EngineProcess: Sendable {
         }
       }
       if finishing || running[index].drained { updates += running[index].parser.finish() }
-      if index == 0, let progress { for update in updates { progress(update) } }
+      if index == 0 { published += updates }
     }
+    return published
   }
 
   /// Читает размер файла для контроля объёма вывода; отсутствующий размер считает нулевым.

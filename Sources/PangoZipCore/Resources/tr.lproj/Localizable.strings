@@ -426,3 +426,4 @@
 "Отказаться от нового архива?" = "Yeni arşivden vazgeçilsin mi?";
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "%1$@ öğelik liste unutulacak. Diskteki dosyalar değişmez.";
 "Отказаться" = "Vazgeç";
+"Операция уступает процессор другим программам" = "İşlem, işlemciyi diğer uygulamalara bırakıyor";

@@ -426,3 +426,4 @@
 "Отказаться от нового архива?" = "Abandonner la nouvelle archive ?";
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "La liste de %1$@ éléments sera oubliée. Les fichiers eux-mêmes ne sont pas modifiés.";
 "Отказаться" = "Abandonner";
+"Операция уступает процессор другим программам" = "L’opération cède le processeur aux autres apps";

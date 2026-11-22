@@ -93,7 +93,7 @@ actor ArchiveProgressReporter {
     phase: ArchiveProgress.Phase, fraction: Double? = nil,
     processedBytes: UInt64? = nil, totalBytes: UInt64? = nil,
     completedFiles: Int? = nil, totalFiles: Int? = nil, currentFile: String? = nil,
-    outputURL: URL? = nil, estimated: Bool = false
+    outputURL: URL? = nil, estimated: Bool = false, yielding: Bool = false
   ) async {
     guard let handler else { return }
     let now = ProcessInfo.processInfo.systemUptime
@@ -120,7 +120,7 @@ actor ArchiveProgressReporter {
         completedFiles: completedFiles, totalFiles: totalFiles, currentFile: currentFile,
         outputBytes: lastOutputBytes, bytesPerSecond: estimate.speed,
         remainingSeconds: estimate.remaining, elapsedSeconds: now - started,
-        bytesAreEstimated: estimated))
+        bytesAreEstimated: estimated, isYielding: yielding))
   }
 
   /// Переводит проценты команды в общий прогресс и оценку байтов без преждевременных 100% транзакции.
@@ -146,7 +146,7 @@ actor ArchiveProgressReporter {
         totalBytes: totalBytes,
         completedFiles: completedFiles ?? (totalFiles == nil ? nil : started),
         totalFiles: totalFiles, currentFile: currentFile ?? update.file, outputURL: outputURL,
-        estimated: safe > 0 && safe < 1)
+        estimated: safe > 0 && safe < 1, yielding: update.isYielding)
     }
   }
 
