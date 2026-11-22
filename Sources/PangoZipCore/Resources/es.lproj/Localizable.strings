@@ -8,7 +8,9 @@
 "Предпросмотр ссылок, папок и специальных файлов недоступен." = "La vista previa de enlaces, carpetas y archivos especiales no está disponible.";
 "Файл превышает лимит предпросмотра 200 МБ." = "El archivo supera el límite de vista previa de 200 MB.";
 "Движок превысил допустимый объём данных. Операция остановлена." = "El motor superó el límite de salida. Se canceló la operación.";
-"Обработка архива заняла больше двух минут. Операция остановлена." = "El procesamiento del archivo superó los dos minutos. Se canceló la operación.";
+"Операция заняла слишком много времени и была остановлена." = "La operación tardó demasiado y se canceló.";
+"Файлы изменились во время архивации. Повторите, когда они перестанут меняться." = "Los archivos cambiaron durante el archivado. Vuelve a intentarlo cuando dejen de cambiar.";
+"Недостаточно свободного места на диске. Операция остановлена." = "No hay suficiente espacio libre en el disco. Se canceló la operación.";
 "Архив изменился на диске. Откройте его заново." = "El archivo ha cambiado en el disco. Vuelva a abrirlo.";
 "Не удалось однозначно извлечь выбранный файл." = "No se pudo extraer el archivo seleccionado de forma inequívoca.";
 "Этот формат архива доступен только для чтения. Изменение поддерживается для ZIP, 7z и TAR." = "Este formato de archivo es de solo lectura. Se pueden modificar archivos ZIP, 7z y TAR.";
@@ -424,3 +426,4 @@
 "Отказаться от нового архива?" = "¿Descartar el nuevo archivo?";
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Se olvidará la lista de %1$@ elementos. Los archivos en el disco no cambiarán.";
 "Отказаться" = "Descartar";
+"Операция уступает процессор другим программам" = "La operación cede el procesador a otras apps";

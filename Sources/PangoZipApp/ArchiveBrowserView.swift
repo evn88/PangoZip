@@ -65,6 +65,18 @@ struct ArchiveBrowserView: View {
     } ?? ""
   }
 
+  /// Папка, в которой лежит архив, в коротком виде с тильдой.
+  private var archiveFolder: String? {
+    model.archiveFileURL.map {
+      ($0.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+    }
+  }
+
+  /// Полный путь к архиву для подсказки.
+  private var archivePath: String? {
+    model.archiveFileURL.map { ($0.path as NSString).abbreviatingWithTildeInPath }
+  }
+
   /// Внутренний отступ содержимого кнопок с подписью: стеклянная подложка панели macOS 26
   /// облегает Label вплотную, и без отступа значок прижимается к краю кнопки.
   private static let toolbarLabelInset: CGFloat = 6
@@ -81,15 +93,33 @@ struct ArchiveBrowserView: View {
     }
     // Системный заголовок не гарантирует светлый текст на синей шапке, поэтому рисуем свой.
     ToolbarItem(placement: .navigation) {
-      VStack(alignment: .leading, spacing: 1) {
-        Text(windowTitle).font(.headline).lineLimit(1).truncationMode(.middle)
-        if !windowSubtitle.isEmpty {
-          Text(windowSubtitle).font(.caption).opacity(0.8).lineLimit(1)
+      // Заголовок открытого архива показывает его папку и по нажатию открывает её в Finder.
+      Button(action: model.revealArchiveInFinder) {
+        VStack(alignment: .leading, spacing: 1) {
+          Text(windowTitle).font(.headline).lineLimit(1).truncationMode(.middle)
+          if !windowSubtitle.isEmpty {
+            HStack(spacing: 4) {
+              Text(windowSubtitle).lineLimit(1).layoutPriority(1)
+              if let archiveFolder {
+                Text("·")
+                Text(archiveFolder).lineLimit(1).truncationMode(.head)
+              }
+            }
+            .font(.caption).opacity(0.8)
+          }
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain).disabled(model.archiveFileURL == nil)
+      // Длинное имя архива сокращается в середине и не вытесняет кнопки; полный путь в подсказке.
+      .foregroundStyle(.white).padding(.horizontal, 4)
+      .frame(maxWidth: 340, alignment: .leading)
+      .help(archivePath.map { L10n.tr("Показать в Finder") + ": " + $0 } ?? windowTitle)
+      .contextMenu {
+        if model.archiveFileURL != nil {
+          Button(L10n.tr("Показать в Finder"), action: model.revealArchiveInFinder)
         }
       }
-      // Длинное имя архива сокращается в середине и не вытесняет кнопки; полное имя в подсказке.
-      .foregroundStyle(.white).padding(.horizontal, 4)
-      .frame(maxWidth: 340, alignment: .leading).help(windowTitle)
       .accessibilityElement(children: .combine)
     }
     .sharedBackgroundVisibility(.hidden)
@@ -466,7 +496,29 @@ struct ArchiveBrowserView: View {
     return [session.url.lastPathComponent] + components
   }
 
-  /// Ход операции показывает только кнопка очереди; здесь остаются путь, счётчики и сообщения.
+  /// Скорость и оценка оставшегося времени: долгую операцию видно без открытия очереди.
+  @ViewBuilder
+  private var operationTiming: some View {
+    if let progress = model.operationProgress,
+      [.compressing, .verifying, .extracting].contains(progress.phase)
+    {
+      if let speed = progress.bytesPerSecond {
+        Text(ProgressFormatting.speed(speed)).monospacedDigit().lineLimit(1)
+          .foregroundStyle(.secondary).help(L10n.tr("Средняя скорость"))
+      }
+      if progress.remainingSeconds != nil {
+        Label(
+          ProgressFormatting.eta(progress.remainingSeconds, phase: progress.phase),
+          systemImage: "hourglass"
+        )
+        .monospacedDigit().lineLimit(1).foregroundStyle(.secondary)
+        .help(L10n.tr("Осталось на этапе"))
+      }
+      if progress.isYielding { YieldingBadge() }
+    }
+  }
+
+  /// Процент показывает кнопка очереди; здесь путь, счётчики, сообщения и время операции.
   private var statusBar: some View {
     HStack(spacing: 12) {
       if model.isClosing {
@@ -475,6 +527,7 @@ struct ArchiveBrowserView: View {
       } else if model.isBusy || model.isExporting {
         Text(model.operationMessage ?? L10n.tr("Выполняем операцию…"))
           .lineLimit(1).truncationMode(.middle)
+        operationTiming
       } else if let message = model.errorMessage {
         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
         Text(message).textSelection(.enabled).lineLimit(3).help(message)

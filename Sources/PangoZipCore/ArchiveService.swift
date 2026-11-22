@@ -58,12 +58,15 @@ public actor ArchiveService {
   private var sessions: [UUID: SessionState] = [:]
   private var busy: Set<UUID> = []
   private let previewLimit: UInt64
-  private let timeout: TimeInterval
+  private let timeout: TimeInterval?
   private var generation = 0
 
   /// Задаёт движок и пределы предпросмотра; рабочая область создаётся при первой операции.
+  /// Предела времени по умолчанию нет: большой архив обрабатывается столько, сколько нужно,
+  /// а остановить операцию можно отменой задачи. `timeout` оставлен для тестов.
   public init(
-    executableURL: URL? = nil, previewLimit: UInt64 = 200 * 1024 * 1024, timeout: TimeInterval = 120
+    executableURL: URL? = nil, previewLimit: UInt64 = 200 * 1024 * 1024,
+    timeout: TimeInterval? = nil
   ) {
     self.executableURL = executableURL ?? Self.resolveEngine()
     self.previewLimit = previewLimit
@@ -384,7 +387,7 @@ public actor ArchiveService {
       arguments.append("-mem=" + state.encryption.zipMethod)
     }
     arguments += ["--", working.path]
-    try await runner().run(
+    try await runner(.background).run(
       arguments: arguments, input: writePassword.input,
       outputURL: transaction.appendingPathComponent("mutation.log"),
       limit: 32 * 1024 * 1024, workingDirectory: inputs)
@@ -442,6 +445,31 @@ public actor ArchiveService {
     retainedUndo = true
     if let previous = state.undo { try? manager.removeItem(at: previous.url) }
     return try snapshot(id: session.id, state: updated)
+  }
+
+  /// Точные пути служебных файлов передаются движку списком исключений. Список делит строки
+  /// и по CR, поэтому имена с управляющими символами («Icon\r» у папок со своим значком)
+  /// идут отдельными аргументами.
+  static func exclusionArguments(_ paths: [String], in directory: URL) throws -> [String] {
+    var listed: [String] = []
+    var arguments: [String] = []
+    var argumentBytes = 0
+    for path in paths {
+      if path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
+        arguments.append("-x!" + path)
+        argumentBytes += path.utf8.count + 4
+      } else {
+        listed.append(path)
+      }
+    }
+    // Длина командной строки ограничена системой.
+    guard argumentBytes <= 128 * 1024 else { throw ArchiveError.unsafePath }
+    if !listed.isEmpty {
+      let list = directory.appendingPathComponent("exclude.list")
+      try writeNameList(listed, to: list)
+      arguments.append("-x@" + list.path)
+    }
+    return arguments
   }
 
   /// 7zz обрезает пробелы по краям строк list-файла, поэтому каждое имя берётся в кавычки:
@@ -519,11 +547,11 @@ public actor ArchiveService {
   /// Проверяет целостность движком и удаляет временный журнал независимо от результата.
   private func verify(
     _ url: URL, password: EnginePassword, in directory: URL,
-    progress: (@Sendable (Double) async -> Void)? = nil
+    progress: (@Sendable (EngineProgressUpdate) async -> Void)? = nil
   ) async throws {
     let output = directory.appendingPathComponent(UUID().uuidString + ".verify")
     defer { try? FileManager.default.removeItem(at: output) }
-    try await runner().run(
+    try await runner(.background).run(
       arguments: ["t", progress == nil ? "-bsp0" : "-bsp2"] + password.arguments + [
         "--", url.path,
       ],
@@ -651,12 +679,13 @@ public actor ArchiveService {
     return latest
   }
 
-  /// Проверяет доступность движка перед каждым запуском, сохраняя заданный предел времени.
-  private func runner() throws -> EngineProcess {
+  /// Проверяет доступность движка перед каждым запуском. Долгие операции запускаются
+  /// с пониженным приоритетом, чтобы система и интерфейс оставались отзывчивыми.
+  private func runner(_ priority: EnginePriority = .interactive) throws -> EngineProcess {
     guard let executableURL, FileManager.default.isExecutableFile(atPath: executableURL.path) else {
       throw ArchiveError.engineUnavailable
     }
-    return EngineProcess(executableURL: executableURL, timeout: timeout)
+    return EngineProcess(executableURL: executableURL, timeout: timeout, priority: priority)
   }
 
   /// Переводит обычные Unix-права из текстового режима, не восстанавливая специальные биты.
@@ -706,9 +735,7 @@ extension ArchiveService {
     let initialGeneration = generation
     let transaction = try workspace.transactionDirectory(nextTo: proposedURL)
     defer { try? workspace.removeTransaction(transaction) }
-    let inputs = transaction.appendingPathComponent("inputs")
-    try FileManager.default.createDirectory(at: inputs, withIntermediateDirectories: false)
-    var names: [String] = []
+    var sources: [ArchiveSource] = []
     var seen: Set<URL> = []
     for url in urls {
       guard url.isFileURL else { throw ArchiveError.invalidOperation }
@@ -721,6 +748,7 @@ extension ArchiveService {
       }) {
         continue
       }
+      // Рабочая папка внутри исходной попала бы в собственный архив.
       let resolved = url.resolvingSymlinksInPath().standardizedFileURL.path
       guard !transaction.resolvingSymlinksInPath().path.hasPrefix(resolved + "/") else {
         throw ArchiveError.invalidOperation
@@ -729,68 +757,89 @@ extension ArchiveService {
         continue
       }
       try ArchiveListing.validatePath(url.lastPathComponent)
-      try await StagedFiles.copy(
-        url, to: inputs.appendingPathComponent(url.lastPathComponent),
-        skippingSystemFiles: compression.excludesSystemFiles)
-      names.append(url.lastPathComponent)
+      // Объекты из разных папок с одинаковым именем заняли бы одно место в корне архива.
+      guard !sources.contains(where: { $0.name == url.lastPathComponent }) else {
+        throw ArchiveError.duplicatePath
+      }
+      sources.append(ArchiveSource(url: path, name: url.lastPathComponent))
     }
-    guard !names.isEmpty else { throw ArchiveError.invalidOperation }
-    let workload = progress == nil ? nil : try await ArchiveWorkload.measure(inputs)
-    let bytes = workload?.bytes ?? 0
-    let files = workload?.files ?? 0
+    guard !sources.isEmpty else { throw ArchiveError.invalidOperation }
+    // Движок читает файлы прямо с их места: копия во временную папку удвоила бы запись на диск
+    // и отложила бы начало сжатия на всё время копирования. Обход смотрит только метаданные.
+    // Явный тип замыкания: в тернарном операторе компилятор не выводит асинхронный тип.
+    var counting: (@Sendable (Int) async -> Void)?
+    if progress != nil {
+      counting = { count in await reporter.report(phase: .preparing, totalFiles: count) }
+    }
+    let scan = try await ArchiveSourceScan.scan(
+      sources, skippingSystemFiles: compression.excludesSystemFiles, progress: counting)
+    let bytes = scan.bytes
+    let files = scan.files
     let list = transaction.appendingPathComponent("items.list")
-    try Self.writeNameList(names, to: list)
+    try Self.writeNameList(sources.map(\.url.path), to: list)
+    let exclusions = try Self.exclusionArguments(scan.excluded, in: transaction)
     let settings = CompressionOptions(
       format: format, level: compression.level, solid: compression.solid,
       threads: compression.threads, volumeSizeMB: compression.volumeSizeMB,
       encryptsFileNames: compression.encryptsFileNames)
     let isCompressedTar = format == "tar.gz" || format == "tar.xz"
-    // Первый шаг tar.gz и tar.xz — обычный TAR; имя внутри потока берётся из будущего имени архива.
-    let engineFormat = isCompressedTar ? "tar" : format
-    let innerName =
-      isCompressedTar
-      ? ArchiveOutput.stem(of: proposedURL, removing: "." + format) + ".tar" : nil
     let working = transaction.appendingPathComponent("working." + format)
-    let tarStep = innerName.map { transaction.appendingPathComponent($0) } ?? working
     // Многотомный результат: 7zz добавляет к имени .001, .002 и так далее.
     let firstVolume = URL(fileURLWithPath: working.path + ".001")
     let measured = settings.volumeSizeMB == nil ? working : firstVolume
     await reporter.report(
       phase: .compressing, fraction: 0, processedBytes: 0, totalBytes: bytes, totalFiles: files)
-    let tarShare = isCompressedTar ? 0.45 : 0.9
-    let tarBytes = isCompressedTar ? bytes / 2 : bytes
     let secret = try EnginePassword.writing(password)
-    try await runner().run(
-      arguments: [
-        "a", "-t" + engineFormat, "-spd", "-ssc", "-snl", "-scsUTF-8",
-        progress == nil ? "-bsp0" : "-bsp2", "-i@" + list.path,
-      ]
-        + (isCompressedTar ? [] : settings.arguments + settings.volumeArguments)
-        + (password.isEmpty
-          ? []
-          : secret.arguments + [
-            format == "7z" ? (settings.encryptsFileNames ? "-mhe=on" : "-mhe=off") : "-mem=AES256"
-          ])
-        + ["--", tarStep.path],
-      input: secret.input, outputURL: transaction.appendingPathComponent("create.log"),
-      limit: 32 * 1024 * 1024,
-      workingDirectory: inputs,
-      progress: reporter.engine(
-        phase: .compressing, from: 0, to: tarShare, totalBytes: bytes, itemBytes: tarBytes,
-        totalFiles: files, outputURL: measured))
-    if isCompressedTar {
-      try await runner().run(
-        arguments: [
-          "a", "-t" + (format == "tar.gz" ? "gzip" : "xz"), "-spd", "-ssc", "-scsUTF-8",
-          progress == nil ? "-bsp0" : "-bsp2",
-        ] + settings.arguments + ["--", working.path, tarStep.path],
-        outputURL: transaction.appendingPathComponent("compress.log"), limit: 32 * 1024 * 1024,
-        progress: reporter.engine(
-          phase: .compressing, from: tarShare, to: 0.9, totalBytes: bytes,
-          baseBytes: tarBytes, itemBytes: bytes - tarBytes, totalFiles: files,
-          outputURL: working))
-      try? FileManager.default.removeItem(at: tarStep)
+    // -r- отключает рекурсивный поиск по имени: без него объект с «*» или «?» в имени искался бы
+    // во всех вложенных папках своего родителя. Содержимое выбранных папок добавляется целиком.
+    let selection =
+      ["-spd", "-ssc", "-snl", "-r-", "-scsUTF-8", "-i@" + list.path] + exclusions
+    let engineProgress = reporter.engine(
+      phase: .compressing, from: 0, to: 0.9, totalBytes: bytes, totalFiles: files,
+      outputURL: measured)
+    let log = transaction.appendingPathComponent("create.log")
+    do {
+      if isCompressedTar {
+        // TAR сразу передаётся сжимающему процессу через канал: промежуточный файл размером
+        // со все исходные данные не создаётся. Имя внутри потока берётся из имени архива.
+        let innerName = ArchiveOutput.stem(of: proposedURL, removing: "." + format) + ".tar"
+        try await runner(.background).run(
+          stages: [
+            EngineStage(
+              arguments: ["a", "-ttar", "-so", "-bso0", progress == nil ? "-bsp0" : "-bsp2"]
+                + selection + ["--", transaction.appendingPathComponent("stream.tar").path],
+              workingDirectory: transaction),
+            EngineStage(
+              arguments: [
+                "a", "-t" + (format == "tar.gz" ? "gzip" : "xz"), "-si" + innerName, "-bsp0",
+              ] + settings.arguments + ["--", working.path],
+              workingDirectory: transaction),
+          ], outputURL: log, limit: 32 * 1024 * 1024, progress: engineProgress)
+      } else {
+        try await runner(.background).run(
+          arguments: ["a", "-t" + format, progress == nil ? "-bsp0" : "-bsp2"] + selection
+            + settings.arguments + settings.volumeArguments
+            + (password.isEmpty
+              ? []
+              : secret.arguments + [
+                format == "7z"
+                  ? (settings.encryptsFileNames ? "-mhe=on" : "-mhe=off") : "-mem=AES256"
+              ])
+            + ["--", working.path],
+          input: secret.input, outputURL: log, limit: 32 * 1024 * 1024,
+          workingDirectory: transaction, progress: engineProgress)
+      }
+    } catch let error as ArchiveError where error == .invalidArchive {
+      // Движок завершился с ошибкой: чаще всего файл удалили или изменили прямо во время чтения.
+      try Task.checkCancellation()
+      let latest = try? await ArchiveSourceScan.scan(
+        sources, skippingSystemFiles: compression.excludesSystemFiles)
+      throw latest?.signature == scan.signature ? error : ArchiveError.sourceChanged
     }
+    // Архив должен соответствовать одному состоянию файлов, а не смеси старого и нового.
+    let latest = try await ArchiveSourceScan.scan(
+      sources, skippingSystemFiles: compression.excludesSystemFiles)
+    guard latest.signature == scan.signature else { throw ArchiveError.sourceChanged }
     // Тома находятся по числовому суффиксу; верификация и чтение идут по первому тому.
     var volumes: [URL] = []
     if settings.volumeSizeMB != nil {
@@ -976,10 +1025,10 @@ extension ArchiveService {
   /// Извлекает ровно одну запись через stdout и требует совпадения фактического и заявленного размера.
   private func extractFile(
     _ entry: ArchiveEntry, from archive: URL, to output: URL, password: String,
-    progress: (@Sendable (Double) async -> Void)? = nil, sizeLimit: UInt64? = nil
+    progress: (@Sendable (EngineProgressUpdate) async -> Void)? = nil, sizeLimit: UInt64? = nil
   ) async throws {
     let secret = try EnginePassword.reading(password)
-    try await runner().run(
+    try await runner(.background).run(
       arguments: ["x", "-so", "-spd", "-ssc", "-y", "-bso0", progress == nil ? "-bsp0" : "-bsp2"]
         + secret.arguments + ["--", archive.path, entry.path],
       input: secret.input, outputURL: output, limit: sizeLimit ?? entry.size, progress: progress)
@@ -1134,7 +1183,7 @@ extension ArchiveService {
         let list = transaction.appendingPathComponent("extract.list")
         try Self.writeNameList(entries.map(\.path), to: list)
         let secret = try EnginePassword.reading(password)
-        try await runner().run(
+        try await runner(.background).run(
           arguments: ["x", "-spd", "-ssc", "-r-", "-y", "-bso0", "-scsUTF-8"] + secret.arguments + [
             "-bsp2", "-i@" + list.path, "-o" + output.path, "--", source.path,
           ], input: secret.input, outputURL: transaction.appendingPathComponent("extract.log"),
@@ -1236,10 +1285,10 @@ extension ArchiveService {
           processedBytes: base &+ UInt64(Double(size) * stage), totalBytes: totalBytes,
           completedFiles: index, totalFiles: count, currentFile: name)
       }
-      var extractProgress: (@Sendable (Double) async -> Void)?
+      var extractProgress: (@Sendable (EngineProgressUpdate) async -> Void)?
       var hashProgress: (@Sendable (UInt64, UInt64) async -> Void)?
       if progress != nil {
-        extractProgress = { fraction in await report(.extracting, 0.8 * fraction) }
+        extractProgress = { update in await report(.extracting, 0.8 * update.fraction) }
         hashProgress = { processed, total in
           let stage = total == 0 ? 1 : Double(processed) / Double(total)
           await report(.verifying, 0.8 + 0.2 * stage)

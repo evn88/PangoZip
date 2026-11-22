@@ -189,9 +189,13 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
   func testCompressionSettingsAreValidatedAndSentToEngine() {
     let zip = CompressionOptions(format: "zip", level: 0, solid: true, threads: 2)
     XCTAssertEqual(zip.arguments, ["-mx=0", "-mmt=2"])
+    // Автоматический режим отдаёт движку все ядра (уступает приоритет) и ограничивает память.
     XCTAssertEqual(
-      CompressionOptions(format: "7z", level: 9, solid: false).arguments,
-      ["-mx=9", "-mmt=on", "-ms=off"])
+      CompressionOptions(format: "7z", level: 9, solid: false).arguments(processors: 8),
+      ["-mx=9", "-mmt=d8", "-mmemuse=p50", "-ms=off"])
+    XCTAssertEqual(
+      [0, 1, 2, 8, 24].map { CompressionOptions.automaticThreads(processors: $0) },
+      [1, 1, 2, 8, 24])
     XCTAssertEqual(
       CompressionOptions(format: "bad", level: 99, threads: -1),
       CompressionOptions(format: "zip", level: 9, threads: 0))

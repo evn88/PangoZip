@@ -246,6 +246,14 @@ final class ArchiveBrowserModel: ObservableObject {
   }
   var canModify: Bool { canAct && parentLocations.isEmpty && session?.canModify == true }
   var isNestedArchive: Bool { !parentLocations.isEmpty }
+  /// Файл архива на диске; для вложенного архива — внешний архив, в котором он лежит.
+  var archiveFileURL: URL? { parentLocations.first?.session.url ?? session?.url }
+
+  /// Показывает файл открытого архива в Finder.
+  func revealArchiveInFinder() {
+    guard let url = archiveFileURL else { return }
+    NSWorkspace.shared.activateFileViewerSelecting([url])
+  }
   var canNavigateBack: Bool { canAct && queuedOperations.isEmpty && isNestedArchive }
   var canUndoLastChange: Bool {
     canModify && hasUndo && activeEdits.isEmpty && queuedOperations.isEmpty
