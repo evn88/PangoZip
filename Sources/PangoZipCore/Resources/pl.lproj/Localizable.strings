@@ -427,3 +427,4 @@
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Lista %1$@ obiektów zostanie zapomniana. Same pliki na dysku się nie zmienią.";
 "Отказаться" = "Porzuć";
 "Операция уступает процессор другим программам" = "Operacja ustępuje procesor innym aplikacjom";
+"Действия PangoZip с выделенными объектами" = "Działania PangoZip dla zaznaczonych elementów";

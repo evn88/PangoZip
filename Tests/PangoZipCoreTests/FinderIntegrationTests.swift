@@ -7,6 +7,29 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
     .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
       "Resources/Engine/7zz")
 
+  /// Меню кнопки панели инструментов в iCloud строится без выделения: в нём полный набор команд,
+  /// а выделение, прочитанное при нажатии, проходит те же правила, что и контекстное меню.
+  func testDeferredToolbarActionsResolveSelectionOnClick() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let zip = root.appendingPathComponent("photos.zip")
+    let text = root.appendingPathComponent("cat.txt")
+    for url in [zip, text] { try Data("x".utf8).write(to: url) }
+    XCTAssertEqual(FinderSelection(urls: []).actions, [])
+    XCTAssertEqual(
+      Set(FinderSelection.deferredActions), Set(FinderSelection(urls: [zip]).actions))
+    XCTAssertTrue(
+      FinderSelection.archiveActions.isSubset(of: Set(FinderSelection.deferredActions)))
+    for action in FinderSelection.archiveActions {
+      XCTAssertThrowsError(try FinderSelection(urls: [text]).request(for: action))
+      XCTAssertEqual(
+        try FinderSelection(urls: [text, zip]).request(for: action).urls,
+        [zip.standardizedFileURL])
+    }
+    XCTAssertEqual(
+      try FinderSelection(urls: [text, zip]).request(for: .createZip).urls.count, 2)
+  }
+
   /// Проверяет доступность команд Finder для разных типов и сочетаний выбора.
   func testMenuDistinguishesFoldersArchivesAndMixedMultipleSelection() throws {
     let root = try fixture()
