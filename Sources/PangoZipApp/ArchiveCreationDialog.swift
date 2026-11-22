@@ -135,24 +135,36 @@ private struct ArchiveCreationOptionsView: View {
       level: $model.creationLevel, solid: $model.creationSolid,
       encryptsFileNames: $model.creationEncryptsFileNames,
       volumeSizeMB: $model.creationVolumeSizeMB,
-      compactTrailing: AnyView(trailingFields)
+      compactTrailing: trailingRows
     )
-    .padding(.horizontal, 20).padding(.vertical, 12)
+    .padding(.horizontal, 16).padding(.vertical, 12)
     .fixedSize()
   }
 
-  @ViewBuilder private var trailingFields: some View {
-    Picker(L10n.tr("Потоки"), selection: $model.creationThreads) {
-      Text(L10n.tr("Автоматически")).tag(0)
-      ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
-    }
+  private var trailingRows: [CompactSettingsRow] {
     let supportsPassword = CompressionOptions.supportsPassword(model.creationFormat)
     // Подпись о неподдерживаемом пароле ушла в подсказку: строка меняла бы высоту панели.
     let passwordHelp = supportsPassword ? "" : L10n.tr("Этот формат не поддерживает пароль.")
-    SecureField(L10n.tr("Пароль (необязательно)"), text: $model.creationPassword)
-      .disabled(!supportsPassword).help(passwordHelp)
-    SecureField(L10n.tr("Повторите пароль"), text: $model.creationPasswordConfirmation)
-      .disabled(!supportsPassword).help(passwordHelp)
+    let threadsTitle = L10n.tr("Потоки")
+    let passwordTitle = L10n.tr("Пароль (необязательно)")
+    let confirmationTitle = L10n.tr("Повторите пароль")
+    // Подпись стоит слева, поэтому подсказка внутри полей пароля пустая: длинная обрезалась бы.
+    return [
+      CompactSettingsRow(
+        threadsTitle,
+        Picker(threadsTitle, selection: $model.creationThreads) {
+          Text(L10n.tr("Автоматически")).tag(0)
+          ForEach([1, 2, 4, 8, 16, 32, 64], id: \.self) { Text(String($0)).tag($0) }
+        }),
+      CompactSettingsRow(
+        passwordTitle,
+        SecureField(passwordTitle, text: $model.creationPassword, prompt: Text(""))
+          .disabled(!supportsPassword).help(passwordHelp)),
+      CompactSettingsRow(
+        confirmationTitle,
+        SecureField(confirmationTitle, text: $model.creationPasswordConfirmation, prompt: Text(""))
+          .disabled(!supportsPassword).help(passwordHelp)),
+    ]
   }
 }
 
