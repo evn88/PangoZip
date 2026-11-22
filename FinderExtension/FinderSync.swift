@@ -23,9 +23,15 @@ final class FinderSync: FIFinderSync {
 
   override var toolbarItemToolTip: String { L10n.tr("Действия PangoZip с выделенными объектами") }
 
+  /// Плоская контурная версия иконки приложения: Finder сам красит шаблон под тему и состояние.
   override var toolbarItemImage: NSImage {
     let image =
-      NSImage(systemSymbolName: "archivebox", accessibilityDescription: "PangoZip") ?? NSImage()
+      Bundle.main.url(forResource: "ToolbarIcon", withExtension: "pdf").flatMap {
+        NSImage(contentsOf: $0)
+      }
+      ?? NSImage(systemSymbolName: "archivebox", accessibilityDescription: "PangoZip")
+      ?? NSImage()
+    image.size = NSSize(width: 18, height: 18)
     image.isTemplate = true
     return image
   }
