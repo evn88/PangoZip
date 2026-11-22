@@ -1,6 +1,6 @@
 # Services и Quick Actions Finder (облачные папки)
 
-Основное контекстное меню PangoZip строится через Finder Sync: [finder-integration.md](finder-integration.md). В папках File Provider (iCloud Drive, включая синхронизируемые «Рабочий стол» и «Документы», Google Drive и т. п.) Finder не вызывает Finder Sync — это системное ограничение. Там остаются два штатных механизма, которые PangoZip объявляет дополнительно: **Services** и **Quick Actions**. Оба используют тот же путь доставки, что и Finder Sync: `FinderSelection` → `FinderRequest` → `PangoZipWorker`, поэтому операции, имена результатов и защита от перезаписи совпадают с меню Finder Sync.
+Основное контекстное меню PangoZip строится через Finder Sync: [finder-integration.md](finder-integration.md). В папках File Provider (iCloud Drive, включая синхронизируемые «Рабочий стол» и «Документы», Google Drive и т. п.) Finder не вызывает Finder Sync для контекстного меню файлов — это системное ограничение. Там работает кнопка PangoZip в панели инструментов Finder (см. finder-integration.md) и два штатных механизма, которые PangoZip объявляет дополнительно: **Services** и **Quick Actions**. Оба используют тот же путь доставки, что и Finder Sync: `FinderSelection` → `FinderRequest` → `PangoZipWorker`, поэтому операции, имена результатов и защита от перезаписи совпадают с меню Finder Sync.
 
 ## Что доступно
 

@@ -427,3 +427,4 @@
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "Se olvidará la lista de %1$@ elementos. Los archivos en el disco no cambiarán.";
 "Отказаться" = "Descartar";
 "Операция уступает процессор другим программам" = "La operación cede el procesador a otras apps";
+"Действия PangoZip с выделенными объектами" = "Acciones de PangoZip para los elementos seleccionados";

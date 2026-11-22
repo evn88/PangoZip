@@ -6,7 +6,7 @@ import OSLog
 final class FinderSync: FIFinderSync {
   private let applicationURL = FinderInstallation.applicationURL(for: Bundle.main.bundleURL)
   private lazy var menuIcon = Self.loadMenuIcon()
-  private var requests: [Int: FinderRequest] = [:]
+  private var requests: [Int: PendingRequest] = [:]
   private var nextTag = 1
   private let logger = Logger(subsystem: "app.pangozip.desktop.finder", category: "requests")
   /// Наблюдает локальные тома для контекстного меню без обхода файлов и установки значков.
@@ -17,40 +17,89 @@ final class FinderSync: FIFinderSync {
     logger.notice("Finder menu provider initialized")
   }
 
+  /// Кнопка в панели инструментов Finder. В папках File Provider (iCloud Drive и т. п.) Finder
+  /// не запрашивает у расширения контекстное меню файлов, а меню этой кнопки запрашивает.
+  override var toolbarItemName: String { "PangoZip" }
+
+  override var toolbarItemToolTip: String { L10n.tr("Действия PangoZip с выделенными объектами") }
+
+  override var toolbarItemImage: NSImage {
+    let image =
+      NSImage(systemSymbolName: "archivebox", accessibilityDescription: "PangoZip") ?? NSImage()
+    image.isTemplate = true
+    return image
+  }
+
   /// Создаёт меню из снимка выделения только при наличии основного приложения и помощника.
   override func menu(for menuKind: FIMenuKind) -> NSMenu? {
     let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
     logger.notice(
       "Finder menu requested: kind=\(menuKind.rawValue) selection=\(selectedURLs.count)")
     guard FinderInstallation.isInstalledLocation(applicationURL),
-      FinderInstallation.isAvailable(at: applicationURL),
-      menuKind == .contextualMenuForItems || menuKind == .contextualMenuForSidebar
+      FinderInstallation.isAvailable(at: applicationURL)
     else {
       return nil
     }
     let selection = FinderSelection(urls: selectedURLs)
-    guard !selection.actions.isEmpty else { return nil }
-    let menu = NSMenu()
-    let root = NSMenuItem(title: "PangoZip", action: nil, keyEquivalent: "")
-    root.image = menuIcon
-    let submenu = NSMenu(title: "PangoZip")
-    for action in selection.actions {
-      if action == .create && !selection.archives.isEmpty { submenu.addItem(.separator()) }
-      let item = NSMenuItem(
-        title: selection.title(for: action), action: #selector(deliver(_:)), keyEquivalent: "")
-      item.target = self
-      // Снимок выделения принадлежит конкретному меню, а не следующему событию Finder.
-      item.tag = nextTag
-      nextTag += 1
-      requests[item.tag] = try? selection.request(for: action)
-      if requests.count > 256, let oldest = requests.keys.min() {
-        requests.removeValue(forKey: oldest)
+    switch menuKind {
+    case .contextualMenuForItems, .contextualMenuForSidebar:
+      guard !selection.actions.isEmpty else { return nil }
+      let menu = NSMenu()
+      let root = NSMenuItem(title: "PangoZip", action: nil, keyEquivalent: "")
+      root.image = menuIcon
+      let submenu = NSMenu(title: "PangoZip")
+      addItems(for: selection, to: submenu)
+      root.submenu = submenu
+      menu.addItem(root)
+      return menu
+    case .toolbarItemMenu:
+      let menu = NSMenu(title: "PangoZip")
+      if selection.actions.isEmpty {
+        // В iCloud Drive выделение в момент построения меню пустое: файлы читаются при нажатии.
+        addDeferredItems(to: menu)
+      } else {
+        addItems(for: selection, to: menu)
       }
-      submenu.addItem(item)
+      return menu
+    default:
+      return nil
     }
-    root.submenu = submenu
-    menu.addItem(root)
-    return menu
+  }
+
+  /// Добавляет пункты со снимком текущего выделения и именами результатов.
+  private func addItems(for selection: FinderSelection, to menu: NSMenu) {
+    for action in selection.actions {
+      if action == .create && !selection.archives.isEmpty { menu.addItem(.separator()) }
+      let item = makeItem(title: selection.title(for: action))
+      // Снимок выделения принадлежит конкретному меню, а не следующему событию Finder.
+      remember(.snapshot((try? selection.request(for: action))), for: item.tag)
+      menu.addItem(item)
+    }
+  }
+
+  /// Добавляет постоянный набор пунктов; выделение будет прочитано в момент нажатия.
+  private func addDeferredItems(to menu: NSMenu) {
+    for action in FinderSelection.deferredActions {
+      if action == .create { menu.addItem(.separator()) }
+      let item = makeItem(title: action.title)
+      remember(.deferred(action), for: item.tag)
+      menu.addItem(item)
+    }
+  }
+
+  private func makeItem(title: String) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: #selector(deliver(_:)), keyEquivalent: "")
+    item.target = self
+    item.tag = nextTag
+    nextTag += 1
+    return item
+  }
+
+  private func remember(_ pending: PendingRequest, for tag: Int) {
+    requests[tag] = pending
+    if requests.count > 256, let oldest = requests.keys.min() {
+      requests.removeValue(forKey: oldest)
+    }
   }
 
   /// Загружает цветную иконку из собственного комплекта, доступного песочнице расширения.
@@ -74,7 +123,21 @@ final class FinderSync: FIFinderSync {
       logger.notice("Finder action skipped: containing application is unavailable")
       return
     }
-    guard let request = requests.removeValue(forKey: sender.tag),
+    let request: FinderRequest?
+    switch requests.removeValue(forKey: sender.tag) {
+    case .snapshot(let snapshot): request = snapshot
+    case .deferred(let action):
+      // Пункт кнопки панели инструментов: Finder отдаёт выделение только сейчас.
+      let urls = FIFinderSyncController.default().selectedItemURLs() ?? []
+      request = try? FinderSelection(urls: urls).request(for: action)
+      if request == nil {
+        logger.notice(
+          "Finder toolbar action skipped: \(action.rawValue, privacy: .public) selection=\(urls.count)"
+        )
+      }
+    case nil: request = nil
+    }
+    guard let request,
       let data = try? JSONEncoder().encode(request), data.count <= FinderRequest.maximumBytes
     else {
       logger.error("Missing or invalid Finder menu request")
@@ -116,4 +179,11 @@ final class FinderSync: FIFinderSync {
     // Канал не меняет общий буфер обмена и не оставляет файлов на диске.
     DispatchQueue.main.asyncAfter(deadline: .now() + 120) { board.releaseGlobally() }
   }
+}
+
+/// Запрос пункта меню: готовый снимок выделения или действие, выделение для которого
+/// читается при нажатии (меню кнопки панели инструментов в папках File Provider).
+private enum PendingRequest {
+  case snapshot(FinderRequest?)
+  case deferred(FinderAction)
 }
