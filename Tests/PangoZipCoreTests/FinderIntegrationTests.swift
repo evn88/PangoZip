@@ -30,6 +30,21 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
       try FinderSelection(urls: [text, zip]).request(for: .createZip).urls.count, 2)
   }
 
+  /// Подпись быстрой команды показывает то имя, которое реально получит новый архив.
+  func testQuickCreateTitleShowsFreeOutputName() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let text = root.appendingPathComponent("cat.txt")
+    for url in [text, root.appendingPathComponent("cat.zip")] { try Data("x".utf8).write(to: url) }
+    let selection = FinderSelection(urls: [text])
+    XCTAssertEqual(selection.outputStem(format: "zip"), "cat (2)")
+    XCTAssertEqual(selection.outputStem(format: "7z"), "cat")
+    XCTAssertTrue(selection.title(for: .createZip).contains("cat (2).zip"))
+    XCTAssertTrue(selection.title(for: .create7z).contains("cat.7z"))
+    try Data("x".utf8).write(to: root.appendingPathComponent("cat (2).zip"))
+    XCTAssertEqual(selection.outputStem(format: "zip"), "cat (3)")
+  }
+
   /// Отказ кнопки панели инструментов получает понятную причину вместо немого сигнала.
   func testDeferredFailureExplainsWhyActionCannotRun() throws {
     let root = try fixture()

@@ -124,10 +124,23 @@ public struct FinderSelection: Sendable {
         ? L10n.tr(
           "Распаковать в «%1$@/»", String(describing: Self.extractionName(for: archives[0])))
         : L10n.tr("Распаковать в отдельные папки")
-    case .create7z: return L10n.tr("Добавить в «%1$@.7z»", String(describing: archiveName))
-    case .createZip: return L10n.tr("Добавить в «%1$@.zip»", String(describing: archiveName))
+    case .create7z: return L10n.tr("Добавить в «%1$@.7z»", outputStem(format: "7z"))
+    case .createZip: return L10n.tr("Добавить в «%1$@.zip»", outputStem(format: "zip"))
     default: return action.title
     }
+  }
+
+  /// Имя будущего архива без расширения с тем же суффиксом «(N)», который подберёт публикация
+  /// результата, если рядом уже лежит файл с таким именем. Недоступная папка считается свободной.
+  public func outputStem(format: String) -> String {
+    let base = archiveName
+    guard let parent = urls.first?.deletingLastPathComponent() else { return base }
+    var info = stat()
+    for number in 1...999 {
+      let stem = base + (number == 1 ? "" : " (\(number))")
+      if lstat(parent.appendingPathComponent(stem + "." + format).path, &info) != 0 { return stem }
+    }
+    return base
   }
 
   /// Для операций чтения передаёт только архивы, для создания передаёт всё выделение.
