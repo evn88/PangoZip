@@ -3,7 +3,7 @@ import XCTest
 @testable import PangoZipCore
 
 final class FinderInstallationTests: XCTestCase {
-  /// Проверяет отключение команды Finder при отсутствии приложения или рабочего процесса.
+  /// Домашняя папка берётся из учётной записи, а не из контейнера песочницы расширения.
   func testUserApplicationsRootUsesAccountHomeInsteadOfSandboxContainer() throws {
     let home = FinderInstallation.userHomeDirectory
     let entry = try XCTUnwrap(getpwuid(getuid()))
@@ -14,6 +14,7 @@ final class FinderInstallationTests: XCTestCase {
       ["/Applications", home.appendingPathComponent("Applications").path])
   }
 
+  /// Проверяет отключение команды Finder при отсутствии приложения или рабочего процесса.
   func testMenuIsUnavailableAfterRemovalOrWhenWorkerIsMissing() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

@@ -12,13 +12,15 @@ public enum FinderInstallation {
   public static var userHomeDirectory: URL {
     var entry = passwd()
     var result: UnsafeMutablePointer<passwd>?
-    let size = max(sysconf(_SC_GETPW_R_SIZE_MAX), 1024)
-    var buffer = [CChar](repeating: 0, count: size)
-    if getpwuid_r(getuid(), &entry, &buffer, buffer.count, &result) == 0, result != nil,
-      let directory = entry.pw_dir, directory.pointee != 0
-    {
-      return URL(fileURLWithPath: String(cString: directory), isDirectory: true)
+    var buffer = [CChar](repeating: 0, count: max(sysconf(_SC_GETPW_R_SIZE_MAX), 4096))
+    // Строка pw_dir лежит внутри буфера, поэтому читается, пока указатель на него действителен.
+    let path: String? = buffer.withUnsafeMutableBufferPointer { storage in
+      guard getpwuid_r(getuid(), &entry, storage.baseAddress, storage.count, &result) == 0,
+        result != nil, let directory = entry.pw_dir, directory.pointee != 0
+      else { return nil }
+      return String(cString: directory)
     }
+    if let path { return URL(fileURLWithPath: path, isDirectory: true) }
     return FileManager.default.homeDirectory(forUser: NSUserName())
       ?? FileManager.default.homeDirectoryForCurrentUser
   }
