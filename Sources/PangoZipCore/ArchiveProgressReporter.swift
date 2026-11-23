@@ -78,15 +78,25 @@ struct ArchiveProgressEstimate {
 
 actor ArchiveProgressReporter {
   private let handler: ArchiveProgressHandler?
+  private let pause: EnginePause?
   private let started = ProcessInfo.processInfo.systemUptime
+  private let pausedAtStart: TimeInterval
   private var phaseStarted = ProcessInfo.processInfo.systemUptime
+  private var pausedAtPhaseStart: TimeInterval
   private var previousPhase: ArchiveProgress.Phase?
   private var previousTotal: UInt64?
   private var previousBytes: UInt64 = 0
   private var lastOutputBytes: UInt64?
 
   /// Каждый экземпляр принадлежит одной операции, включая подготовку, проверку и публикацию.
-  init(_ handler: ArchiveProgressHandler?) { self.handler = handler }
+  /// Время на паузе вычитается из длительности: скорость и остаток считаются по работе движка.
+  init(_ handler: ArchiveProgressHandler?, pause: EnginePause? = nil) {
+    self.handler = handler
+    self.pause = pause
+    let paused = pause?.pausedTime(at: ProcessInfo.processInfo.systemUptime) ?? 0
+    pausedAtStart = paused
+    pausedAtPhaseStart = paused
+  }
 
   /// Публикует согласованный снимок счётчиков; системные часы не влияют на скорость операции.
   func report(
@@ -96,11 +106,16 @@ actor ArchiveProgressReporter {
     outputURL: URL? = nil, estimated: Bool = false, yielding: Bool = false
   ) async {
     guard let handler else { return }
+    // Каждый шаг операции сообщает о ходе: здесь она и встаёт, если движок сейчас не запущен.
+    // Без паузы лишней точки приостановки нет: порядок сообщений не меняется.
+    if let pause, pause.isPaused { await pause.waitWhilePaused() }
     let now = ProcessInfo.processInfo.systemUptime
+    let paused = pause?.pausedTime(at: now) ?? 0
     if previousPhase != phase || previousTotal != totalBytes
       || (processedBytes ?? 0) < previousBytes
     {
       phaseStarted = now
+      pausedAtPhaseStart = paused
     }
     previousPhase = phase
     previousTotal = totalBytes
@@ -113,13 +128,15 @@ actor ArchiveProgressReporter {
     }
     let active = [.compressing, .verifying, .extracting].contains(phase)
     let estimate = ArchiveProgressEstimate(
-      processed: active ? processedBytes : nil, total: totalBytes, elapsed: now - phaseStarted)
+      processed: active ? processedBytes : nil, total: totalBytes,
+      elapsed: now - phaseStarted - (paused - pausedAtPhaseStart))
     await handler(
       ArchiveProgress(
         phase: phase, fraction: fraction, processedBytes: processedBytes, totalBytes: totalBytes,
         completedFiles: completedFiles, totalFiles: totalFiles, currentFile: currentFile,
         outputBytes: lastOutputBytes, bytesPerSecond: estimate.speed,
-        remainingSeconds: estimate.remaining, elapsedSeconds: now - started,
+        remainingSeconds: estimate.remaining,
+        elapsedSeconds: now - started - (paused - pausedAtStart),
         bytesAreEstimated: estimated, isYielding: yielding))
   }
 

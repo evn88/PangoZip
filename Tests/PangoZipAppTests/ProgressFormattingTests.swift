@@ -19,6 +19,32 @@ final class ProgressFormattingTests: XCTestCase, @unchecked Sendable {
       ProgressFormatting.speed(12_300_000), L10n.tr("≈ %1$@/с", "12\(separator)3 \(megabytes)"))
   }
 
+  /// Время в строке меню округляется вверх крупным шагом, чтобы не мельтешить.
+  func testShortDurationRoundsUpToCoarseSteps() {
+    XCTAssertEqual(ShortDuration.string(26), ShortDuration.string(30))
+    XCTAssertNotEqual(ShortDuration.string(30), ShortDuration.string(31))
+    XCTAssertEqual(ShortDuration.string(61), ShortDuration.string(120))
+    XCTAssertEqual(ShortDuration.string(3_541), ShortDuration.string(3_600))
+    XCTAssertEqual(ShortDuration.string(0), ShortDuration.string(5))
+    XCTAssertEqual(ShortDuration.string(.infinity), ShortDuration.string(5))
+  }
+
+  /// Подпись значка в строке меню: процент и время, без времени на паузе и после завершения.
+  @MainActor
+  func testMenuBarTitleShowsPercentAndRemainingTime() {
+    let card = ProgressCardModel()
+    XCTAssertEqual(card.menuBarTitle, "")
+    card.fraction = 0.426
+    XCTAssertEqual(card.menuBarTitle, "42%")
+    card.remaining = 90
+    XCTAssertEqual(card.menuBarTitle, "42% · " + ShortDuration.string(90))
+    card.isPaused = true
+    XCTAssertEqual(card.menuBarTitle, "42%")
+    XCTAssertEqual(card.timeLine, L10n.tr("На паузе"))
+    card.state = .done
+    XCTAssertEqual(card.menuBarTitle, "")
+  }
+
   /// Явно отображает ноль, часы и большие конечные длительности.
   func testTimeIncludesHoursAndZero() {
     XCTAssertEqual(ProgressFormatting.time(0), "00:00:00")

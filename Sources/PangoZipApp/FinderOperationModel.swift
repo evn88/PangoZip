@@ -37,6 +37,9 @@ final class FinderOperationModel: ObservableObject {
   private var islandTitle = ""
   private var resultURL: URL?
   private var donePause: Task<Void, Never>?
+  /// Значок в строке меню, куда смахнули остров.
+  private let statusItem = ProgressStatusItem()
+  private var minimized = false
 
   private var progressHandler: ArchiveProgressHandler {
     { [weak self] value in await self?.receiveProgress(value) }
@@ -61,6 +64,7 @@ final class FinderOperationModel: ObservableObject {
   private func updateIsland() {
     var stage: String
     switch feedbackKind {
+    case _ where service.pause.isPaused: stage = L10n.tr("На паузе")
     case .create: stage = L10n.tr("Сжимаем…")
     case .verify: stage = ProgressFormatting.phaseTitle(.verifying)
     default: stage = L10n.tr("Распаковываем…")
@@ -70,12 +74,47 @@ final class FinderOperationModel: ObservableObject {
       fraction = value
       stage += " · \(Int((value * 100).rounded(.down)))%"
     }
-    island.show(.working, title: islandTitle, subtitle: stage, fraction: fraction)
+    island.model.update(\.isPaused, to: service.pause.isPaused)
+    guard minimized else {
+      island.show(.working, title: islandTitle, subtitle: stage, fraction: fraction)
+      return
+    }
+    let card = statusItem.card
+    card.update(\.state, to: .working)
+    card.update(\.title, to: islandTitle)
+    card.update(\.stage, to: stage)
+    card.update(\.fraction, to: fraction)
+    card.update(\.remaining, to: progress?.remainingSeconds)
+    card.update(\.isPaused, to: service.pause.isPaused)
+  }
+
+  /// Смахнутый остров уходит в строку меню; ход операции продолжает показывать значок.
+  private func minimize() {
+    guard ApplicationMode.workerShowsIsland, !minimized else { return }
+    minimized = true
+    island.hide()
+    statusItem.show()
+    updateIsland()
+  }
+
+  /// Возвращает операцию из строки меню на остров.
+  private func restoreIsland() {
+    guard minimized else { return }
+    minimized = false
+    statusItem.hide()
+    if ApplicationMode.workerShowsIsland { updateIsland() }
+  }
+
+  private func togglePause() {
+    if service.pause.isPaused { service.pause.resume() } else { service.pause.pause() }
+    updateIsland()
   }
 
   /// Возвращает обычное окно для пароля и ошибок: на острове для них нет места.
   private func showWindow() {
     ApplicationMode.workerShowsIsland = false
+    minimized = false
+    statusItem.hide()
     island.hide()
     NSApp.windows.first { !($0 is NSPanel) }?.makeKeyAndOrderFront(nil)
   }
@@ -86,17 +125,26 @@ final class FinderOperationModel: ObservableObject {
     let pause = Task { _ = try? await Task.sleep(for: .seconds(4)) }
     donePause = pause
     let url = resultURL
-    island.model.canReveal = url != nil
-    island.model.reveal = {
+    let reveal = {
       if let url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
       pause.cancel()
     }
-    island.show(
-      .done, title: url?.lastPathComponent ?? islandTitle, subtitle: L10n.tr("Готово"),
-      fraction: 1)
+    let title = url?.lastPathComponent ?? islandTitle
+    if minimized {
+      let card = statusItem.card
+      card.canReveal = url != nil
+      card.reveal = reveal
+      card.title = title
+      card.state = .done
+    } else {
+      island.model.canReveal = url != nil
+      island.model.reveal = reveal
+      island.show(.done, title: title, subtitle: L10n.tr("Готово"), fraction: 1)
+    }
     await pause.value
     donePause = nil
     island.hide()
+    statusItem.hide()
   }
 
   /// Отсчёт для уведомления идёт с первого прогресса, а не с ожидания панелей и пароля.
@@ -124,6 +172,12 @@ final class FinderOperationModel: ObservableObject {
     }
     feedbackSubject = request.urls.first?.lastPathComponent ?? ""
     island.model.cancel = { [weak self] in self?.cancel() }
+    island.model.minimize = { [weak self] in self?.minimize() }
+    island.model.togglePause = { [weak self] in self?.togglePause() }
+    let card = statusItem.card
+    card.cancel = island.model.cancel
+    card.togglePause = island.model.togglePause
+    card.restore = { [weak self] in self?.restoreIsland() }
     task = Task {
       do {
         try await execute(request)

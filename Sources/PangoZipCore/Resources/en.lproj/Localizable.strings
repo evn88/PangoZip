@@ -427,4 +427,12 @@
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "The list of %1$@ items will be forgotten. The files themselves stay unchanged.";
 "Отказаться" = "Discard";
 "Операция уступает процессор другим программам" = "The operation is yielding the processor to other apps";
+"Пауза" = "Pause";
+"Возобновить" = "Resume";
+"На паузе" = "Paused";
+"Осталось %1$@" = "%1$@ left";
+"Оцениваем время…" = "Estimating time…";
+"Показать остров" = "Show Island";
+"Смахните, чтобы убрать в строку меню" = "Swipe to move to the menu bar";
+"Убрать в строку меню" = "Move to Menu Bar";
 "Действия PangoZip с выделенными объектами" = "PangoZip actions for selected items";

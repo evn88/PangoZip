@@ -427,4 +427,12 @@
 "Список из %1$@ объектов будет забыт. Сами файлы на диске не изменятся." = "%1$@ öğelik liste unutulacak. Diskteki dosyalar değişmez.";
 "Отказаться" = "Vazgeç";
 "Операция уступает процессор другим программам" = "İşlem, işlemciyi diğer uygulamalara bırakıyor";
+"Пауза" = "Duraklat";
+"Возобновить" = "Sürdür";
+"На паузе" = "Duraklatıldı";
+"Осталось %1$@" = "%1$@ kaldı";
+"Оцениваем время…" = "Süre hesaplanıyor…";
+"Показать остров" = "Adayı Göster";
+"Смахните, чтобы убрать в строку меню" = "Menü çubuğuna taşımak için kaydırın";
+"Убрать в строку меню" = "Menü Çubuğuna Taşı";
 "Действия PangoZip с выделенными объектами" = "Seçili öğeler için PangoZip işlemleri";

@@ -60,7 +60,10 @@ final class DropIslandModel: ObservableObject {
     case hidden, label, open, hot, working, done, failed
   }
 
-  @Published var phase = Phase.hidden
+  @Published var phase = Phase.hidden {
+    // Смахнутый остров возвращается на своё место, а не туда, где его отпустили.
+    didSet { if oldValue == .hidden, swipe != 0 { swipe = 0 } }
+  }
   @Published var placement = DropIslandPlacement.top
   @Published var isExtraction = false
   @Published var title = ""
@@ -69,7 +72,15 @@ final class DropIslandModel: ObservableObject {
   @Published var fraction: Double?
   /// Есть ли результат, который можно показать в Finder после завершения.
   @Published var canReveal = true
+  @Published var isPaused = false
+  /// Насколько остров сдвинут к краю экрана жестом смахивания, в точках.
+  @Published var swipe: CGFloat = 0
   var cancel: () -> Void = {}
+  /// Убирает идущую операцию в строку меню; nil — смахивать нельзя.
+  var minimize: (() -> Void)?
+  /// Ставит операцию на паузу и снимает с неё; nil — операция паузу не поддерживает.
+  var togglePause: (() -> Void)?
+  private var scrollTravel: CGFloat = 0
   var reveal: () -> Void = {}
   var dismiss: () -> Void = {}
 
@@ -81,6 +92,53 @@ final class DropIslandModel: ObservableObject {
     _ keyPath: ReferenceWritableKeyPath<DropIslandModel, Value>, to value: Value
   ) {
     if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+  }
+
+  /// Куда уходит смахнутый остров: к краю экрана, у которого он стоит (координаты SwiftUI).
+  var swipeDirection: CGVector {
+    placement == .edge ? CGVector(dx: 1, dy: 0) : CGVector(dx: 0, dy: -1)
+  }
+
+  var canSwipe: Bool { phase == .working && minimize != nil }
+
+  /// Остров идёт за пальцами к краю и лишь слегка подаётся в обратную сторону.
+  func moveSwipe(_ travel: CGFloat) {
+    guard canSwipe else { return }
+    swipe = travel >= 0 ? travel : max(-12, travel / 4)
+  }
+
+  /// Достаточно сдвинутый или резко брошенный остров уходит в строку меню, иначе возвращается.
+  func endSwipe(predicted: CGFloat) {
+    guard canSwipe else { return }
+    if swipe > 36 || predicted > 110 {
+      minimize?()
+    } else {
+      withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { swipe = 0 }
+    }
+  }
+
+  /// Жест двумя пальцами по трекпаду над островом. Инерция после жеста не учитывается,
+  /// а колесо мыши без точных значений остров не сдвигает.
+  func scroll(_ event: NSEvent) -> Bool {
+    guard canSwipe, event.hasPreciseScrollingDeltas else { return false }
+    guard event.momentumPhase.isEmpty else { return true }
+    // При «естественной» прокрутке значения уже совпадают с движением пальцев.
+    let inverted = event.isDirectionInvertedFromDevice
+    let right = inverted ? event.scrollingDeltaX : -event.scrollingDeltaX
+    let up = inverted ? -event.scrollingDeltaY : event.scrollingDeltaY
+    switch event.phase {
+    case .began:
+      scrollTravel = 0
+    case .changed:
+      scrollTravel += placement == .edge ? right : up
+      moveSwipe(scrollTravel)
+    case .ended, .cancelled:
+      endSwipe(predicted: swipe)
+      scrollTravel = 0
+    default:
+      break
+    }
+    return true
   }
 
   func size(for phase: Phase) -> CGSize {
@@ -156,6 +214,10 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private var pauseTask: Task<Void, Never>?
   private var shrinkTask: Task<Void, Never>?
   private var feedbackID: UUID?
+  /// Значок в строке меню, куда смахнули остров с идущей операцией.
+  private let statusItem = ProgressStatusItem()
+  private var minimized = false
+  private var remaining: TimeInterval?
 
   var isBusy: Bool { work == .working || !jobs.isEmpty }
 
@@ -168,6 +230,13 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       NSWorkspace.shared.activateFileViewerSelecting([url])
       self.dismissResult()
     }
+    model.minimize = { [weak self] in self?.minimize() }
+    model.togglePause = { [weak self] in self?.togglePause() }
+    let card = statusItem.card
+    card.cancel = model.cancel
+    card.reveal = model.reveal
+    card.togglePause = model.togglePause
+    card.restore = { [weak self] in self?.restore() }
   }
 
   /// Включает или выключает слежение согласно настройке; вызывается при запуске и её смене.
@@ -284,8 +353,10 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
 
   /// Сводит состояние перетаскивания и операций в одну фазу и обновляет подписи.
   private func refresh() {
+    defer { syncCard() }
     let phase: DropIslandModel.Phase
-    switch (session, work) {
+    // Смахнутая операция живёт в строке меню; остров при этом свободен для нового броска.
+    switch (session, minimized ? Work.idle : work) {
     case (.hot, _): phase = .hot
     case (_, .working): phase = .working
     case (_, .done): phase = .done
@@ -436,8 +507,9 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-    let hosting = NSHostingView(rootView: DropIslandView(model: model))
+    let hosting = IslandHostingView(rootView: DropIslandView(model: model))
     hosting.sizingOptions = []
+    hosting.onScroll = { [weak model] event in model?.scroll(event) ?? false }
     panel.contentView = hosting
     panel.registerForDraggedTypes([.fileURL])
     panel.delegate = self
@@ -556,6 +628,9 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     workTitle = job.proposedURL?.lastPathComponent ?? job.plan.urls[0].lastPathComponent
     model.fraction = nil
     resultURL = nil
+    remaining = nil
+    service.pause.resume()
+    model.isPaused = false
     work = .working
     updateStage()
     let task = Task { try await self.perform(job) }
@@ -579,10 +654,17 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       work = .failed
     }
     jobTask = nil
+    service.pause.resume()
+    model.isPaused = false
     self.feedbackID = nil
     OperationFeedback.shared.finish(feedbackID, outcome: outcome)
+    // Ошибку показывает остров: в строке меню её легко не заметить.
+    if work == .failed { restore() }
     refresh()
-    guard work != .idle else { return }
+    guard work != .idle else {
+      if jobs.isEmpty { restore() }
+      return
+    }
     // Результат остаётся на виду, но следующая операция в очереди ждёт недолго.
     let delay: Duration =
       !jobs.isEmpty ? .seconds(1.5) : work == .failed ? .seconds(20) : .seconds(6)
@@ -591,6 +673,11 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     await pause.value
     pauseTask = nil
     work = .idle
+    // Значок уходит из строки меню вместе с последней операцией очереди.
+    if jobs.isEmpty, minimized {
+      minimized = false
+      statusItem.hide()
+    }
     refresh()
   }
 
@@ -633,12 +720,13 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       OperationFeedback.shared.update(feedbackID, fraction: DockProgress.fraction(of: progress))
     }
     model.update(\.fraction, to: progress.fraction)
+    remaining = progress.remainingSeconds
     updateStage()
   }
 
   /// Строка под именем: этап, процент и число ожидающих операций.
   private func updateStage() {
-    var parts = [stageTitle]
+    var parts = [model.isPaused ? L10n.tr("На паузе") : stageTitle]
     if let fraction = model.fraction { parts.append("\(Int((fraction * 100).rounded()))%") }
     if !jobs.isEmpty {
       parts.append(L10n.tr("Ещё в очереди: %1$@", String(describing: jobs.count)))
@@ -650,5 +738,43 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private func dismissResult() {
     guard work == .done || work == .failed else { return }
     pauseTask?.cancel()
+  }
+
+  // MARK: - Строка меню и пауза
+
+  /// Убирает остров с идущей операцией в строку меню.
+  private func minimize() {
+    guard work == .working, !minimized else { return }
+    minimized = true
+    statusItem.show()
+    refresh()
+  }
+
+  /// Возвращает операцию на остров.
+  private func restore() {
+    guard minimized else { return }
+    minimized = false
+    statusItem.hide()
+    refresh()
+  }
+
+  private func togglePause() {
+    guard work == .working else { return }
+    if service.pause.isPaused { service.pause.resume() } else { service.pause.pause() }
+    model.isPaused = service.pause.isPaused
+    updateStage()
+  }
+
+  /// Переносит подписи острова в карточку строки меню.
+  private func syncCard() {
+    guard minimized else { return }
+    let card = statusItem.card
+    card.update(\.title, to: workTitle)
+    card.update(\.stage, to: workSubtitle)
+    card.update(\.fraction, to: model.fraction)
+    card.update(\.remaining, to: remaining)
+    card.update(\.isPaused, to: model.isPaused)
+    card.update(\.state, to: work == .done ? .done : .working)
+    card.update(\.canReveal, to: resultURL != nil)
   }
 }

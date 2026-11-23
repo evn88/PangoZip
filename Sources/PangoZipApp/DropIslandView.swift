@@ -71,15 +71,30 @@ struct DropIslandView: View {
         isHot ? Brand.gold : Color.white.opacity(0.34), lineWidth: isHot ? 1.5 : 1)
     }
     .contentShape(shape)
+    .gesture(swipeGesture, including: model.canSwipe ? .all : .subviews)
     .shadow(
       color: isHot ? Brand.gold.opacity(0.3) : .black.opacity(0.3), radius: isHot ? 16 : 12, y: 6
     )
     .scaleEffect(isHot && !reduceMotion ? 1.035 : 1)
+    .offset(x: model.swipeDirection.dx * model.swipe, y: model.swipeDirection.dy * model.swipe)
+    .opacity(1 - min(0.5, max(0, model.swipe) / 160))
     .onAppear { drifts = true }
     .onChange(of: model.phase) { old, new in
       guard !reduceMotion else { return }
       if new == .done || (new == .open && old == .label) { glintTrigger += 1 }
     }
+  }
+
+  /// Перетаскивание острова к краю экрана убирает операцию в строку меню.
+  private var swipeGesture: some Gesture {
+    DragGesture(minimumDistance: 4)
+      .onChanged { value in model.moveSwipe(toward(value.translation)) }
+      .onEnded { value in model.endSwipe(predicted: toward(value.predictedEndTranslation)) }
+  }
+
+  private func toward(_ translation: CGSize) -> CGFloat {
+    let direction = model.swipeDirection
+    return direction.dx * translation.width + direction.dy * translation.height
   }
 
   /// Слои стекла: размытие фона, тонировка, пятна света, свечение хода операции и блики.
@@ -217,10 +232,24 @@ struct DropIslandView: View {
           .foregroundStyle(Brand.onGold).padding(.horizontal, 11).frame(height: 28)
           .background(Brand.gold, in: Capsule())
       case .failed: roundButton(L10n.tr("Закрыть"), action: model.dismiss)
-      default: roundButton(L10n.tr("Отмена"), action: model.cancel)
+      default:
+        HStack(spacing: 6) {
+          if let togglePause = model.togglePause {
+            roundButton(
+              model.isPaused ? L10n.tr("Возобновить") : L10n.tr("Пауза"),
+              symbol: model.isPaused ? "play.fill" : "pause.fill", action: togglePause)
+          }
+          roundButton(L10n.tr("Отмена"), action: model.cancel)
+        }
       }
     }
     .padding(.horizontal, 14)
+    .help(model.canSwipe ? L10n.tr("Смахните, чтобы убрать в строку меню") : "")
+    .accessibilityActions {
+      if model.canSwipe, let minimize = model.minimize {
+        Button(L10n.tr("Убрать в строку меню"), action: minimize)
+      }
+    }
     .frame(width: DropIslandPlacement.pillSize.width, height: DropIslandPlacement.pillSize.height)
   }
 
@@ -240,9 +269,11 @@ struct DropIslandView: View {
     }
   }
 
-  private func roundButton(_ title: String, action: @escaping () -> Void) -> some View {
+  private func roundButton(
+    _ title: String, symbol: String = "xmark", action: @escaping () -> Void
+  ) -> some View {
     Button(action: action) {
-      Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+      Image(systemName: symbol).font(.system(size: 10, weight: .bold))
         .frame(width: 26, height: 26).background(.gray.opacity(0.3), in: Circle())
     }
     .buttonStyle(.plain).accessibilityLabel(title).help(title)
