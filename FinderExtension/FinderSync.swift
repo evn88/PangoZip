@@ -9,7 +9,7 @@ final class FinderSync: FIFinderSync {
   private var requests: [Int: PendingRequest] = [:]
   private var nextTag = 1
   /// Удерживает открытое окно с объяснением, пока его не закроют или не заменят новым.
-  private var notice: NSAlert?
+  @MainActor private static var notice: NSAlert?
   private let logger = Logger(subsystem: "app.pangozip.desktop.finder", category: "requests")
   /// Наблюдает локальные тома для контекстного меню без обхода файлов и установки значков.
   override init() {
@@ -113,25 +113,30 @@ final class FinderSync: FIFinderSync {
   /// Показывает причину отказа отдельным окном: у расширения нет своего окна, а Finder
   /// не даёт скрыть неподходящий пункт до нажатия. Окно не блокирует обработку меню.
   private func explain(_ failure: (title: String, text: String)) {
-    let alert = NSAlert()
-    alert.messageText = failure.title
-    alert.informativeText = failure.text
-    alert.alertStyle = .informational
-    if let icon = Self.loadMenuIcon() {
-      icon.size = NSSize(width: 64, height: 64)
-      alert.icon = icon
+    let title = failure.title
+    let text = failure.text
+    // Пункты меню Finder вызываются на главном потоке; иной вызов должен упасть явно.
+    MainActor.assumeIsolated {
+      let alert = NSAlert()
+      alert.messageText = title
+      alert.informativeText = text
+      alert.alertStyle = .informational
+      if let icon = Self.loadMenuIcon() {
+        icon.size = NSSize(width: 64, height: 64)
+        alert.icon = icon
+      }
+      alert.addButton(withTitle: L10n.tr("ОК"))
+      let window = alert.window
+      window.level = .floating
+      alert.buttons.first?.target = window
+      alert.buttons.first?.action = #selector(NSWindow.close)
+      window.isReleasedWhenClosed = false
+      window.center()
+      Self.notice?.window.close()
+      Self.notice = alert
+      NSApp.activate(ignoringOtherApps: true)
+      window.makeKeyAndOrderFront(nil)
     }
-    alert.addButton(withTitle: L10n.tr("ОК"))
-    let window = alert.window
-    window.level = .floating
-    alert.buttons.first?.target = window
-    alert.buttons.first?.action = #selector(NSWindow.close)
-    window.isReleasedWhenClosed = false
-    window.center()
-    notice?.window.close()
-    notice = alert
-    NSApp.activate(ignoringOtherApps: true)
-    window.makeKeyAndOrderFront(nil)
   }
 
   /// Загружает цветную иконку из собственного комплекта, доступного песочнице расширения.
