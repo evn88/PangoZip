@@ -11,12 +11,7 @@ public struct FinderRegistrationPlan: Sendable, Equatable {
   /// Проверяет установленное приложение и встроенные компоненты до регистрации в macOS.
   public static func make(
     applicationURL: URL,
-    applicationDirectories: [URL] = [
-      URL(fileURLWithPath: "/Applications", isDirectory: true),
-      (FileManager.default.homeDirectory(forUser: NSUserName())
-        ?? FileManager.default.homeDirectoryForCurrentUser).appendingPathComponent(
-          "Applications", isDirectory: true),
-    ]
+    applicationDirectories: [URL] = FinderInstallation.applicationDirectories
   ) throws -> Self {
     guard
       FinderInstallation.isInstalledLocation(

@@ -436,3 +436,7 @@
 "Смахните, чтобы убрать в строку меню" = "Scorri per spostare nella barra dei menu";
 "Убрать в строку меню" = "Sposta nella barra dei menu";
 "Действия PangoZip с выделенными объектами" = "Azioni PangoZip per gli elementi selezionati";
+"Ничего не выделено" = "Nessuna selezione";
+"Выделите файлы или папки в окне Finder и повторите команду." = "Seleziona file o cartelle nella finestra del Finder e riprova.";
+"В выделении нет архивов" = "La selezione non contiene archivi";
+"Команда «%1$@» работает только с архивами. Выделите архив и повторите." = "“%1$@” funziona solo con gli archivi. Seleziona un archivio e riprova.";

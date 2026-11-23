@@ -8,6 +8,8 @@ final class FinderSync: FIFinderSync {
   private lazy var menuIcon = Self.loadMenuIcon()
   private var requests: [Int: PendingRequest] = [:]
   private var nextTag = 1
+  /// Удерживает открытое окно с объяснением, пока его не закроют или не заменят новым.
+  @MainActor private static var notice: NSAlert?
   private let logger = Logger(subsystem: "app.pangozip.desktop.finder", category: "requests")
   /// Наблюдает локальные тома для контекстного меню без обхода файлов и установки значков.
   override init() {
@@ -108,6 +110,40 @@ final class FinderSync: FIFinderSync {
     }
   }
 
+  /// Показывает причину отказа отдельным окном: у расширения нет своего окна, а Finder
+  /// не даёт скрыть неподходящий пункт до нажатия. Окно не блокирует обработку меню.
+  private func explain(_ failure: (title: String, text: String)) {
+    let title = failure.title
+    let text = failure.text
+    // Finder вызывает пункты меню на очереди XPC, а не на главном потоке: окно строится на главном.
+    Task { @MainActor in Self.presentNotice(title: title, text: text) }
+  }
+
+  /// Строит и показывает окно объяснения; прежнее окно закрывается, чтобы они не копились.
+  @MainActor private static func presentNotice(title: String, text: String) {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = text
+    alert.alertStyle = .informational
+    if let icon = loadMenuIcon() {
+      icon.size = NSSize(width: 64, height: 64)
+      alert.icon = icon
+    }
+    alert.addButton(withTitle: L10n.tr("ОК"))
+    // Без явной раскладки окно немодального NSAlert показывается с несобранным содержимым.
+    alert.layout()
+    let window = alert.window
+    window.level = .floating
+    alert.buttons.first?.target = window
+    alert.buttons.first?.action = #selector(NSWindow.close)
+    window.isReleasedWhenClosed = false
+    window.center()
+    notice?.window.close()
+    notice = alert
+    NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
+  }
+
   /// Загружает цветную иконку из собственного комплекта, доступного песочнице расширения.
   private static func loadMenuIcon() -> NSImage? {
     guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
@@ -135,11 +171,14 @@ final class FinderSync: FIFinderSync {
     case .deferred(let action):
       // Пункт кнопки панели инструментов: Finder отдаёт выделение только сейчас.
       let urls = FIFinderSyncController.default().selectedItemURLs() ?? []
-      request = try? FinderSelection(urls: urls).request(for: action)
+      let selection = FinderSelection(urls: urls)
+      request = try? selection.request(for: action)
       if request == nil {
         logger.notice(
           "Finder toolbar action skipped: \(action.rawValue, privacy: .public) selection=\(urls.count)"
         )
+        explain(selection.deferredFailure(for: action))
+        return
       }
     case nil: request = nil
     }
