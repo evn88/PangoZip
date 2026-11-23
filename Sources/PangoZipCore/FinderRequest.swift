@@ -84,6 +84,18 @@ public struct FinderSelection: Sendable {
     ]
   }
 
+  /// Пункты кнопки PangoZip в панели инструментов Finder, когда выделение ещё неизвестно.
+  /// В папках File Provider (iCloud Drive, синхронизируемые «Рабочий стол» и «Документы»)
+  /// Finder строит меню кнопки с пустым выделением и отдаёт файлы только в момент нажатия.
+  public static let deferredActions: [FinderAction] = [
+    .open, .extractFiles, .extractHere, .extract, .test, .create, .create7z, .createZip,
+  ]
+
+  /// Действия, которые работают только с архивами из выделения.
+  public static let archiveActions: Set<FinderAction> = [
+    .open, .extractFiles, .extractHere, .extract, .test,
+  ]
+
   /// Уточняет подпись команды по текущему выделению и предлагаемому имени результата.
   public func title(for action: FinderAction) -> String {
     switch action {
@@ -103,7 +115,7 @@ public struct FinderSelection: Sendable {
   public func request(for action: FinderAction) throws -> FinderRequest {
     try FinderRequest(
       action: action,
-      urls: [.open, .extractFiles, .extractHere, .extract, .test].contains(action) ? archives : urls
+      urls: Self.archiveActions.contains(action) ? archives : urls
     )
   }
 

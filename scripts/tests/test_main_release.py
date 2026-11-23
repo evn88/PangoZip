@@ -66,6 +66,34 @@ class MainReleaseTests(unittest.TestCase):
         self.assertIn("0.7.1 (13)", (self.root / "README.md").read_text())
         self.assertEqual(self.git("status", "--porcelain"), "")
 
+    def test_preparation_collects_release_notes_from_merged_pull_requests(self):
+        import main_release
+        for number, name in [(31, "first"), (32, "second"), (33, "third")]:
+            self.git("checkout", "-b", name)
+            (self.root / f"{name}.txt").write_text(name)
+            self.git("add", ".")
+            self.git("commit", "-m", f"Work on {name}")
+            self.git("checkout", "main")
+            self.git("merge", "--no-ff", name, "-m", f"Merge pull request #{number} from evn88/{name}")
+        self.git("push", "origin", "main")
+        bodies = {
+            31: "## Summary\nText\n\n## Release notes\n### EN\n- Faster archives.\n### RU\n- Архивы быстрее.\n\n## Verification\n- swift test",
+            32: "## Release notes\nnone",
+            33: "## Release notes\n### EN\n- Show in Finder.\n### RU\n- Показать в Finder.\n### DE\n- Im Finder zeigen.",
+        }
+        state = main_release.prepare(self.root, self.git("rev-parse", "HEAD"), {"v0.7.0"}, bodies.__getitem__)
+        changes = json.loads((self.root / f"docs/releases/{state['tag']}.json").read_text())
+        self.assertEqual(changes["en"], ["Faster archives.", "Show in Finder."])
+        self.assertEqual(changes["ru"], ["Архивы быстрее.", "Показать в Finder."])
+        self.assertEqual(changes["de"], ["Faster archives.", "Im Finder zeigen."])
+        self.assertNotIn("swift test", json.dumps(changes))
+
+    def test_pull_requests_without_notes_keep_the_neutral_list(self):
+        import main_release
+        state = main_release.prepare(self.root, self.source, {"v0.7.0"}, lambda number: "")
+        changes = json.loads((self.root / f"docs/releases/{state['tag']}.json").read_text())
+        self.assertEqual(changes["ru"], ["Техническое обновление приложения."])
+
     def advance_main(self):
         other = self.directory / "other"
         subprocess.run(["git", "clone", "-b", "main", str(self.remote), str(other)], check=True, capture_output=True)

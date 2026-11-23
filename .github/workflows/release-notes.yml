@@ -1,0 +1,47 @@
+name: Release notes
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: Published release tags to rewrite, separated by spaces (for example v0.10.7 v0.10.8)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Require user-facing release notes in the pull request description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 scripts/release_notes.py check
+
+  refresh:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'evn88/PangoZip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Rewrite descriptions of published releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          read -ra tags <<< "$TAGS"
+          python3 scripts/release_notes.py refresh "${tags[@]}"

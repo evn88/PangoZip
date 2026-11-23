@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from release_metadata import BUNDLE_FILES, DEFAULT_CHANGES, version_from_tag
+import release_notes
 
 REPOSITORY = "evn88/PangoZip"
 
@@ -28,8 +29,11 @@ def version(tag):
     return tuple(map(int, version_from_tag(tag).split(".")))
 
 
-def prepare(root, requested, published):
-    """Не меняет удалённые refs: номер версии становится видимым только после проверок."""
+def prepare(root, requested, published, fetch_body=None):
+    """Не меняет удалённые refs: номер версии становится видимым только после проверок.
+
+    fetch_body читает описание pull request по номеру; без него используется нейтральный список.
+    """
     if not re.fullmatch(r"[0-9a-f]{40}", requested):
         raise ValueError("Expected the main source commit SHA")
     if git(root, "status", "--porcelain"):
@@ -114,7 +118,11 @@ def prepare(root, requested, published):
     if count != 1:
         raise ValueError("README current version was not found")
     readme.write_text(text)
-    notes = DEFAULT_CHANGES
+    notes = None
+    if fetch_body is not None:
+        start = release_notes.release_source(root, latest[1]) if latest else None
+        notes = release_notes.collect(root, start, requested, fetch_body)
+    notes = notes or DEFAULT_CHANGES
     path = root / f"docs/releases/{tag}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
@@ -167,7 +175,7 @@ def main():
         pages = json.loads(subprocess.check_output(
             ["gh", "api", f"repos/{REPOSITORY}/releases", "--paginate", "--slurp"], text=True))
         published = {release["tag_name"] for page in pages for release in page if not release["draft"]}
-        state = prepare(root, os.environ["GITHUB_SHA"], published)
+        state = prepare(root, os.environ["GITHUB_SHA"], published, release_notes.github_body)
         args.state.write_text(json.dumps(state))
         outputs(output, state)
         print(f"Prepared {state['tag']}" if state["ready"] else "No release needed for this main event")

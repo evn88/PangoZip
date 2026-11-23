@@ -1,0 +1,18 @@
+{
+  "en": [
+    "Large archives are created much faster: files are read in place instead of being copied first, and compressed TAR is written in a single pass.",
+    "No more “took longer than two minutes” error: an operation runs until it finishes or you cancel it.",
+    "Long operations run at a lower priority, so the Mac stays responsive. A small tortoise icon appears when PangoZip gives way to other apps.",
+    "The status bar shows the speed and the remaining time during long operations.",
+    "The window title shows the folder of the open archive. Click it, or use Archive → Show in Finder (⌘⇧R), to reveal the file.",
+    "Clear messages when the disk is full or source files change while the archive is being created."
+  ],
+  "ru": [
+    "Большие архивы создаются заметно быстрее: файлы читаются с места, без предварительного копирования, а сжатый TAR пишется за один проход.",
+    "Больше нет ошибки «обработка заняла больше двух минут»: операция идёт до конца или до отмены.",
+    "Долгие операции идут с пониженным приоритетом, и Mac не тормозит. Маленькая черепаха показывает, что PangoZip уступает процессор другим программам.",
+    "Во время долгих операций в нижней строке видны скорость и оставшееся время.",
+    "В заголовке окна видна папка открытого архива. Щелчок по ней или «Архив → Показать в Finder» (⌘⇧R) открывает файл в Finder.",
+    "Понятные сообщения, если закончилось место на диске или исходные файлы изменились во время создания архива."
+  ]
+}
