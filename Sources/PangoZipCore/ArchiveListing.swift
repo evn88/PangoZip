@@ -98,8 +98,10 @@ public enum ArchiveListing {
         let packed = blockPacked[block], packed < .max,
         let unpacked = blockUnpacked[block], unpacked > 0, unpacked < .max
       else { continue }
-      let share = (Double(entries[index].size) * Double(packed) / Double(unpacked)).rounded()
-      entries[index].estimatedPackedSize = UInt64(share)
+      // Целочисленно, без Double: size ≤ unpacked, поэтому частное не превышает packed.
+      let product = entries[index].size.multipliedFullWidth(by: packed)
+      let (share, remainder) = unpacked.dividingFullWidth(product)
+      entries[index].estimatedPackedSize = remainder >= unpacked - remainder ? share + 1 : share
     }
     return entries
   }
