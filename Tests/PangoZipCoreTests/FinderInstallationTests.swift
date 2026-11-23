@@ -4,6 +4,16 @@ import XCTest
 
 final class FinderInstallationTests: XCTestCase {
   /// Проверяет отключение команды Finder при отсутствии приложения или рабочего процесса.
+  func testUserApplicationsRootUsesAccountHomeInsteadOfSandboxContainer() throws {
+    let home = FinderInstallation.userHomeDirectory
+    let entry = try XCTUnwrap(getpwuid(getuid()))
+    XCTAssertEqual(home.path, String(cString: entry.pointee.pw_dir))
+    XCTAssertFalse(home.pathComponents.contains("Containers"))
+    XCTAssertEqual(
+      FinderInstallation.applicationDirectories.map(\.path),
+      ["/Applications", home.appendingPathComponent("Applications").path])
+  }
+
   func testMenuIsUnavailableAfterRemovalOrWhenWorkerIsMissing() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

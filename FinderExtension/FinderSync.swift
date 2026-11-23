@@ -115,28 +115,33 @@ final class FinderSync: FIFinderSync {
   private func explain(_ failure: (title: String, text: String)) {
     let title = failure.title
     let text = failure.text
-    // Пункты меню Finder вызываются на главном потоке; иной вызов должен упасть явно.
-    MainActor.assumeIsolated {
-      let alert = NSAlert()
-      alert.messageText = title
-      alert.informativeText = text
-      alert.alertStyle = .informational
-      if let icon = Self.loadMenuIcon() {
-        icon.size = NSSize(width: 64, height: 64)
-        alert.icon = icon
-      }
-      alert.addButton(withTitle: L10n.tr("ОК"))
-      let window = alert.window
-      window.level = .floating
-      alert.buttons.first?.target = window
-      alert.buttons.first?.action = #selector(NSWindow.close)
-      window.isReleasedWhenClosed = false
-      window.center()
-      Self.notice?.window.close()
-      Self.notice = alert
-      NSApp.activate(ignoringOtherApps: true)
-      window.makeKeyAndOrderFront(nil)
+    // Finder вызывает пункты меню на очереди XPC, а не на главном потоке: окно строится на главном.
+    Task { @MainActor in Self.presentNotice(title: title, text: text) }
+  }
+
+  /// Строит и показывает окно объяснения; прежнее окно закрывается, чтобы они не копились.
+  @MainActor private static func presentNotice(title: String, text: String) {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = text
+    alert.alertStyle = .informational
+    if let icon = loadMenuIcon() {
+      icon.size = NSSize(width: 64, height: 64)
+      alert.icon = icon
     }
+    alert.addButton(withTitle: L10n.tr("ОК"))
+    // Без явной раскладки окно немодального NSAlert показывается с несобранным содержимым.
+    alert.layout()
+    let window = alert.window
+    window.level = .floating
+    alert.buttons.first?.target = window
+    alert.buttons.first?.action = #selector(NSWindow.close)
+    window.isReleasedWhenClosed = false
+    window.center()
+    notice?.window.close()
+    notice = alert
+    NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
   }
 
   /// Загружает цветную иконку из собственного комплекта, доступного песочнице расширения.

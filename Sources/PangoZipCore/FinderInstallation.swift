@@ -7,15 +7,34 @@ public enum FinderInstallation {
       .deletingLastPathComponent()
   }
 
+  /// Настоящая домашняя папка учётной записи. В песочнице расширения Foundation отдаёт
+  /// вместо неё контейнер, поэтому путь берётся из записи пользователя в системе.
+  public static var userHomeDirectory: URL {
+    var entry = passwd()
+    var result: UnsafeMutablePointer<passwd>?
+    let size = max(sysconf(_SC_GETPW_R_SIZE_MAX), 1024)
+    var buffer = [CChar](repeating: 0, count: size)
+    if getpwuid_r(getuid(), &entry, &buffer, buffer.count, &result) == 0, result != nil,
+      let directory = entry.pw_dir, directory.pointee != 0
+    {
+      return URL(fileURLWithPath: String(cString: directory), isDirectory: true)
+    }
+    return FileManager.default.homeDirectory(forUser: NSUserName())
+      ?? FileManager.default.homeDirectoryForCurrentUser
+  }
+
+  /// Папки, установка в которые считается постоянной: общая и личная «Программы».
+  public static var applicationDirectories: [URL] {
+    [
+      URL(fileURLWithPath: "/Applications", isDirectory: true),
+      userHomeDirectory.appendingPathComponent("Applications", isDirectory: true),
+    ]
+  }
+
   /// Разрешает установленное приложение на доступном для записи диске вне временных папок.
   public static func isInstalledLocation(
     _ applicationURL: URL,
-    applicationDirectories: [URL] = [
-      URL(fileURLWithPath: "/Applications", isDirectory: true),
-      (FileManager.default.homeDirectory(forUser: NSUserName())
-        ?? FileManager.default.homeDirectoryForCurrentUser).appendingPathComponent(
-          "Applications", isDirectory: true),
-    ]
+    applicationDirectories: [URL] = FinderInstallation.applicationDirectories
   ) -> Bool {
     guard applicationURL.isFileURL else { return false }
     let app = applicationURL.resolvingSymlinksInPath().standardizedFileURL
@@ -23,11 +42,7 @@ public enum FinderInstallation {
       $0.resolvingSymlinksInPath().standardizedFileURL
     }
     let forbiddenNames = [".Trash", ".Trashes", "AppTranslocation"]
-    // Явное имя пользователя не подменяет домашнюю папку контейнером расширения.
-    let home =
-      FileManager.default.homeDirectory(forUser: NSUserName())
-      ?? FileManager.default.homeDirectoryForCurrentUser
-    let downloads = [home.appendingPathComponent("Downloads", isDirectory: true)]
+    let downloads = [userHomeDirectory.appendingPathComponent("Downloads", isDirectory: true)]
     guard app.pathExtension == "app",
       !app.pathComponents.contains(where: forbiddenNames.contains),
       !downloads.contains(where: { contains(app, in: $0.resolvingSymlinksInPath()) }),
