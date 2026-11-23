@@ -87,6 +87,40 @@ final class ArchiveListingTests: XCTestCase {
     XCTAssertNil(entries[2].packedSize)
     XCTAssertEqual(entries[3].packedSize, 0)
     XCTAssertEqual(entries[4].packedSize, 32)
+    // Доля общего блока делится по исходному размеру; у отдельных записей оценки нет.
+    XCTAssertEqual(entries[1].estimatedPackedSize, 30)
+    XCTAssertEqual(entries[2].estimatedPackedSize, 30)
+    XCTAssertNil(entries[0].estimatedPackedSize)
+    XCTAssertNil(entries[3].estimatedPackedSize)
+    XCTAssertNil(entries[4].estimatedPackedSize)
+  }
+
+  func testSolidBlockShareFollowsFileSize() throws {
+    let entries = try ArchiveListing.parse(
+      """
+      Path = big.txt
+      Size = 300
+      Packed Size = 100
+      Block = 0
+
+      Path = small.txt
+      Size = 100
+      Packed Size =
+      Block = 0
+
+      Path = unknown-a.txt
+      Size = 100
+      Packed Size =
+      Block = 1
+
+      Path = unknown-b.txt
+      Size = 100
+      Packed Size =
+      Block = 1
+
+      """.replacingOccurrences(of: "Packed Size =\n", with: "Packed Size = \n"))
+    XCTAssertEqual(entries.map(\.estimatedPackedSize), [75, 25, nil, nil])
+    XCTAssertTrue(entries.allSatisfy { $0.packedSize == nil })
   }
 
   /// Проверяет разбор Unicode-имён и восстановление каталогов, отсутствующих в листинге.

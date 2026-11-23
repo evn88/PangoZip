@@ -10,6 +10,10 @@ public enum ArchiveListing {
       $0.hasSuffix("\r") ? String($0.dropLast()) : $0
     }
     var blockCounts: [String: Int] = [:]
+    // Solid-блок 7z: упакованный размер блока и суммарный исходный размер его файлов.
+    var blockPacked: [String: UInt64] = [:]
+    var blockUnpacked: [String: UInt64] = [:]
+    var entryBlocks: [String?] = []
     for line in lines where line.hasPrefix("Block = ") {
       blockCounts[String(line.dropFirst(8)), default: 0] += 1
     }
@@ -42,6 +46,16 @@ public enum ArchiveListing {
       let isLink =
         !(fields["Symbolic Link"] ?? "").isEmpty || !(fields["Hard Link"] ?? "").isEmpty
         || isSpecial
+      let block = fields["Block"]
+      if let block, blockCounts[block, default: 0] > 1 {
+        let unpacked = blockUnpacked[block, default: 0].addingReportingOverflow(size)
+        blockUnpacked[block] = unpacked.overflow ? .max : unpacked.partialValue
+        if let packed = fields["Packed Size"].flatMap(UInt64.init) {
+          let total = blockPacked[block, default: 0].addingReportingOverflow(packed)
+          blockPacked[block] = total.overflow ? .max : total.partialValue
+        }
+      }
+      entryBlocks.append(block)
       entries.append(
         ArchiveEntry(
           path: path, size: size, isDirectory: isDirectory, isSymbolicLink: isLink,
@@ -78,6 +92,15 @@ public enum ArchiveListing {
       fields[key] = String(line[separator.upperBound...])
     }
     try appendEntry()
+    // Файлу из общего блока приписываем долю блока пропорционально исходному размеру.
+    for index in entries.indices {
+      guard let block = entryBlocks[index], blockCounts[block, default: 0] > 1,
+        let packed = blockPacked[block], packed < .max,
+        let unpacked = blockUnpacked[block], unpacked > 0, unpacked < .max
+      else { continue }
+      let share = (Double(entries[index].size) * Double(packed) / Double(unpacked)).rounded()
+      entries[index].estimatedPackedSize = UInt64(share)
+    }
     return entries
   }
 

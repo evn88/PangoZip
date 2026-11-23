@@ -15,6 +15,9 @@ public struct ArchiveEntry: Identifiable, Hashable, Sendable {
   public let checksum: String?
   public let method: String?
   public let packedSize: UInt64?
+  /// Оценка для файла из общего solid-блока 7z: его доля упакованного блока по исходному размеру.
+  /// Точного размера у такого файла нет, поэтому оценка хранится отдельно от `packedSize`.
+  public internal(set) var estimatedPackedSize: UInt64?
   public let additionalMetadata: [String: String]
 
   /// Сохраняет метаданные записи; безопасность пути проверяет парсер перед использованием.
@@ -22,7 +25,8 @@ public struct ArchiveEntry: Identifiable, Hashable, Sendable {
     path: String, size: UInt64 = 0, isDirectory: Bool = false, isSymbolicLink: Bool = false,
     createdAt: Date? = nil, modifiedAt: Date? = nil, permissions: String? = nil,
     owner: String? = nil, group: String? = nil, isEncrypted: Bool = false, checksum: String? = nil,
-    method: String? = nil, packedSize: UInt64? = nil, additionalMetadata: [String: String] = [:]
+    method: String? = nil, packedSize: UInt64? = nil, estimatedPackedSize: UInt64? = nil,
+    additionalMetadata: [String: String] = [:]
   ) {
     self.path = path
     self.size = size
@@ -37,6 +41,7 @@ public struct ArchiveEntry: Identifiable, Hashable, Sendable {
     self.checksum = checksum
     self.method = method
     self.packedSize = packedSize
+    self.estimatedPackedSize = estimatedPackedSize
     self.additionalMetadata = additionalMetadata
   }
 }
