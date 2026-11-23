@@ -428,3 +428,7 @@
 "Отказаться" = "Descartar";
 "Операция уступает процессор другим программам" = "A operação está cedendo o processador a outros apps";
 "Действия PangoZip с выделенными объектами" = "Ações do PangoZip para os itens selecionados";
+"Ничего не выделено" = "Nada selecionado";
+"Выделите файлы или папки в окне Finder и повторите команду." = "Selecione arquivos ou pastas na janela do Finder e tente novamente.";
+"В выделении нет архивов" = "A seleção não contém arquivos compactados";
+"Команда «%1$@» работает только с архивами. Выделите архив и повторите." = "“%1$@” funciona apenas com arquivos compactados. Selecione um e tente novamente.";

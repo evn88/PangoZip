@@ -428,3 +428,7 @@
 "Отказаться" = "Odustani";
 "Операция уступает процессор другим программам" = "Operacija prepušta procesor drugim aplikacijama";
 "Действия PangoZip с выделенными объектами" = "PangoZip radnje za izabrane stavke";
+"Ничего не выделено" = "Ništa nije izabrano";
+"Выделите файлы или папки в окне Finder и повторите команду." = "Izaberite datoteke ili fascikle u prozoru Findera i pokušajte ponovo.";
+"В выделении нет архивов" = "Među izabranim stavkama nema arhiva";
+"Команда «%1$@» работает только с архивами. Выделите архив и повторите." = "Komanda „%1$@“ radi samo sa arhivama. Izaberite arhivu i pokušajte ponovo.";

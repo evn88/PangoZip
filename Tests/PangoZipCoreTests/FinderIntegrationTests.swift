@@ -30,6 +30,20 @@ final class FinderIntegrationTests: XCTestCase, @unchecked Sendable {
       try FinderSelection(urls: [text, zip]).request(for: .createZip).urls.count, 2)
   }
 
+  /// Отказ кнопки панели инструментов получает понятную причину вместо немого сигнала.
+  func testDeferredFailureExplainsWhyActionCannotRun() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let text = root.appendingPathComponent("cat.txt")
+    try Data("x".utf8).write(to: text)
+    let empty = FinderSelection(urls: []).deferredFailure(for: .createZip)
+    XCTAssertEqual(empty.title, L10n.tr("Ничего не выделено"))
+    let plain = FinderSelection(urls: [text]).deferredFailure(for: .extractHere)
+    XCTAssertEqual(plain.title, L10n.tr("В выделении нет архивов"))
+    XCTAssertTrue(plain.text.contains(FinderAction.extractHere.title))
+    XCTAssertFalse(plain.text.contains("%1$@"))
+  }
+
   /// Проверяет доступность команд Finder для разных типов и сочетаний выбора.
   func testMenuDistinguishesFoldersArchivesAndMixedMultipleSelection() throws {
     let root = try fixture()

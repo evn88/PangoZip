@@ -96,6 +96,25 @@ public struct FinderSelection: Sendable {
     .open, .extractFiles, .extractHere, .extract, .test,
   ]
 
+  /// Объясняет, почему команда кнопки панели инструментов не может выполниться с этим выделением.
+  /// В папках File Provider пункт нельзя скрыть заранее, поэтому причина показывается при нажатии.
+  public func deferredFailure(for action: FinderAction) -> (title: String, text: String) {
+    if urls.isEmpty {
+      return (
+        L10n.tr("Ничего не выделено"),
+        L10n.tr("Выделите файлы или папки в окне Finder и повторите команду.")
+      )
+    }
+    if Self.archiveActions.contains(action), archives.isEmpty {
+      return (
+        L10n.tr("В выделении нет архивов"),
+        L10n.tr(
+          "Команда «%1$@» работает только с архивами. Выделите архив и повторите.", action.title)
+      )
+    }
+    return (action.title, FinderRequestError.invalidSelection.errorDescription ?? "")
+  }
+
   /// Уточняет подпись команды по текущему выделению и предлагаемому имени результата.
   public func title(for action: FinderAction) -> String {
     switch action {
