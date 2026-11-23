@@ -22,8 +22,10 @@ struct ArchiveMetadataView: View {
         field(L10n.tr("Файлов"), details.fileCount.formatted())
         field(L10n.tr("Вложенных папок"), details.folderCount.formatted())
       }
-      if !details.entry.isDirectory, let packedSize = details.entry.packedSize {
-        field(L10n.tr("Размер в архиве"), ProgressFormatting.bytes(packedSize))
+      if !details.entry.isDirectory, let packedSize = details.packedSize {
+        field(
+          L10n.tr("Размер в архиве"),
+          (details.isPackedSizeEstimated ? "≈ " : "") + ProgressFormatting.bytes(packedSize))
       }
       field(
         L10n.tr("Создан"),

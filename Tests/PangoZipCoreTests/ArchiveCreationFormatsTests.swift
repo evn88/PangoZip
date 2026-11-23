@@ -125,6 +125,32 @@ final class ArchiveCreationFormatsTests: XCTestCase, @unchecked Sendable {
     XCTAssertTrue(leftovers.isEmpty, "Остались временные каталоги: \(leftovers)")
   }
 
+  /// В сплошном 7z у каждого непустого файла есть точный или оценочный размер в архиве.
+  func testSolid7zEntriesGetPackedSizeEstimates() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let text = String(repeating: "PangoZip сжимает повторяющийся текст. ", count: 2_000)
+    for name in ["one.txt", "two.txt", "three.txt"] {
+      try text.write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    let service = ArchiveService(executableURL: engine)
+    let archive = try await service.createArchive(
+      from: ["one.txt", "two.txt", "three.txt"].map { root.appendingPathComponent($0) },
+      proposedURL: root.appendingPathComponent("Solid.7z"), format: "7z",
+      options: CompressionOptions(format: "7z", solid: true))
+    let session = try await service.open(archive)
+    let files = session.entries.filter { !$0.isDirectory }
+    XCTAssertEqual(files.count, 3)
+    for file in files {
+      XCTAssertNil(file.packedSize, file.path)
+      let estimate = try XCTUnwrap(file.estimatedPackedSize, file.path)
+      XCTAssertGreaterThan(estimate, 0)
+      XCTAssertLessThan(estimate, file.size)
+    }
+    try await service.close(session)
+    await service.cleanup()
+  }
+
   /// Занятый средний том не позволяет опубликовать часть набора под тем же именем.
   func testPublishSetPicksCommonNameAndLeavesNothingBehind() throws {
     let root = try fixture()

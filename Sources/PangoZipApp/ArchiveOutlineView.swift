@@ -350,16 +350,21 @@ struct ArchiveOutlineView: NSViewRepresentable {
           isFolder
           ? parent.model.itemDetailsByPath[item.node.path]
           : entry.map { ArchiveItemDetails(entry: $0) }
+        // Для сплошного 7z доля файла в общем блоке оценочная, поэтому со знаком «≈».
+        let approximate = details?.isPackedSizeEstimated == true ? "≈ " : ""
         value =
           details?.compressionSavings.map {
-            ($0 / 100).formatted(.percent.precision(.fractionLength(0...1)))
+            approximate + ($0 / 100).formatted(.percent.precision(.fractionLength(0...1)))
           } ?? (isFolder && parent.model.areFolderDetailsLoading ? "…" : "—")
       case "packed":
+        let details = entry.map { ArchiveItemDetails(entry: $0) }
+        let approximate = details?.isPackedSizeEstimated == true ? "≈ " : ""
         value =
           isFolder
           ? "—"
-          : entry?.packedSize.map {
-            ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file)
+          : details?.packedSize.map {
+            approximate
+              + ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file)
           } ?? "—"
       case "kind":
         let extensionName = (item.node.name as NSString).pathExtension

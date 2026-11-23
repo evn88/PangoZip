@@ -96,6 +96,9 @@ final class ArchiveItemDetailsTests: XCTestCase, @unchecked Sendable {
       ArchiveEntry(path: "empty", size: 0, packedSize: 0),
       ArchiveEntry(path: "solid", size: 1000),
       ArchiveEntry(path: "folder/file", size: 1000, packedSize: 250),
+      ArchiveEntry(path: "estimated", size: 1000, estimatedPackedSize: 400),
+      ArchiveEntry(path: "mixed/a", size: 1000, packedSize: 250),
+      ArchiveEntry(path: "mixed/b", size: 1000, estimatedPackedSize: 250),
     ]
     let model = ArchiveBrowserModel()
     await model.apply(
@@ -127,8 +130,31 @@ final class ArchiveItemDetailsTests: XCTestCase, @unchecked Sendable {
       try value("growth"), (-0.25).formatted(.percent.precision(.fractionLength(0...1))))
     XCTAssertEqual(try value("empty"), "—")
     XCTAssertEqual(try value("solid"), "—")
+    let percent = FloatingPointFormatStyle<Double>.Percent().precision(.fractionLength(0...1))
+    XCTAssertEqual(try value("estimated"), "≈ " + 0.6.formatted(percent))
+    XCTAssertEqual(try value("mixed"), "≈ " + 0.75.formatted(percent))
     let closed = await model.requestTermination()
     XCTAssertTrue(closed)
+  }
+
+  func testSolidBlockEstimateIsUsedOnlyWithoutExactPackedSize() throws {
+    let estimated = ArchiveItemDetails(
+      entry: ArchiveEntry(path: "a", size: 1000, estimatedPackedSize: 400))
+    XCTAssertEqual(try XCTUnwrap(estimated.compressionSavings), 60, accuracy: 0.0001)
+    XCTAssertTrue(estimated.isPackedSizeEstimated)
+    let exact = ArchiveItemDetails(
+      entry: ArchiveEntry(path: "a", size: 1000, packedSize: 250, estimatedPackedSize: 400))
+    XCTAssertEqual(exact.packedSize, 250)
+    XCTAssertFalse(exact.isPackedSizeEstimated)
+    let roots = try ArchiveListing.tree(from: [
+      ArchiveEntry(path: "exact/a", size: 1000, packedSize: 250),
+      ArchiveEntry(path: "solid/nested/a", size: 1000, estimatedPackedSize: 300),
+      ArchiveEntry(path: "solid/b", size: 1000, packedSize: 100),
+    ])
+    let folders = try ArchiveItemDetails.folders(in: roots)
+    XCTAssertEqual(folders["exact"]?.isPackedSizeEstimated, false)
+    XCTAssertEqual(folders["solid"]?.packedSize, 400)
+    XCTAssertEqual(folders["solid"]?.isPackedSizeEstimated, true)
   }
 
   func testCompressionSavingsIncludesGrowthAndRejectsUnknownOrEmptySizes() throws {
