@@ -131,9 +131,8 @@ enum RingImage {
   /// что и программа. Панголин рисуется цветом текста строки меню, кольцо — золотом.
   @MainActor
   static func withPangolin(_ key: Key) -> NSImage {
-    nonisolated(unsafe) let glyph = PangolinGlyph.image
-    let ring = make(key)
-    nonisolated(unsafe) let ringImage = ring
+    let glyph = PangolinGlyph.image
+    let ringImage = make(key)
     return NSImage(size: NSSize(width: 39, height: 18), flipped: false) { rect in
       let glyphRect = NSRect(x: rect.minX, y: rect.minY, width: 18, height: 18)
       glyph.draw(in: glyphRect)
