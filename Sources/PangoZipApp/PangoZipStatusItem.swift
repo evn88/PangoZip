@@ -43,6 +43,16 @@ final class PangoZipStatusItem: NSObject {
       MainActor.assumeIsolated { self?.scheduleRender() }
     }
     cardChanged()
+    // Значок, выключенный в системных настройках («Разрешить в строке меню»), система не
+    // выводит, и ход пропал бы из виду: операция возвращается на остров.
+    Task { @MainActor [weak self, weak card] in
+      try? await Task.sleep(for: .milliseconds(500))
+      guard let self, let card, self.cards.contains(where: { $0 === card }),
+        self.item?.isVisible == false, card.state == .working
+      else { return }
+      self.logger.notice("Status item hidden by the system, progress returns to the island")
+      card.restore()
+    }
   }
 
   func detach(_ card: ProgressCardModel) {
