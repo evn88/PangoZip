@@ -17,6 +17,7 @@ final class OperationPresenter {
   private var stage = ""
   private var fraction: Double?
   private var remaining: TimeInterval?
+  private var progress: ArchiveProgress?
   private var isPaused = false
 
   /// `togglePause` nil — операция не умеет вставать на паузу, кнопки паузы нет.
@@ -50,7 +51,11 @@ final class OperationPresenter {
   }
 
   /// Этап с процентом, доля и оставшееся время; лишние перерисовки отсекают модели острова и карточки.
-  func update(stage: String, fraction: Double?, remaining: TimeInterval?, isPaused: Bool) {
+  func update(
+    stage: String, fraction: Double?, remaining: TimeInterval?, progress: ArchiveProgress?,
+    isPaused: Bool
+  ) {
+    self.progress = progress
     self.stage = stage
     self.fraction = fraction
     self.remaining = remaining
@@ -137,6 +142,7 @@ final class OperationPresenter {
     card.update(\.stage, to: stage)
     card.update(\.fraction, to: fraction)
     card.update(\.remaining, to: remaining)
+    card.update(\.progress, to: progress)
     card.update(\.isPaused, to: isPaused)
   }
 }

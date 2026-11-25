@@ -1017,7 +1017,8 @@ final class ArchiveBrowserModel: ObservableObject {
       kind: outsideOperation.kind, progress: operationProgress, isPaused: isOperationPaused)
     presenter.update(
       stage: stage.title, fraction: stage.fraction,
-      remaining: operationProgress?.remainingSeconds, isPaused: isOperationPaused)
+      remaining: operationProgress?.remainingSeconds, progress: operationProgress,
+      isPaused: isOperationPaused)
     presenter.show(title: outsideOperation.title)
   }
 

@@ -444,3 +444,6 @@
 "Оставлять остров на экране" = "Mantener la isla en pantalla";
 "Через несколько секунд убирать в строку меню" = "Mover a la barra de menús tras unos segundos";
 "Остров с идущей операцией можно в любой момент смахнуть вверх в строку меню. Нажмите значок в строке меню, чтобы поставить операцию на паузу, отменить её или вернуть остров." = "Mientras haya una operación en curso, puedes deslizar la isla hacia arriba a la barra de menús en cualquier momento. Haz clic en el icono de la barra de menús para pausar o cancelar la operación, o para recuperar la isla.";
+"Подробнее…" = "Detalles…";
+"Этап" = "Fase";
+"Текущий файл" = "Archivo actual";

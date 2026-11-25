@@ -64,7 +64,7 @@ final class FinderOperationModel: ObservableObject {
     let stage = OperationPresenter.stage(kind: feedbackKind, progress: progress, isPaused: isPaused)
     presenter.update(
       stage: stage.title, fraction: stage.fraction, remaining: progress?.remainingSeconds,
-      isPaused: isPaused)
+      progress: progress, isPaused: isPaused)
   }
 
   private func togglePause() {

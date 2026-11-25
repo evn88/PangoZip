@@ -18,6 +18,8 @@ final class ProgressCardModel: ObservableObject {
   @Published var remaining: TimeInterval?
   @Published var isPaused = false
   @Published var canReveal = false
+  /// Полный ход операции для окна подробностей: объёмы, скорость, время.
+  @Published var progress: ArchiveProgress?
   /// nil — операция не умеет вставать на паузу, кнопка не показывается.
   var togglePause: (() -> Void)?
   var cancel: () -> Void = {}
@@ -68,165 +70,44 @@ enum ShortDuration {
   }
 }
 
-/// Значок операции в строке меню: кольцо хода, процент и время; по нажатию — карточка
-/// с паузой и отменой. Живёт, пока остров смахнут.
+/// Ход одной операции в строке меню. Сам значок общий на процесс — `PangoZipStatusItem`:
+/// в основном приложении ход показывается в значке PangoZip, а фоновый процесс Finder
+/// передаёт его туда же, если основное приложение запущено.
 @MainActor
-final class ProgressStatusItem: NSObject {
+final class ProgressStatusItem {
   let card = ProgressCardModel()
-  private var item: NSStatusItem?
-  private var panel: NSPanel?
-  private var subscription: AnyCancellable?
-  private var monitors: [Any] = []
-  private var renderedImage: RingImage.Key?
-  private var renderedTitle: String?
-  private var renderScheduled = false
-  /// Ширина значка за операцию только растёт: соседние значки строки меню не скачут,
-  /// когда «5 мин» сменяется на «4 мин» или появляется оценка времени.
-  private var settledWidth: CGFloat = 0
-  private var hosting: NSHostingView<ProgressCardView>?
-
-  var isShown: Bool { item != nil }
+  private(set) var isShown = false
 
   func show() {
-    guard item == nil else { return }
-    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    item.button?.target = self
-    item.button?.action = #selector(toggleCard)
-    item.button?.imagePosition = .imageLeading
-    self.item = item
-    subscription = card.objectWillChange.sink { [weak self] _ in
-      // objectWillChange приходит до записи, по разу на каждое поле: рисуем один раз,
-      // уже после всех изменений.
-      MainActor.assumeIsolated {
-        guard let self, !self.renderScheduled else { return }
-        self.renderScheduled = true
-        Task { @MainActor in
-          self.renderScheduled = false
-          self.render()
-        }
-      }
-    }
-    render()
+    guard !isShown else { return }
+    isShown = true
+    MenuBarProgress.attach(card)
   }
 
   func hide() {
-    closeCard()
-    subscription = nil
-    renderedImage = nil
-    renderedTitle = nil
-    settledWidth = 0
-    if let item { NSStatusBar.system.removeStatusItem(item) }
-    item = nil
+    guard isShown else { return }
+    isShown = false
+    MenuBarProgress.detach(card)
   }
+}
 
-  private func render() {
-    guard let item, let button = item.button else { return }
-    let key = RingImage.Key(card: card)
-    if key != renderedImage {
-      renderedImage = key
-      button.image = RingImage.make(key)
-    }
-    let title = card.menuBarTitle
-    if title != renderedTitle {
-      renderedTitle = title
-      let font = NSFont.monospacedDigitSystemFont(
-        ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
-      button.attributedTitle = NSAttributedString(
-        string: title.isEmpty ? "" : " " + title, attributes: [.font: font])
-      if card.state == .done {
-        settledWidth = 0
-        item.length = NSStatusItem.variableLength
-      } else {
-        settledWidth = max(settledWidth, ceil(button.fittingSize.width))
-        if item.length != settledWidth { item.length = settledWidth }
-      }
-    }
-    if panel?.isVisible == true { placeCard() }
-    button.toolTip = card.title
-    button.setAccessibilityLabel(
-      [card.title, card.stage, card.state == .working ? card.timeLine : ""]
-        .filter { !$0.isEmpty }.joined(separator: ", "))
-  }
-
-  // MARK: - Карточка
-
-  @objc private func toggleCard() {
-    if panel?.isVisible == true { closeCard() } else { openCard() }
-  }
-
-  /// Карточка — собственная неактивирующая панель, как и остров: нажатия на кнопки
-  /// не выводят окна PangoZip поверх чужих программ.
-  private func openCard() {
-    let panel = self.panel ?? makePanel()
-    self.panel = panel
-    placeCard()
-    panel.orderFrontRegardless()
-    // Нажатие мимо карточки закрывает её, как меню; нажатие на сам значок обработает toggleCard.
-    if let global = NSEvent.addGlobalMonitorForEvents(
-      matching: [.leftMouseDown, .rightMouseDown],
-      handler: { [weak self] _ in MainActor.assumeIsolated { self?.closeCard() } })
-    {
-      monitors.append(global)
-    }
-    if let local = NSEvent.addLocalMonitorForEvents(
-      matching: [.leftMouseDown, .rightMouseDown],
-      handler: { [weak self] event in
-        let number = event.windowNumber
-        MainActor.assumeIsolated {
-          guard let self else { return }
-          let own = [self.panel?.windowNumber, self.item?.button?.window?.windowNumber]
-          if !own.contains(number) { self.closeCard() }
-        }
-        return event
-      })
-    {
-      monitors.append(local)
+/// Куда уходит ход операции: в значок своего процесса или в значок основного приложения.
+@MainActor
+enum MenuBarProgress {
+  static func attach(_ card: ProgressCardModel) {
+    if ApplicationMode.isFinderWorker {
+      RemoteProgressLink.shared.attach(card)
+    } else {
+      PangoZipStatusItem.shared.attach(card)
     }
   }
 
-  /// Ставит карточку под значком; высота следует за содержимым, например после завершения.
-  private func placeCard() {
-    guard let panel, let button = item?.button, let buttonWindow = button.window else { return }
-    let size = hosting?.fittingSize ?? NSSize(width: 320, height: 150)
-    let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-    let screen = buttonWindow.screen ?? NSScreen.main ?? NSScreen.screens[0]
-    let visible = screen.visibleFrame
-    let x = min(max(anchor.midX - size.width / 2, visible.minX + 8), visible.maxX - size.width - 8)
-    let frame = NSRect(
-      x: x, y: anchor.minY - 6 - size.height, width: size.width, height: size.height)
-    if panel.frame != frame { panel.setFrame(frame, display: true) }
-  }
-
-  private func closeCard() {
-    for monitor in monitors { NSEvent.removeMonitor(monitor) }
-    monitors.removeAll()
-    panel?.orderOut(nil)
-  }
-
-  private func makePanel() -> NSPanel {
-    let panel = NSPanel(
-      contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered,
-      defer: false)
-    panel.isOpaque = false
-    panel.backgroundColor = .clear
-    panel.hasShadow = true
-    panel.level = .popUpMenu
-    panel.animationBehavior = .utilityWindow
-    panel.hidesOnDeactivate = false
-    panel.isReleasedWhenClosed = false
-    panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-    // Кнопки карточки закрывают её сами: после отмены или возврата острова она не нужна.
-    let close: () -> Void = { [weak self] in self?.closeCard() }
-    let hosting = NSHostingView(rootView: ProgressCardView(model: card, close: close))
-    hosting.sizingOptions = []
-    self.hosting = hosting
-    // Системное стекло Liquid Glass, как у меню и панелей macOS: прозрачность и цвет
-    // подстраиваются под то, что лежит под карточкой, и под оформление системы.
-    let glass = NSGlassEffectView()
-    glass.cornerRadius = ProgressCardView.cornerRadius
-    glass.contentView = hosting
-    panel.contentView = glass
-    return panel
+  static func detach(_ card: ProgressCardModel) {
+    if ApplicationMode.isFinderWorker {
+      RemoteProgressLink.shared.detach(card)
+    } else {
+      PangoZipStatusItem.shared.detach(card)
+    }
   }
 }
 
@@ -243,6 +124,23 @@ enum RingImage {
       percent = card.fraction.map { Int(($0 * 100).rounded(.down)) }
       isPaused = card.isPaused
       isDone = card.state == .done
+    }
+  }
+
+  /// Значок PangoZip и рядом кольцо хода — одной картинкой, чтобы ход был в том же значке,
+  /// что и программа. Панголин рисуется цветом текста строки меню, кольцо — золотом.
+  @MainActor
+  static func withPangolin(_ key: Key) -> NSImage {
+    nonisolated(unsafe) let glyph = PangolinGlyph.image
+    let ring = make(key)
+    nonisolated(unsafe) let ringImage = ring
+    return NSImage(size: NSSize(width: 39, height: 18), flipped: false) { rect in
+      let glyphRect = NSRect(x: rect.minX, y: rect.minY, width: 18, height: 18)
+      glyph.draw(in: glyphRect)
+      NSColor.labelColor.set()
+      glyphRect.fill(using: .sourceAtop)
+      ringImage.draw(in: NSRect(x: rect.maxX - 17, y: rect.minY + 1, width: 16, height: 16))
+      return true
     }
   }
 
@@ -321,6 +219,8 @@ struct ProgressCardView: View {
   static let cornerRadius: CGFloat = 20
   @ObservedObject var model: ProgressCardModel
   let close: () -> Void
+  /// Окно со всеми подробностями хода; то же открывает двойной щелчок по значку.
+  let details: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -332,6 +232,14 @@ struct ProgressCardView: View {
             .font(.subheadline).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
         }
         Spacer(minLength: 4)
+        Button {
+          close()
+          details()
+        } label: {
+          Image(systemName: "info.circle")
+        }
+        .buttonStyle(.borderless).controlSize(.large)
+        .help(L10n.tr("Подробнее…")).accessibilityLabel(L10n.tr("Подробнее…"))
         if model.state == .working {
           Button {
             close()
