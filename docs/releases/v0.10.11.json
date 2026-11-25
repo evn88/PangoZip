@@ -1,0 +1,30 @@
+{
+  "en": [
+    "Refreshed the app icon: the pangolin now has a clear tail tip tucked under its nose instead of an endless loop.",
+    "New PangoZip button in the Finder toolbar. It works everywhere, including iCloud Drive and the iCloud-synced Desktop and Documents folders, where macOS doesn't let apps add items to the right-click menu.",
+    "You can now swipe the progress island away, with the mouse or two fingers. The operation moves to the menu bar and shows the percentage and the time left.",
+    "Click the menu bar icon to pause, resume or cancel the operation, or to bring the island back.",
+    "Archiving and extraction can be paused from the island too.",
+    "The Compression column now works for solid 7z archives too. Files packed together show an approximate ratio marked with «≈».",
+    "The PangoZip toolbar button in Finder now explains why a command can't run, for example when you choose Extract with no archive selected, instead of just playing a sound.",
+    "“Add to …” menu items now show the real name of the new archive when a file with that name already exists.",
+    "The PangoZip menu in Finder now appears when the app is installed in the Applications folder inside your home folder.",
+    "The PangoZip button in the Finder toolbar has a new icon that matches the redesigned logo.",
+    "In the island settings you can now choose whether the island stays on screen during an operation or moves to the menu bar after a few seconds.",
+    "The menu bar icon now shows a gold progress ring, like the island, next to the percentage."
+  ],
+  "ru": [
+    "Обновлена иконка приложения: у панголина теперь виден кончик хвоста под носом, тело больше не замкнуто в кольцо.",
+    "В панели инструментов Finder появилась кнопка PangoZip. Она работает везде, в том числе в iCloud Drive и в синхронизируемых с iCloud «Рабочем столе» и «Документах», где macOS не даёт программам добавлять пункты в меню по правому клику.",
+    "Остров с прогрессом теперь можно смахнуть мышью или двумя пальцами: операция переходит в строку меню и показывает процент и оставшееся время.",
+    "По нажатию на значок в строке меню операцию можно поставить на паузу, возобновить, отменить или вернуть остров.",
+    "Сжатие и распаковку можно ставить на паузу и прямо с острова.",
+    "Колонка «Сжатие» теперь заполняется и для сплошных 7z-архивов. Для файлов, сжатых общим блоком, показывается примерная степень сжатия со знаком «≈».",
+    "Кнопка PangoZip в панели инструментов Finder теперь объясняет, почему команда не выполнилась (например, выбрано «Распаковать», а архив не выделен), а не просто издаёт звук.",
+    "Пункты «Добавить в …» показывают настоящее имя нового архива, если файл с таким именем уже существует.",
+    "Меню PangoZip в Finder теперь появляется и тогда, когда приложение установлено в папку «Программы» внутри вашей домашней папки.",
+    "У кнопки PangoZip в панели инструментов Finder новая иконка в стиле обновлённого логотипа.",
+    "В настройках острова можно выбрать, оставаться ли ему на экране во время операции или через несколько секунд уходить в строку меню.",
+    "Значок в строке меню теперь показывает золотое кольцо прогресса, как на острове, а рядом процент."
+  ]
+}
