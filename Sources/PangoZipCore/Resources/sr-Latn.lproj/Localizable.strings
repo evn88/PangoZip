@@ -440,3 +440,7 @@
 "Выделите файлы или папки в окне Finder и повторите команду." = "Izaberite datoteke ili fascikle u prozoru Findera i pokušajte ponovo.";
 "В выделении нет архивов" = "Među izabranim stavkama nema arhiva";
 "Команда «%1$@» работает только с архивами. Выделите архив и повторите." = "Komanda „%1$@“ radi samo sa arhivama. Izaberite arhivu i pokušajte ponovo.";
+"Ход операции" = "Tok operacije";
+"Оставлять остров на экране" = "Zadrži ostrvo na ekranu";
+"Через несколько секунд убирать в строку меню" = "Posle nekoliko sekundi premesti na traku menija";
+"Остров с идущей операцией можно в любой момент смахнуть вверх в строку меню. Нажмите значок в строке меню, чтобы поставить операцию на паузу, отменить её или вернуть остров." = "Ostrvo sa operacijom u toku možete u svakom trenutku prevući nagore na traku menija. Kliknite na ikonu na traci menija da pauzirate ili otkažete operaciju ili vratite ostrvo.";
