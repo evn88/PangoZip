@@ -33,12 +33,11 @@ final class ProgressCardModel: ObservableObject {
     if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
   }
 
-  /// Короткая подпись для строки меню: процент и оставшееся время.
+  /// Короткая подпись для строки меню: только процент, чтобы значок не уходил за край
+  /// тесной строки меню. Оставшееся время — в карточке и в окне подробностей.
   var menuBarTitle: String {
     guard state == .working, let fraction else { return "" }
-    var parts = ["\(Int((fraction * 100).rounded(.down)))%"]
-    if !isPaused, let remaining { parts.append(ShortDuration.string(remaining)) }
-    return parts.joined(separator: " · ")
+    return "\(Int((fraction * 100).rounded(.down)))%"
   }
 
   /// Строка под полосой: сколько осталось, оценка ещё не готова или операция стоит.
@@ -133,12 +132,12 @@ enum RingImage {
   static func withPangolin(_ key: Key) -> NSImage {
     let glyph = PangolinGlyph.image
     let ringImage = make(key)
-    return NSImage(size: NSSize(width: 39, height: 18), flipped: false) { rect in
-      let glyphRect = NSRect(x: rect.minX, y: rect.minY, width: 18, height: 18)
+    return NSImage(size: NSSize(width: 34, height: 18), flipped: false) { rect in
+      let glyphRect = NSRect(x: rect.minX, y: rect.minY + 1, width: 16, height: 16)
       glyph.draw(in: glyphRect)
       NSColor.labelColor.set()
       glyphRect.fill(using: .sourceAtop)
-      ringImage.draw(in: NSRect(x: rect.maxX - 17, y: rect.minY + 1, width: 16, height: 16))
+      ringImage.draw(in: NSRect(x: rect.maxX - 15, y: rect.minY + 1.5, width: 15, height: 15))
       return true
     }
   }
