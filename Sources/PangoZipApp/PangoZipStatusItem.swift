@@ -312,7 +312,7 @@ final class MenuAction: NSObject {
     static func startIfRequested() {
       let arguments = ProcessInfo.processInfo.arguments
       guard arguments.contains("--menubar-demo") else { return }
-      card.title = "Cats.7z"
+      card.title = ApplicationMode.isFinderWorker ? "Dogs.zip" : "Cats.7z"
       card.togglePause = { card.isPaused.toggle() }
       card.cancel = { MenuBarProgress.detach(card) }
       MenuBarProgress.attach(card)
