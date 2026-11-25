@@ -243,6 +243,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private let statusItem = ProgressStatusItem()
   private var minimized = false
   private var remaining: TimeInterval?
+  private var lastProgress: ArchiveProgress?
   /// Отложенный уход острова в строку меню, если так выбрано в настройках.
   private var autoMinimizeTask: Task<Void, Never>?
 
@@ -656,6 +657,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     model.fraction = nil
     resultURL = nil
     remaining = nil
+    lastProgress = nil
     service.pause.resume()
     model.isPaused = false
     work = .working
@@ -750,6 +752,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     }
     model.update(\.fraction, to: progress.fraction)
     remaining = progress.remainingSeconds
+    lastProgress = progress
     updateStage()
   }
 
@@ -814,6 +817,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     card.update(\.stage, to: workSubtitle)
     card.update(\.fraction, to: model.fraction)
     card.update(\.remaining, to: remaining)
+    card.update(\.progress, to: lastProgress)
     card.update(\.isPaused, to: model.isPaused)
     card.update(\.state, to: work == .done ? .done : .working)
     card.update(\.canReveal, to: resultURL != nil)

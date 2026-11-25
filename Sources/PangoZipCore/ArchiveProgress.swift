@@ -2,8 +2,9 @@ import Foundation
 
 public typealias ArchiveProgressHandler = @Sendable (ArchiveProgress) async -> Void
 
-public struct ArchiveProgress: Sendable, Equatable {
-  public enum Phase: Sendable, Equatable {
+/// Codable: ход операции фонового процесса передаётся в значок основного приложения.
+public struct ArchiveProgress: Sendable, Equatable, Codable {
+  public enum Phase: String, Sendable, Equatable, Codable {
     case preparing, downloading, compressing, verifying, extracting, finalizing
   }
 

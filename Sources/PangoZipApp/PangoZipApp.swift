@@ -10,8 +10,6 @@ struct PangoZipApp: App {
   @StateObject private var worker = FinderOperationModel()
   @StateObject private var model = ArchiveBrowserModel()
   @State private var updater = ApplicationUpdater()
-  @AppStorage(DropIslandSettings.enabledKey) private var isIslandEnabled = true
-  @AppStorage(WatchedFolderStore.key) private var watchedRules = Data()
   @NSApplicationDelegateAdaptor(AppLifecycleDelegate.self) private var appDelegate
 
   /// Переносит прежние настройки до создания интерфейса и запуска операций Finder.
@@ -42,17 +40,23 @@ struct PangoZipApp: App {
           .onAppear {
             appDelegate.prepareTermination = prepareForClosing
             appDelegate.reopenHiddenWindow = { model.reopenHiddenWindow() }
-            updater.start(
-              isBusy: {
-                !model.canAct || !model.queuedOperations.isEmpty
-                  || DropIslandController.shared.isBusy || WatchedFolderMonitor.shared.isBusy
-              },
-              prepareForInstallation: {
-                model.isUpdatePending = true
-                let ready = await prepareForClosing()
-                if !ready { model.isUpdatePending = false }
-                return ready
-              })
+            appDelegate.openMainWindow = {
+              if !model.reopenHiddenWindow() { openWindow(id: "main") }
+            }
+            // Отладочный показ строки меню не ищет обновлений.
+            if !ApplicationMode.isMenuBarDemo {
+              updater.start(
+                isBusy: {
+                  !model.canAct || !model.queuedOperations.isEmpty
+                    || DropIslandController.shared.isBusy || WatchedFolderMonitor.shared.isBusy
+                },
+                prepareForInstallation: {
+                  model.isUpdatePending = true
+                  let ready = await prepareForClosing()
+                  if !ready { model.isUpdatePending = false }
+                  return ready
+                })
+            }
             appDelegate.services.configure(
               openArchive: { model.open($0) }, addFiles: model.receiveFinderFiles,
               finderRequest: model.receiveFinderRequest)
@@ -94,25 +98,7 @@ struct PangoZipApp: App {
       }
     }
     // Значок в строке меню показывает, что PangoZip работает в фоне ради острова.
-    // Значок — силуэт панголина, как у кнопки PangoZip в панели Finder.
-    MenuBarExtra(
-      isInserted: Binding(
-        get: {
-          (isIslandEnabled
-            || WatchedFolderMonitor.isActive(rules: WatchedFolderStore.decode(watchedRules)))
-            && !isFinderWorker
-        }, set: { _ in })
-    ) {
-      Button(L10n.tr("Открыть PangoZip")) {
-        if !model.reopenHiddenWindow() { openWindow(id: "main") }
-        NSApp.activate(ignoringOtherApps: true)
-      }
-      SettingsLink { Text(L10n.tr("Настройки…")) }
-      Divider()
-      Button(L10n.tr("Завершить PangoZip")) { NSApp.terminate(nil) }
-    } label: {
-      Image(nsImage: PangolinGlyph.sized(18)).accessibilityLabel("PangoZip")
-    }
+    // Значок PangoZip в строке меню — PangoZipStatusItem: в нём же показывается ход операций.
   }
 
   private func prepareForClosing() async -> Bool {
@@ -147,6 +133,9 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
   var prepareTermination: (() async -> Bool)?
   /// Возвращает окно, спрятанное на время фоновой операции; false — такого окна нет.
   var reopenHiddenWindow: (() -> Bool)?
+  /// Открывает главное окно из меню значка в строке меню.
+  var openMainWindow: (() -> Void)?
+  private var defaultsObserver: NSObjectProtocol?
   private var terminationPending = false
 
   /// Регистрирует Services только у основного приложения, чтобы worker не перехватывал команды.
@@ -154,15 +143,53 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     AppearanceMode.apply()
     if ApplicationMode.isFinderWorker {
       NSApp.setActivationPolicy(.accessory)
+      #if DEBUG
+        MenuBarDemo.startIfRequested()
+        if ApplicationMode.isMenuBarDemo {
+          // Окну фонового процесса в отладочном показе нечего показывать.
+          ApplicationMode.workerShowsIsland = true
+          DispatchQueue.main.async {
+            for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
+          }
+        }
+      #endif
+    } else if ApplicationMode.isMenuBarDemo {
+      // Отладочный показ: только значок, без Services, острова и слежения за папками,
+      // чтобы проверочная сборка не трогала настоящие файлы.
+      setUpStatusItem()
+      #if DEBUG
+        MenuBarDemo.startIfRequested()
+      #endif
+      DispatchQueue.main.async {
+        for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
+      }
     } else {
       NSApp.servicesProvider = services
       NSUpdateDynamicServices()
       finderSetupTask = Task { await finderIntegration.prepare() }
       DropIslandController.shared.applySettings()
       WatchedFolderMonitor.shared.reload()
+      setUpStatusItem()
       // Исходные программы для архивов запоминаются до того, как пользователь что-то изменит.
       ArchiveAssociationsModel().captureInitialSnapshotIfNeeded()
       hideWindowsAfterLoginLaunch()
+    }
+  }
+
+  /// Значок PangoZip в строке меню: виден, пока остров или слежение за папками держат
+  /// программу в фоне, и всегда, пока в нём идёт операция, своя или фонового процесса Finder.
+  private func setUpStatusItem() {
+    let statusItem = PangoZipStatusItem.shared
+    statusItem.showsWhenIdle = { DropIslandSettings.isEnabled || WatchedFolderMonitor.isActive }
+    statusItem.makeMenu = { [weak self] in
+      PangoZipStatusItem.applicationMenu { self?.openMainWindow?() }
+    }
+    statusItem.update()
+    RemoteProgressReceiver.shared.start()
+    defaultsObserver = NotificationCenter.default.addObserver(
+      forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+    ) { _ in
+      MainActor.assumeIsolated { PangoZipStatusItem.shared.update() }
     }
   }
 

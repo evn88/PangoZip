@@ -29,15 +29,15 @@ final class ProgressFormattingTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(ShortDuration.string(.infinity), ShortDuration.string(5))
   }
 
-  /// Подпись значка в строке меню: процент и время, без времени на паузе и после завершения.
+  /// Подпись значка в строке меню: только процент, время остаётся в карточке.
   @MainActor
-  func testMenuBarTitleShowsPercentAndRemainingTime() {
+  func testMenuBarTitleShowsOnlyPercent() {
     let card = ProgressCardModel()
     XCTAssertEqual(card.menuBarTitle, "")
     card.fraction = 0.426
     XCTAssertEqual(card.menuBarTitle, "42%")
     card.remaining = 90
-    XCTAssertEqual(card.menuBarTitle, "42% · " + ShortDuration.string(90))
+    XCTAssertEqual(card.menuBarTitle, "42%")
     card.isPaused = true
     XCTAssertEqual(card.menuBarTitle, "42%")
     XCTAssertEqual(card.timeLine, L10n.tr("На паузе"))
