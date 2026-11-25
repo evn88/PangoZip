@@ -33,15 +33,11 @@ final class FinderOperationModel: ObservableObject {
   private var feedbackID: UUID?
   private var feedbackKind: OperationKind = .extract
   private var feedbackSubject = ""
-  private let island = OperationIsland()
-  private var islandTitle = ""
   private var resultURL: URL?
-  private var donePause: Task<Void, Never>?
-  /// Значок в строке меню, куда смахнули остров.
-  private let statusItem = ProgressStatusItem()
-  private var minimized = false
-  /// Отложенный уход острова в строку меню, если так выбрано в настройках; запускается один раз.
-  private var autoMinimizeTask: Task<Void, Never>?
+  private var islandTitle = ""
+  /// Остров и значок в строке меню — тот же показ хода, что у операций из окна программы.
+  private lazy var presenter = OperationPresenter(
+    cancel: { [weak self] in self?.cancel() }, togglePause: { [weak self] in self?.togglePause() })
 
   private var progressHandler: ArchiveProgressHandler {
     { [weak self] value in await self?.receiveProgress(value) }
@@ -60,59 +56,15 @@ final class FinderOperationModel: ObservableObject {
     ApplicationMode.workerShowsIsland = true
     for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
     updateIsland()
-    if autoMinimizeTask == nil, DropIslandSettings.progressMode == .menuBar {
-      autoMinimizeTask = Task { [weak self] in
-        try? await Task.sleep(for: DropIslandProgressMode.menuBarDelay)
-        guard !Task.isCancelled else { return }
-        self?.minimize()
-      }
-    }
+    presenter.show(title: title)
   }
 
-  /// Строка под именем: этап и процент, пока доля выполнения известна.
   private func updateIsland() {
-    var stage: String
-    switch feedbackKind {
-    case _ where service.pause.isPaused: stage = L10n.tr("На паузе")
-    case .create: stage = L10n.tr("Сжимаем…")
-    case .verify: stage = ProgressFormatting.phaseTitle(.verifying)
-    default: stage = L10n.tr("Распаковываем…")
-    }
-    var fraction: Double?
-    if let progress, progress.phase != .preparing, let value = progress.fraction {
-      fraction = value
-      stage += " · \(Int((value * 100).rounded(.down)))%"
-    }
-    island.model.update(\.isPaused, to: service.pause.isPaused)
-    guard minimized else {
-      island.show(.working, title: islandTitle, subtitle: stage, fraction: fraction)
-      return
-    }
-    let card = statusItem.card
-    card.update(\.state, to: .working)
-    card.update(\.title, to: islandTitle)
-    card.update(\.stage, to: stage)
-    card.update(\.fraction, to: fraction)
-    card.update(\.remaining, to: progress?.remainingSeconds)
-    card.update(\.isPaused, to: service.pause.isPaused)
-  }
-
-  /// Смахнутый остров уходит в строку меню; ход операции продолжает показывать значок.
-  private func minimize() {
-    guard ApplicationMode.workerShowsIsland, !minimized else { return }
-    minimized = true
-    island.hide()
-    statusItem.show()
-    updateIsland()
-  }
-
-  /// Возвращает операцию из строки меню на остров.
-  private func restoreIsland() {
-    autoMinimizeTask?.cancel()
-    guard minimized else { return }
-    minimized = false
-    statusItem.hide()
-    if ApplicationMode.workerShowsIsland { updateIsland() }
+    let isPaused = service.pause.isPaused
+    let stage = OperationPresenter.stage(kind: feedbackKind, progress: progress, isPaused: isPaused)
+    presenter.update(
+      stage: stage.title, fraction: stage.fraction, remaining: progress?.remainingSeconds,
+      isPaused: isPaused)
   }
 
   private func togglePause() {
@@ -122,41 +74,16 @@ final class FinderOperationModel: ObservableObject {
 
   /// Возвращает обычное окно для пароля и ошибок: на острове для них нет места.
   private func showWindow() {
-    autoMinimizeTask?.cancel()
     ApplicationMode.workerShowsIsland = false
-    minimized = false
-    statusItem.hide()
-    island.hide()
+    presenter.hide()
     NSApp.windows.first { !($0 is NSPanel) }?.makeKeyAndOrderFront(nil)
   }
 
-  /// Недолго показывает итог на острове; кнопка Finder или выход завершают показ раньше.
+  /// Недолго показывает итог на острове или в строке меню.
   private func showResultOnIsland() async {
-    autoMinimizeTask?.cancel()
     guard ApplicationMode.workerShowsIsland else { return }
-    let pause = Task { _ = try? await Task.sleep(for: .seconds(4)) }
-    donePause = pause
     let url = resultURL
-    let reveal = {
-      if let url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-      pause.cancel()
-    }
-    let title = url?.lastPathComponent ?? islandTitle
-    if minimized {
-      let card = statusItem.card
-      card.canReveal = url != nil
-      card.reveal = reveal
-      card.title = title
-      card.state = .done
-    } else {
-      island.model.canReveal = url != nil
-      island.model.reveal = reveal
-      island.show(.done, title: title, subtitle: L10n.tr("Готово"), fraction: 1)
-    }
-    await pause.value
-    donePause = nil
-    island.hide()
-    statusItem.hide()
+    await presenter.showResult(title: url?.lastPathComponent ?? islandTitle, url: url)
   }
 
   /// Отсчёт для уведомления идёт с первого прогресса, а не с ожидания панелей и пароля.
@@ -183,13 +110,6 @@ final class FinderOperationModel: ObservableObject {
     default: feedbackKind = .extract
     }
     feedbackSubject = request.urls.first?.lastPathComponent ?? ""
-    island.model.cancel = { [weak self] in self?.cancel() }
-    island.model.minimize = { [weak self] in self?.minimize() }
-    island.model.togglePause = { [weak self] in self?.togglePause() }
-    let card = statusItem.card
-    card.cancel = island.model.cancel
-    card.togglePause = island.model.togglePause
-    card.restore = { [weak self] in self?.restoreIsland() }
     task = Task {
       do {
         try await execute(request)
@@ -237,7 +157,7 @@ final class FinderOperationModel: ObservableObject {
   /// Освобождает панель и ожидание пароля, чтобы отменённая задача могла завершиться.
   private func cancelTask() {
     task?.cancel()
-    donePause?.cancel()
+    presenter.hide()
     panel?.cancel(nil)
     creation.cancel()
     let reply = passwordReply

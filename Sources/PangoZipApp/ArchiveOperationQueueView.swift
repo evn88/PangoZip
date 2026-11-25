@@ -52,6 +52,14 @@ struct ArchiveOperationQueueView: View {
         Text(model.operationMessage ?? L10n.tr("Выполняем операцию…"))
           .font(.callout.weight(.semibold)).lineLimit(2).truncationMode(.middle)
         Spacer(minLength: 4)
+        // Та же пауза, что на острове и в строке меню, куда уходит ход при закрытом окне.
+        if model.canPauseOperation {
+          Button(
+            model.isOperationPaused ? L10n.tr("Возобновить") : L10n.tr("Пауза"),
+            action: model.toggleOperationPause
+          )
+          .controlSize(.small)
+        }
         Button(L10n.tr("Отмена"), action: model.cancelCurrentOperation)
           .controlSize(.small)
       }
