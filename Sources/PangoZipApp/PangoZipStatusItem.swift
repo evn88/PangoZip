@@ -355,6 +355,12 @@ final class MenuAction: NSObject {
           try? await Task.sleep(for: .seconds(1))
         }
       }
+      // Снимок значка в файл: на тесной строке меню он может уйти за «<<», а проверить вид
+      // всё равно нужно. Снимает тот процесс, у которого значок свой.
+      Task { @MainActor in
+        try? await Task.sleep(for: .seconds(3))
+        PangoZipStatusItem.shared.snapshotForDemo()
+      }
       guard !ApplicationMode.isFinderWorker else { return }
       Task { @MainActor in
         try? await Task.sleep(for: .seconds(1.5))
@@ -369,6 +375,22 @@ final class MenuAction: NSObject {
 
   extension PangoZipStatusItem {
     func openCardForDemo() { openCard() }
+
+    /// Пишет вид кнопки значка в /tmp/pangozip-menubar-<pid>.png, а в журнал — её размер
+    /// и видна ли она на экране.
+    func snapshotForDemo() {
+      guard let button = item?.button, !cards.isEmpty else { return }
+      let pid = ProcessInfo.processInfo.processIdentifier
+      let visible = button.window?.occlusionState.contains(.visible) == true
+      let frame = button.window?.frame ?? .zero
+      let size = "\(Int(button.bounds.width))x\(Int(button.bounds.height))"
+      let place = "x \(Int(frame.minX)), y \(Int(frame.minY)), visible \(visible)"
+      logger.notice("Demo snapshot: button \(size, privacy: .public), \(place, privacy: .public)")
+      guard let rep = button.bitmapImageRepForCachingDisplay(in: button.bounds) else { return }
+      button.cacheDisplay(in: button.bounds, to: rep)
+      let url = URL(fileURLWithPath: "/tmp/pangozip-menubar-\(pid).png")
+      try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
     func showDetailsForDemo() {
       if let current { details.show(current) }
     }
