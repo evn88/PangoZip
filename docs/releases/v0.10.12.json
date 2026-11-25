@@ -1,0 +1,16 @@
+{
+  "en": [
+    "The progress card in the menu bar now uses the system Liquid Glass look, and its progress bar no longer jumps on every percent.",
+    "The menu bar icon no longer changes width while an operation runs, so the icons next to it stay in place.",
+    "The PangoZip icon in the menu bar and on the progress card is now the pangolin from the Finder toolbar button.",
+    "Closing or minimizing the PangoZip window during a long operation no longer stops it: progress moves to the island and the menu bar, just like for operations started from Finder.",
+    "The operation queue in the window gained a Pause button."
+  ],
+  "ru": [
+    "Карточка хода в строке меню выполнена в системном стиле Liquid Glass, а её полоса больше не дёргается на каждом проценте.",
+    "Значок в строке меню больше не меняет ширину во время операции, и соседние значки не прыгают.",
+    "Значок PangoZip в строке меню и в карточке хода теперь панголин, как у кнопки в панели Finder.",
+    "Если закрыть или свернуть окно PangoZip во время долгой операции, она не прерывается: ход переходит на остров и в строку меню, как у операций из Finder.",
+    "В очереди операций окна появилась кнопка «Пауза»."
+  ]
+}
