@@ -282,10 +282,11 @@ extension PangoZipStatusItem {
   /// Меню основного приложения: то, что раньше показывал значок MenuBarExtra.
   static func applicationMenu(openMainWindow: @escaping @MainActor () -> Void) -> NSMenu {
     let menu = NSMenu()
-    menu.addItem(MenuAction.item(L10n.tr("Открыть PangoZip")) {
-      openMainWindow()
-      NSApp.activate()
-    })
+    menu.addItem(
+      MenuAction.item(L10n.tr("Открыть PangoZip")) {
+        openMainWindow()
+        NSApp.activate()
+      })
     menu.addItem(MenuAction.item(L10n.tr("Настройки…"), action: openSettings))
     menu.addItem(.separator())
     menu.addItem(MenuAction.item(L10n.tr("Завершить PangoZip")) { NSApp.terminate(nil) })
