@@ -1,0 +1,16 @@
+{
+  "en": [
+    "Fixed the menu bar card sometimes showing up as a small empty circle, for example while files were still downloading from iCloud.",
+    "Operation progress now appears right in the PangoZip menu bar icon, next to the pangolin, instead of as a separate icon. Right-click it for the usual PangoZip menu.",
+    "When several operations run at once, the menu bar card shows all of them.",
+    "Double-click the menu bar icon, or click ⓘ on the card, to open a window with all the details: processed size, archive size, compression, files, speed, elapsed and remaining time, and the current file.",
+    "If the PangoZip icon is turned off in the menu bar settings, progress stays on the island instead of disappearing."
+  ],
+  "ru": [
+    "Исправлено: карточка в строке меню иногда показывалась маленьким пустым кружком, например пока файлы загружались из iCloud.",
+    "Ход операции теперь показывается прямо в значке PangoZip в строке меню, рядом с панголином, а не отдельным значком. По правому щелчку открывается привычное меню PangoZip.",
+    "Если идут несколько операций сразу, карточка в строке меню показывает их все.",
+    "Двойной щелчок по значку в строке меню или кнопка ⓘ в карточке открывают окно со всеми подробностями: сколько обработано, размер архива, степень сжатия, файлы, скорость, прошедшее и оставшееся время, текущий файл.",
+    "Если значок PangoZip выключен в настройках строки меню, ход операции остаётся на острове и не пропадает."
+  ]
+}
