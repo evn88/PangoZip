@@ -1040,10 +1040,13 @@ final class ArchiveBrowserModel: ObservableObject {
       Task { [weak self] in self?.closeHiddenWindowIfIdle() }
       return
     }
+    // Итог показывается сразу, до запуска следующей операции из очереди: та отменит показ,
+    // и его таймер не спрячет её ход.
     let url = lastResultURL
+    let shown = presenter.presentResult(
+      title: url?.lastPathComponent ?? finished.title, url: url)
     Task { [weak self] in
-      await self?.presenter.showResult(
-        title: url?.lastPathComponent ?? finished.title, url: url)
+      await shown?.value
       self?.closeHiddenWindowIfIdle()
     }
   }

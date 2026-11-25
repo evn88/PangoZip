@@ -72,9 +72,16 @@ final class OperationPresenter {
 
   /// Недолго показывает итог там же, где шёл ход; кнопка Finder завершает показ раньше.
   func showResult(title: String, url: URL?) async {
+    await presentResult(title: title, url: url)?.value
+  }
+
+  /// Показывает итог сразу, без ожидания: следующая операция из очереди, начатая после
+  /// этого вызова, отменит показ и не будет скрыта его таймером. Возвращает конец показа.
+  @discardableResult
+  func presentResult(title: String, url: URL?) -> Task<Void, Never>? {
     autoMinimizeTask?.cancel()
     autoMinimizeTask = nil
-    guard isShown else { return }
+    guard isShown else { return nil }
     let pause = Task { _ = try? await Task.sleep(for: .seconds(4)) }
     donePause = pause
     let reveal = {
@@ -92,10 +99,11 @@ final class OperationPresenter {
       island.model.reveal = reveal
       island.show(.done, title: title, subtitle: L10n.tr("Готово"), fraction: 1)
     }
-    await pause.value
-    if donePause == pause {
-      donePause = nil
-      hide()
+    return Task { [weak self] in
+      await pause.value
+      guard let self, self.donePause == pause else { return }
+      self.donePause = nil
+      self.hide()
     }
   }
 
