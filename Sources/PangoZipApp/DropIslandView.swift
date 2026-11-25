@@ -285,6 +285,8 @@ struct DropIslandSettingsView: View {
   @AppStorage(DropIslandSettings.enabledKey) private var isEnabled = true
   @AppStorage(DropIslandSettings.placementKey) private var placement = DropIslandPlacement.top
     .rawValue
+  @AppStorage(DropIslandSettings.progressModeKey) private var progressMode =
+    DropIslandProgressMode.keep.rawValue
   @AppStorage(DropIslandSettings.usesDefaultFolderKey) private var usesDefaultFolder = false
   @AppStorage(DropIslandSettings.defaultFolderKey) private var defaultFolder = ""
   @State private var launchesAtLogin = SMAppService.mainApp.status == .enabled
@@ -301,6 +303,15 @@ struct DropIslandSettingsView: View {
           ForEach(DropIslandPlacement.allCases) { item in Text(item.title).tag(item.rawValue) }
         }
         .pickerStyle(.segmented).disabled(!isEnabled)
+        Picker(L10n.tr("Ход операции"), selection: $progressMode) {
+          ForEach(DropIslandProgressMode.allCases) { item in Text(item.title).tag(item.rawValue) }
+        }
+        Text(
+          L10n.tr(
+            "Остров с идущей операцией можно в любой момент смахнуть вверх в строку меню. Нажмите значок в строке меню, чтобы поставить операцию на паузу, отменить её или вернуть остров."
+          )
+        )
+        .font(.caption).foregroundStyle(.secondary)
         Toggle(L10n.tr("Запускать PangoZip при входе в систему"), isOn: $launchesAtLogin)
           .onChange(of: launchesAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
         if let loginError {

@@ -440,3 +440,7 @@
 "Выделите файлы или папки в окне Finder и повторите команду." = "Zaznacz pliki lub foldery w oknie Findera i spróbuj ponownie.";
 "В выделении нет архивов" = "Zaznaczenie nie zawiera archiwów";
 "Команда «%1$@» работает только с архивами. Выделите архив и повторите." = "Polecenie „%1$@” działa tylko z archiwami. Zaznacz archiwum i spróbuj ponownie.";
+"Ход операции" = "Postęp operacji";
+"Оставлять остров на экране" = "Pozostaw wyspę na ekranie";
+"Через несколько секунд убирать в строку меню" = "Po kilku sekundach przenieś na pasek menu";
+"Остров с идущей операцией можно в любой момент смахнуть вверх в строку меню. Нажмите значок в строке меню, чтобы поставить операцию на паузу, отменить её или вернуть остров." = "Podczas operacji możesz w każdej chwili przesunąć wyspę w górę na pasek menu. Kliknij ikonę na pasku menu, aby wstrzymać lub anulować operację albo przywrócić wyspę.";

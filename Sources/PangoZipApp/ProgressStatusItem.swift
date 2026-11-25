@@ -197,8 +197,9 @@ final class ProgressStatusItem: NSObject {
   }
 }
 
-/// Кольцо хода для строки меню. Шаблонное изображение: система сама подбирает цвет
-/// под светлую и тёмную строку меню, а прозрачность дорожки сохраняется.
+/// Кольцо хода для строки меню, как на острове: золотая дуга на приглушённой дорожке.
+/// Дорожка и пауза рисуются цветом текста строки меню, поэтому кольцо видно и на светлой,
+/// и на тёмной строке; картинка рисуется заново при смене оформления.
 enum RingImage {
   struct Key: Equatable {
     var percent: Int?
@@ -218,7 +219,7 @@ enum RingImage {
       let center = NSPoint(x: ring.midX, y: ring.midY)
       let radius = ring.width / 2
       if key.isDone {
-        NSColor.black.setFill()
+        Brand.goldNS.setFill()
         NSBezierPath(ovalIn: ring.insetBy(dx: -0.5, dy: -0.5)).fill()
         let check = NSBezierPath()
         check.move(to: NSPoint(x: rect.minX + 4.5, y: rect.midY))
@@ -227,13 +228,13 @@ enum RingImage {
         check.lineWidth = 1.8
         check.lineCapStyle = .round
         check.lineJoinStyle = .round
-        NSGraphicsContext.current?.compositingOperation = .destinationOut
+        Brand.onGoldNS.setStroke()
         check.stroke()
         return true
       }
       let track = NSBezierPath(ovalIn: ring)
-      track.lineWidth = 2
-      NSColor.black.withAlphaComponent(0.3).setStroke()
+      track.lineWidth = 2.2
+      NSColor.labelColor.withAlphaComponent(0.28).setStroke()
       track.stroke()
       // Без известной доли видна четверть кольца: операция идёт, но сколько осталось, неясно.
       let fraction = key.percent.map { max(0.03, Double($0) / 100) } ?? 0.25
@@ -241,12 +242,12 @@ enum RingImage {
       arc.appendArc(
         withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * fraction,
         clockwise: true)
-      arc.lineWidth = 2
+      arc.lineWidth = 2.2
       arc.lineCapStyle = .round
-      NSColor.black.setStroke()
+      Brand.goldNS.setStroke()
       arc.stroke()
       if key.isPaused {
-        NSColor.black.setFill()
+        NSColor.labelColor.setFill()
         for offset in [-1.75, 1.75] {
           let bar = NSRect(
             x: center.x + offset - 0.75, y: center.y - 2.5, width: 1.5, height: 5)
@@ -255,7 +256,6 @@ enum RingImage {
       }
       return true
     }
-    image.isTemplate = true
     return image
   }
 }

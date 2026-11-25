@@ -440,3 +440,7 @@
 "Выделите файлы или папки в окне Finder и повторите команду." = "Selecione arquivos ou pastas na janela do Finder e tente novamente.";
 "В выделении нет архивов" = "A seleção não contém arquivos compactados";
 "Команда «%1$@» работает только с архивами. Выделите архив и повторите." = "“%1$@” funciona apenas com arquivos compactados. Selecione um e tente novamente.";
+"Ход операции" = "Progresso da operação";
+"Оставлять остров на экране" = "Manter a ilha na tela";
+"Через несколько секунд убирать в строку меню" = "Mover para a barra de menus após alguns segundos";
+"Остров с идущей операцией можно в любой момент смахнуть вверх в строку меню. Нажмите значок в строке меню, чтобы поставить операцию на паузу, отменить её или вернуть остров." = "Durante uma operação, você pode deslizar a ilha para cima até a barra de menus a qualquer momento. Clique no ícone da barra de menus para pausar ou cancelar a operação, ou para trazer a ilha de volta.";

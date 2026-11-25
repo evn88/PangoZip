@@ -40,6 +40,8 @@ final class FinderOperationModel: ObservableObject {
   /// Значок в строке меню, куда смахнули остров.
   private let statusItem = ProgressStatusItem()
   private var minimized = false
+  /// Отложенный уход острова в строку меню, если так выбрано в настройках; запускается один раз.
+  private var autoMinimizeTask: Task<Void, Never>?
 
   private var progressHandler: ArchiveProgressHandler {
     { [weak self] value in await self?.receiveProgress(value) }
@@ -58,6 +60,13 @@ final class FinderOperationModel: ObservableObject {
     ApplicationMode.workerShowsIsland = true
     for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
     updateIsland()
+    if autoMinimizeTask == nil, DropIslandSettings.progressMode == .menuBar {
+      autoMinimizeTask = Task { [weak self] in
+        try? await Task.sleep(for: DropIslandProgressMode.menuBarDelay)
+        guard !Task.isCancelled else { return }
+        self?.minimize()
+      }
+    }
   }
 
   /// Строка под именем: этап и процент, пока доля выполнения известна.
@@ -99,6 +108,7 @@ final class FinderOperationModel: ObservableObject {
 
   /// Возвращает операцию из строки меню на остров.
   private func restoreIsland() {
+    autoMinimizeTask?.cancel()
     guard minimized else { return }
     minimized = false
     statusItem.hide()
@@ -112,6 +122,7 @@ final class FinderOperationModel: ObservableObject {
 
   /// Возвращает обычное окно для пароля и ошибок: на острове для них нет места.
   private func showWindow() {
+    autoMinimizeTask?.cancel()
     ApplicationMode.workerShowsIsland = false
     minimized = false
     statusItem.hide()
@@ -121,6 +132,7 @@ final class FinderOperationModel: ObservableObject {
 
   /// Недолго показывает итог на острове; кнопка Finder или выход завершают показ раньше.
   private func showResultOnIsland() async {
+    autoMinimizeTask?.cancel()
     guard ApplicationMode.workerShowsIsland else { return }
     let pause = Task { _ = try? await Task.sleep(for: .seconds(4)) }
     donePause = pause

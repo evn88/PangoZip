@@ -25,15 +25,40 @@ enum DropIslandPlacement: String, CaseIterable, Identifiable {
   static let pillSize = CGSize(width: 370, height: 64)
 }
 
+/// Что делает остров с идущей операцией: остаётся на экране или сам уходит в строку меню.
+enum DropIslandProgressMode: String, CaseIterable, Identifiable {
+  case keep, menuBar
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .keep: L10n.tr("Оставлять остров на экране")
+    case .menuBar: L10n.tr("Через несколько секунд убирать в строку меню")
+    }
+  }
+
+  /// Сколько остров виден до ухода в строку меню: хватает, чтобы увидеть, что операция началась.
+  static let menuBarDelay: Duration = .seconds(6)
+}
+
 @MainActor
 enum DropIslandSettings {
   static let enabledKey = "dropIslandEnabled"
+  static let progressModeKey = "dropIslandProgressMode"
   static let placementKey = "dropIslandPlacement"
   static let usesDefaultFolderKey = "dropIslandUsesDefaultFolder"
   static let defaultFolderKey = "dropIslandDefaultFolder"
 
   static var isEnabled: Bool {
     UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true
+  }
+
+  /// Читает настройку из домена основного приложения: у фонового процесса Finder свой домен.
+  static var progressMode: DropIslandProgressMode {
+    let defaults = UserDefaults(suiteName: "app.pangozip.desktop") ?? .standard
+    return DropIslandProgressMode(rawValue: defaults.string(forKey: progressModeKey) ?? "")
+      ?? .keep
   }
 
   static var placement: DropIslandPlacement {
@@ -218,6 +243,8 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
   private let statusItem = ProgressStatusItem()
   private var minimized = false
   private var remaining: TimeInterval?
+  /// Отложенный уход острова в строку меню, если так выбрано в настройках.
+  private var autoMinimizeTask: Task<Void, Never>?
 
   var isBusy: Bool { work == .working || !jobs.isEmpty }
 
@@ -633,6 +660,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     model.isPaused = false
     work = .working
     updateStage()
+    scheduleAutoMinimize()
     let task = Task { try await self.perform(job) }
     jobTask = task
     let feedbackID = OperationFeedback.shared.begin(
@@ -654,6 +682,7 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
       work = .failed
     }
     jobTask = nil
+    autoMinimizeTask?.cancel()
     service.pause.resume()
     model.isPaused = false
     self.feedbackID = nil
@@ -750,8 +779,20 @@ final class DropIslandController: NSObject, NSWindowDelegate, NSDraggingDestinat
     refresh()
   }
 
+  /// По настройке остров уходит в строку меню сам, если его не трогают и не бросают на него файлы.
+  private func scheduleAutoMinimize() {
+    autoMinimizeTask?.cancel()
+    guard !minimized, DropIslandSettings.progressMode == .menuBar else { return }
+    autoMinimizeTask = Task { [weak self] in
+      try? await Task.sleep(for: DropIslandProgressMode.menuBarDelay)
+      guard let self, !Task.isCancelled, self.session == .none else { return }
+      self.minimize()
+    }
+  }
+
   /// Возвращает операцию на остров.
   private func restore() {
+    autoMinimizeTask?.cancel()
     guard minimized else { return }
     minimized = false
     statusItem.hide()
