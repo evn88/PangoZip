@@ -4,21 +4,19 @@ import ServiceManagement
 import SwiftUI
 
 /// Остров перетаскивания: ярлычок, раскрытая площадка и строка с ходом операции.
-/// Во всех положениях это одно и то же тёмно-синее стекло; от места зависит только привязка.
+/// Во всех положениях это одно и то же системное стекло Liquid Glass; от места зависит только
+/// привязка.
 struct DropIslandView: View {
   @ObservedObject var model: DropIslandModel
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var glintTrigger = 0
-  @State private var drifts = false
 
   /// Поля окна вокруг острова: в них должны целиком угасать тень и золотое свечение,
   /// иначе край окна обрезает их прямоугольником.
   static let margin: CGFloat = 64
 
-  private static let tint = Color(nsColor: NSColor(srgbHex: 0x101F4A)).opacity(0.42)
   private static let ink = Color.white.opacity(0.96)
   private static let secondary = Color.white.opacity(0.76)
-  private static let skyGlow = Color(nsColor: NSColor(srgbHex: 0x78BEFF))
   var body: some View {
     ZStack(alignment: alignment) {
       Color.clear
@@ -64,11 +62,11 @@ struct DropIslandView: View {
     }
     .foregroundStyle(Self.ink)
     .frame(width: size.width, height: size.height)
-    .background { glass(shape, size: size) }
+    .background { glass(size) }
     .clipShape(shape)
+    .glassEffect(.regular, in: shape)
     .overlay {
-      shape.strokeBorder(
-        isHot ? Brand.gold : Color.white.opacity(0.34), lineWidth: isHot ? 1.5 : 1)
+      if isHot { shape.strokeBorder(Brand.gold, lineWidth: 1.5) }
     }
     .contentShape(shape)
     .gesture(swipeGesture, including: model.canSwipe ? .all : .subviews)
@@ -78,7 +76,6 @@ struct DropIslandView: View {
     .scaleEffect(isHot && !reduceMotion ? 1.035 : 1)
     .offset(x: model.swipeDirection.dx * model.swipe, y: model.swipeDirection.dy * model.swipe)
     .opacity(1 - min(0.5, max(0, model.swipe) / 160))
-    .onAppear { drifts = true }
     .onChange(of: model.phase) { old, new in
       guard !reduceMotion else { return }
       if new == .done || (new == .open && old == .label) { glintTrigger += 1 }
@@ -97,26 +94,11 @@ struct DropIslandView: View {
     return direction.dx * translation.width + direction.dy * translation.height
   }
 
-  /// Слои стекла: размытие фона, тонировка, пятна света, свечение хода операции и блики.
-  private func glass(_ shape: RoundedRectangle, size: CGSize) -> some View {
+  /// Поверх системного стекла: золотое свечение хода операции и блик.
+  private func glass(_ size: CGSize) -> some View {
     ZStack {
-      shape.fill(.ultraThinMaterial)
-      shape.fill(Self.tint)
-      ZStack {
-        Circle().fill(Self.skyGlow.opacity(0.30)).frame(width: 190, height: 190)
-          .offset(x: drifts ? -50 : -90, y: drifts ? -14 : 10)
-        Circle().fill(Brand.gold.opacity(0.26)).frame(width: 170, height: 170)
-          .offset(x: drifts ? 95 : 55, y: drifts ? 12 : -8)
-      }
-      .blur(radius: 26).blendMode(.screen)
-      .animation(
-        reduceMotion ? nil : .easeInOut(duration: 9).repeatForever(autoreverses: true),
-        value: drifts)
       progressGlow(size)
       glint(size)
-      LinearGradient(
-        colors: [.white.opacity(0.22), .white.opacity(0.03), .clear], startPoint: .top,
-        endPoint: .bottom)
     }
     .accessibilityHidden(true)
   }
