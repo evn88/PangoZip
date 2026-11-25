@@ -9,6 +9,14 @@ enum ApplicationMode {
   static var workerFinished = false
   /// Ход операции показывает остров, поэтому окно фонового процесса скрыто.
   static var workerShowsIsland = false
+  /// Отладочный показ строки меню (`--menubar-demo`): без острова, слежения и обновлений.
+  static var isMenuBarDemo: Bool {
+    #if DEBUG
+      ProcessInfo.processInfo.arguments.contains("--menubar-demo")
+    #else
+      false
+    #endif
+  }
   static var isFinderWorker: Bool {
     Bundle.main.bundleIdentifier == "app.pangozip.desktop.worker"
       || ProcessInfo.processInfo.arguments.contains("--finder-worker")

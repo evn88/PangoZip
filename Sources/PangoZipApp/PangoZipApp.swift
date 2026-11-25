@@ -43,17 +43,20 @@ struct PangoZipApp: App {
             appDelegate.openMainWindow = {
               if !model.reopenHiddenWindow() { openWindow(id: "main") }
             }
-            updater.start(
-              isBusy: {
-                !model.canAct || !model.queuedOperations.isEmpty
-                  || DropIslandController.shared.isBusy || WatchedFolderMonitor.shared.isBusy
-              },
-              prepareForInstallation: {
-                model.isUpdatePending = true
-                let ready = await prepareForClosing()
-                if !ready { model.isUpdatePending = false }
-                return ready
-              })
+            // Отладочный показ строки меню не ищет обновлений.
+            if !ApplicationMode.isMenuBarDemo {
+              updater.start(
+                isBusy: {
+                  !model.canAct || !model.queuedOperations.isEmpty
+                    || DropIslandController.shared.isBusy || WatchedFolderMonitor.shared.isBusy
+                },
+                prepareForInstallation: {
+                  model.isUpdatePending = true
+                  let ready = await prepareForClosing()
+                  if !ready { model.isUpdatePending = false }
+                  return ready
+                })
+            }
             appDelegate.services.configure(
               openArchive: { model.open($0) }, addFiles: model.receiveFinderFiles,
               finderRequest: model.receiveFinderRequest)
@@ -143,6 +146,16 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
       #if DEBUG
         MenuBarDemo.startIfRequested()
       #endif
+    } else if ApplicationMode.isMenuBarDemo {
+      // Отладочный показ: только значок, без Services, острова и слежения за папками,
+      // чтобы проверочная сборка не трогала настоящие файлы.
+      setUpStatusItem()
+      #if DEBUG
+        MenuBarDemo.startIfRequested()
+      #endif
+      DispatchQueue.main.async {
+        for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
+      }
     } else {
       NSApp.servicesProvider = services
       NSUpdateDynamicServices()
@@ -150,9 +163,6 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
       DropIslandController.shared.applySettings()
       WatchedFolderMonitor.shared.reload()
       setUpStatusItem()
-      #if DEBUG
-        MenuBarDemo.startIfRequested()
-      #endif
       // Исходные программы для архивов запоминаются до того, как пользователь что-то изменит.
       ArchiveAssociationsModel().captureInitialSnapshotIfNeeded()
       hideWindowsAfterLoginLaunch()
