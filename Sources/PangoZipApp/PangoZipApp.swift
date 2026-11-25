@@ -37,7 +37,8 @@ struct PangoZipApp: App {
             WindowLifecycleBridge(
               prepareClose: prepareForClosing,
               continueInBackground: { model.continueInBackground(closing: $0) },
-              awayChanged: { model.isWindowAway = $0 }))
+              awayChanged: { model.isWindowAway = $0 })
+          )
           .onAppear {
             appDelegate.prepareTermination = prepareForClosing
             appDelegate.reopenHiddenWindow = { model.reopenHiddenWindow() }
