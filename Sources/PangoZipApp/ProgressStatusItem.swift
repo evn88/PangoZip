@@ -309,11 +309,32 @@ struct ProgressCardView: View {
 
   /// Системная полоса хода золотого цвета. Без своей анимации: каждое обновление процента
   /// раньше заново запускало анимацию, и заливка дёргалась и «влетала» на место.
-  @ViewBuilder private var bar: some View {
-    if let fraction = model.fraction {
-      ProgressView(value: min(1, max(0, fraction)))
-        .progressViewStyle(.linear).tint(model.isPaused ? Color.secondary : Brand.gold)
-        .accessibilityLabel(model.stage)
+  private var bar: some View {
+    GoldProgressBar(fraction: model.fraction, isPaused: model.isPaused)
+      .accessibilityLabel(model.stage)
+  }
+
+}
+
+/// Золотая полоса хода. Своя, а не системная: системная в неактивной панели строки меню
+/// рисуется серой. Без неявной анимации: она заново запускалась на каждом проценте,
+/// и заливка дёргалась и «влетала» на место.
+struct GoldProgressBar: View {
+  let fraction: Double?
+  var isPaused = false
+
+  var body: some View {
+    if let fraction {
+      Capsule().fill(.quaternary)
+        .overlay(alignment: .leading) {
+          GeometryReader { proxy in
+            Capsule().fill(isPaused ? Color.secondary : Brand.gold)
+              .frame(width: max(6, proxy.size.width * min(1, max(0, fraction))))
+          }
+        }
+        .frame(height: 6)
+        .transaction { $0.animation = nil }
+        .accessibilityElement()
         .accessibilityValue("\(Int((fraction * 100).rounded(.down)))%")
     } else {
       ProgressView().progressViewStyle(.linear).tint(Brand.gold)

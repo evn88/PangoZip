@@ -61,12 +61,7 @@ struct OperationDetailsView: View {
         }
       }
       if model.state == .working {
-        if let fraction = model.fraction {
-          ProgressView(value: min(1, max(0, fraction)))
-            .tint(model.isPaused ? Color.secondary : Brand.gold)
-        } else {
-          ProgressView().progressViewStyle(.linear).tint(Brand.gold)
-        }
+        GoldProgressBar(fraction: model.fraction, isPaused: model.isPaused)
       }
       let rows = OperationDetailRows.rows(progress, now: now, isPaused: model.isPaused)
       Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
@@ -104,10 +99,6 @@ enum OperationDetailRows {
   static func rows(_ progress: ArchiveProgress?, now: Date, isPaused: Bool) -> [Row] {
     guard let progress else { return [] }
     var rows = [Row(title: L10n.tr("Этап"), value: ProgressFormatting.phaseTitle(progress.phase))]
-    if let fraction = progress.fraction, progress.phase != .preparing {
-      rows.append(
-        Row(title: L10n.tr("Готово"), value: "\(Int((fraction * 100).rounded(.down)))%"))
-    }
     if let total = progress.totalBytes, total > 0 {
       rows.append(
         Row(

@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import PangoZipCore
 import SwiftUI
 
@@ -21,7 +22,8 @@ final class PangoZipStatusItem: NSObject {
   private var cards: [ProgressCardModel] = []
   private var subscriptions: [ObjectIdentifier: AnyCancellable] = [:]
   private var panel: NSPanel?
-  private var hosting: NSHostingView<ProgressCardView>?
+  private var hosting: NSHostingView<ProgressCardStack>?
+  private let logger = Logger(subsystem: "app.pangozip.desktop", category: "menubar")
   private var monitors: [Any] = []
   private var renderedKey: RingImage.Key?
   private var renderedTitle: String?
@@ -54,6 +56,7 @@ final class PangoZipStatusItem: NSObject {
   func update() {
     let visible = !cards.isEmpty || showsWhenIdle()
     if visible, item == nil {
+      logger.notice("Status item shown, operations: \(self.cards.count, privacy: .public)")
       let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
       // Место значка, куда его перетащили с ⌘, запоминается между запусками.
       item.autosaveName = "PangoZip"
@@ -73,11 +76,12 @@ final class PangoZipStatusItem: NSObject {
   }
 
   private func cardChanged() {
-    if cards.isEmpty { settledWidth = 0 }
-    if let current {
-      hosting?.rootView = cardView(current)
-    } else {
+    if cards.isEmpty {
+      settledWidth = 0
       closeCard()
+    } else {
+      hosting?.rootView = cardStack()
+      if panel?.isVisible == true { placeCard() }
     }
     update()
   }
@@ -122,7 +126,11 @@ final class PangoZipStatusItem: NSObject {
         settledWidth = 0
         item.length = NSStatusItem.variableLength
       } else {
-        settledWidth = max(settledWidth, ceil(button.fittingSize.width))
+        // Ширина считается по картинке и тексту: fittingSize кнопки не учитывал текст,
+        // и процент со временем обрезались.
+        let needed = ceil(
+          (button.image?.size.width ?? 0) + button.attributedTitle.size().width + 12)
+        settledWidth = max(settledWidth, needed)
         if item.length != settledWidth { item.length = settledWidth }
       }
     }
@@ -167,10 +175,10 @@ final class PangoZipStatusItem: NSObject {
   /// Карточка — собственная неактивирующая панель, как и остров: нажатия на кнопки
   /// не выводят окна PangoZip поверх чужих программ.
   fileprivate func openCard() {
-    guard let card = current else { return }
-    let panel = self.panel ?? makePanel(card)
+    guard current != nil else { return }
+    let panel = self.panel ?? makePanel()
     self.panel = panel
-    hosting?.rootView = cardView(card)
+    hosting?.rootView = cardStack()
     placeCard()
     panel.orderFrontRegardless()
     // Нажатие мимо карточки закрывает её, как меню; нажатие на сам значок обработает buttonPressed.
@@ -222,16 +230,14 @@ final class PangoZipStatusItem: NSObject {
     panel?.orderOut(nil)
   }
 
-  private func cardView(_ card: ProgressCardModel) -> ProgressCardView {
-    ProgressCardView(
-      model: card, close: { [weak self] in self?.closeCard() },
-      details: { [weak self, weak card] in
-        guard let self, let card else { return }
-        self.details.show(card)
-      })
+  /// Все операции в строке меню, новая сверху: одна не прячет другую.
+  private func cardStack() -> ProgressCardStack {
+    ProgressCardStack(
+      cards: cards.reversed(), close: { [weak self] in self?.closeCard() },
+      details: { [weak self] card in self?.details.show(card) })
   }
 
-  private func makePanel(_ card: ProgressCardModel) -> NSPanel {
+  private func makePanel() -> NSPanel {
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 320, height: 150),
       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -242,7 +248,7 @@ final class PangoZipStatusItem: NSObject {
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-    let hosting = NSHostingView(rootView: cardView(card))
+    let hosting = NSHostingView(rootView: cardStack())
     hosting.sizingOptions = [.intrinsicContentSize]
     hosting.autoresizingMask = [.width, .height]
     self.hosting = hosting
@@ -253,6 +259,22 @@ final class PangoZipStatusItem: NSObject {
     glass.contentView = hosting
     panel.contentView = glass
     return panel
+  }
+}
+
+/// Карточки всех операций в строке меню под одним стеклом.
+struct ProgressCardStack: View {
+  let cards: [ProgressCardModel]
+  let close: () -> Void
+  let details: (ProgressCardModel) -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ForEach(Array(cards.enumerated()), id: \.offset) { index, card in
+        if index > 0 { Divider().padding(.horizontal, 16) }
+        ProgressCardView(model: card, close: close, details: { details(card) })
+      }
+    }
   }
 }
 

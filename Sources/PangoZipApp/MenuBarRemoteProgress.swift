@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import PangoZipCore
 
 /// Ход операций фонового процесса Finder в значке основного приложения.
@@ -73,6 +74,7 @@ final class RemoteProgressLink {
 
   private var links: [Link] = []
   private var observers: [NSObjectProtocol] = []
+  private let logger = Logger(subsystem: "app.pangozip.desktop.worker", category: "menubar")
 
   private init() {
     let distributed = DistributedNotificationCenter.default()
@@ -118,6 +120,7 @@ final class RemoteProgressLink {
     let mainRunning = !NSRunningApplication.runningApplications(
       withBundleIdentifier: RemoteProgressMessage.mainBundleID
     ).isEmpty
+    logger.notice("Progress attached, main application running: \(mainRunning, privacy: .public)")
     guard mainRunning else {
       becomeLocal(link)
       return
@@ -153,12 +156,14 @@ final class RemoteProgressLink {
 
   private func becomeLocal(_ link: Link) {
     guard link.mode != .local else { return }
+    logger.notice("Progress shown in own status item")
     link.mode = .local
     PangoZipStatusItem.shared.attach(link.card)
   }
 
   private func acknowledged(_ id: String?) {
     guard let link = links.first(where: { $0.id == id }), link.mode == .pending else { return }
+    logger.notice("Progress shown in the main application's status item")
     link.mode = .remote
   }
 

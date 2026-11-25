@@ -145,6 +145,13 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
       NSApp.setActivationPolicy(.accessory)
       #if DEBUG
         MenuBarDemo.startIfRequested()
+        if ApplicationMode.isMenuBarDemo {
+          // Окну фонового процесса в отладочном показе нечего показывать.
+          ApplicationMode.workerShowsIsland = true
+          DispatchQueue.main.async {
+            for window in NSApp.windows where !(window is NSPanel) { window.orderOut(nil) }
+          }
+        }
       #endif
     } else if ApplicationMode.isMenuBarDemo {
       // Отладочный показ: только значок, без Services, острова и слежения за папками,
