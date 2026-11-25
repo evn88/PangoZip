@@ -78,6 +78,12 @@ final class ProgressStatusItem: NSObject {
   private var subscription: AnyCancellable?
   private var monitors: [Any] = []
   private var renderedImage: RingImage.Key?
+  private var renderedTitle: String?
+  private var renderScheduled = false
+  /// Ширина значка за операцию только растёт: соседние значки строки меню не скачут,
+  /// когда «5 мин» сменяется на «4 мин» или появляется оценка времени.
+  private var settledWidth: CGFloat = 0
+  private var hosting: NSHostingView<ProgressCardView>?
 
   var isShown: Bool { item != nil }
 
@@ -89,8 +95,16 @@ final class ProgressStatusItem: NSObject {
     item.button?.imagePosition = .imageLeading
     self.item = item
     subscription = card.objectWillChange.sink { [weak self] _ in
-      // objectWillChange приходит до записи: рисуем уже новое состояние.
-      Task { @MainActor in self?.render() }
+      // objectWillChange приходит до записи, по разу на каждое поле: рисуем один раз,
+      // уже после всех изменений.
+      MainActor.assumeIsolated {
+        guard let self, !self.renderScheduled else { return }
+        self.renderScheduled = true
+        Task { @MainActor in
+          self.renderScheduled = false
+          self.render()
+        }
+      }
     }
     render()
   }
@@ -99,22 +113,34 @@ final class ProgressStatusItem: NSObject {
     closeCard()
     subscription = nil
     renderedImage = nil
+    renderedTitle = nil
+    settledWidth = 0
     if let item { NSStatusBar.system.removeStatusItem(item) }
     item = nil
   }
 
   private func render() {
-    guard let button = item?.button else { return }
+    guard let item, let button = item.button else { return }
     let key = RingImage.Key(card: card)
     if key != renderedImage {
       renderedImage = key
       button.image = RingImage.make(key)
     }
     let title = card.menuBarTitle
-    let font = NSFont.monospacedDigitSystemFont(
-      ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
-    button.attributedTitle = NSAttributedString(
-      string: title.isEmpty ? "" : " " + title, attributes: [.font: font])
+    if title != renderedTitle {
+      renderedTitle = title
+      let font = NSFont.monospacedDigitSystemFont(
+        ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
+      button.attributedTitle = NSAttributedString(
+        string: title.isEmpty ? "" : " " + title, attributes: [.font: font])
+      if card.state == .done {
+        settledWidth = 0
+        item.length = NSStatusItem.variableLength
+      } else {
+        settledWidth = max(settledWidth, ceil(button.fittingSize.width))
+        if item.length != settledWidth { item.length = settledWidth }
+      }
+    }
     if panel?.isVisible == true { placeCard() }
     button.toolTip = card.title
     button.setAccessibilityLabel(
@@ -161,7 +187,7 @@ final class ProgressStatusItem: NSObject {
   /// Ставит карточку под значком; высота следует за содержимым, например после завершения.
   private func placeCard() {
     guard let panel, let button = item?.button, let buttonWindow = button.window else { return }
-    let size = panel.contentView?.fittingSize ?? NSSize(width: 320, height: 150)
+    let size = hosting?.fittingSize ?? NSSize(width: 320, height: 150)
     let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
     let screen = buttonWindow.screen ?? NSScreen.main ?? NSScreen.screens[0]
     let visible = screen.visibleFrame
@@ -185,14 +211,21 @@ final class ProgressStatusItem: NSObject {
     panel.backgroundColor = .clear
     panel.hasShadow = true
     panel.level = .popUpMenu
+    panel.animationBehavior = .utilityWindow
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
     // Кнопки карточки закрывают её сами: после отмены или возврата острова она не нужна.
     let close: () -> Void = { [weak self] in self?.closeCard() }
     let hosting = NSHostingView(rootView: ProgressCardView(model: card, close: close))
-    hosting.sizingOptions = [.preferredContentSize]
-    panel.contentView = hosting
+    hosting.sizingOptions = []
+    self.hosting = hosting
+    // Системное стекло Liquid Glass, как у меню и панелей macOS: прозрачность и цвет
+    // подстраиваются под то, что лежит под карточкой, и под оформление системы.
+    let glass = NSGlassEffectView()
+    glass.cornerRadius = ProgressCardView.cornerRadius
+    glass.contentView = hosting
+    panel.contentView = glass
     return panel
   }
 }
@@ -260,50 +293,77 @@ enum RingImage {
   }
 }
 
-/// Карточка под строкой меню в том же тёмно-синем стекле, что и остров.
+/// Силуэт панголина — тот же значок, что у кнопки PangoZip в панели Finder.
+/// Шаблонная картинка: цвет задаёт система или SwiftUI.
+@MainActor
+enum PangolinGlyph {
+  static let image: NSImage = {
+    let image =
+      Bundle.main.image(forResource: "ToolbarIcon")
+      ?? NSImage(systemSymbolName: "archivebox", accessibilityDescription: nil) ?? NSImage()
+    image.isTemplate = true
+    return image
+  }()
+
+  /// Копия нужного размера: строка меню берёт картинку как есть, без масштабирования.
+  static func sized(_ side: CGFloat) -> NSImage {
+    let copy = image.copy() as? NSImage ?? image
+    copy.size = NSSize(width: side, height: side)
+    copy.isTemplate = true
+    copy.accessibilityDescription = "PangoZip"
+    return copy
+  }
+}
+
+/// Карточка под строкой меню. Фон — системное стекло Liquid Glass (NSGlassEffectView
+/// в панели), поэтому текст и кнопки берут системные цвета, а не собственную палитру.
 struct ProgressCardView: View {
+  static let cornerRadius: CGFloat = 20
   @ObservedObject var model: ProgressCardModel
   let close: () -> Void
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  private static let tint = Color(nsColor: NSColor(srgbHex: 0x101F4A)).opacity(0.55)
-  private static let secondary = Color.white.opacity(0.76)
 
   var body: some View {
-    let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
     VStack(alignment: .leading, spacing: 12) {
       HStack(spacing: 12) {
         symbol
         VStack(alignment: .leading, spacing: 2) {
-          Text(model.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
-            .truncationMode(.middle)
+          Text(model.title).font(.headline).lineLimit(1).truncationMode(.middle)
           Text(model.state == .done ? L10n.tr("Готово") : model.stage)
-            .font(.system(size: 12)).foregroundStyle(Self.secondary).lineLimit(1)
+            .font(.subheadline).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
         }
         Spacer(minLength: 4)
         if model.state == .working {
-          iconButton(L10n.tr("Показать остров"), symbol: "menubar.arrow.down.rectangle") {
+          Button {
             close()
             model.restore()
+          } label: {
+            Image(systemName: "menubar.arrow.down.rectangle")
           }
+          .buttonStyle(.borderless).controlSize(.large)
+          .help(L10n.tr("Показать остров")).accessibilityLabel(L10n.tr("Показать остров"))
         }
       }
       if model.state == .working {
         bar
         HStack(spacing: 8) {
-          Text(model.timeLine).font(.system(size: 12)).monospacedDigit()
-            .foregroundStyle(Self.secondary).lineLimit(1)
+          Text(model.timeLine).font(.subheadline).monospacedDigit()
+            .foregroundStyle(.secondary).lineLimit(1)
           Spacer(minLength: 4)
           if let togglePause = model.togglePause {
-            pill(
-              model.isPaused ? L10n.tr("Возобновить") : L10n.tr("Пауза"),
-              symbol: model.isPaused ? "play.fill" : "pause.fill", action: togglePause)
+            Button(action: togglePause) {
+              Label(
+                model.isPaused ? L10n.tr("Возобновить") : L10n.tr("Пауза"),
+                systemImage: model.isPaused ? "play.fill" : "pause.fill")
+            }
           }
-          pill(L10n.tr("Отмена"), symbol: "xmark") {
+          Button {
             close()
             model.cancel()
+          } label: {
+            Label(L10n.tr("Отмена"), systemImage: "xmark")
           }
         }
+        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular)
       } else if model.canReveal {
         HStack {
           Spacer()
@@ -311,84 +371,46 @@ struct ProgressCardView: View {
             close()
             model.reveal()
           } label: {
-            Text(L10n.tr("Показать в Finder")).font(.system(size: 12, weight: .semibold))
-              .foregroundStyle(Brand.onGold).padding(.horizontal, 12).frame(height: 28)
-              .background(Brand.gold, in: Capsule())
+            Text(L10n.tr("Показать в Finder")).foregroundStyle(Brand.onGold)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(Brand.gold)
         }
       }
     }
-    .foregroundStyle(Color.white.opacity(0.96))
     .padding(16)
     .frame(width: 320)
-    .background {
-      ZStack {
-        shape.fill(.ultraThinMaterial)
-        shape.fill(Self.tint)
-        LinearGradient(
-          colors: [.white.opacity(0.18), .white.opacity(0.02), .clear], startPoint: .top,
-          endPoint: .bottom
-        )
-        .clipShape(shape)
-      }
-    }
-    .overlay { shape.strokeBorder(Color.white.opacity(0.3), lineWidth: 1) }
-    .clipShape(shape)
-    .environment(\.colorScheme, .dark)
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.state)
   }
 
   @ViewBuilder private var symbol: some View {
-    if model.state == .done {
-      Image(systemName: "checkmark").font(.system(size: 13, weight: .bold))
-        .foregroundStyle(Brand.onGold).frame(width: 30, height: 30)
-        .background(Brand.gold, in: Circle()).accessibilityHidden(true)
-    } else {
-      Image(systemName: model.isPaused ? "pause.fill" : "archivebox.fill")
-        .font(.system(size: 15)).foregroundStyle(Brand.gold).frame(width: 30, height: 30)
-        .background(Color.white.opacity(0.1), in: Circle()).accessibilityHidden(true)
+    Group {
+      if model.state == .done {
+        Image(systemName: "checkmark").font(.system(size: 14, weight: .bold))
+          .foregroundStyle(Brand.onGold).frame(width: 32, height: 32)
+          .background(Brand.gold, in: Circle())
+      } else if model.isPaused {
+        Image(systemName: "pause.fill").font(.system(size: 14))
+          .foregroundStyle(Brand.goldInk).frame(width: 32, height: 32)
+          .background(.quaternary, in: Circle())
+      } else {
+        Image(nsImage: PangolinGlyph.image).renderingMode(.template).resizable()
+          .frame(width: 18, height: 18).foregroundStyle(Brand.goldInk)
+          .frame(width: 32, height: 32).background(.quaternary, in: Circle())
+      }
     }
+    .accessibilityHidden(true)
   }
 
-  /// Золотая полоса хода; пока доля неизвестна — бегущая полоса системы.
+  /// Системная полоса хода золотого цвета. Без своей анимации: каждое обновление процента
+  /// раньше заново запускало анимацию, и заливка дёргалась и «влетала» на место.
   @ViewBuilder private var bar: some View {
     if let fraction = model.fraction {
-      GeometryReader { proxy in
-        ZStack(alignment: .leading) {
-          Capsule().fill(Color.white.opacity(0.16))
-          Capsule().fill(model.isPaused ? Self.secondary : Brand.gold)
-            .frame(width: max(6, proxy.size.width * min(1, max(0, fraction))))
-            .animation(.easeOut(duration: 0.25), value: fraction)
-        }
-      }
-      .frame(height: 6)
-      .accessibilityElement()
-      .accessibilityLabel(model.stage)
-      .accessibilityValue("\(Int((fraction * 100).rounded(.down)))%")
+      ProgressView(value: min(1, max(0, fraction)))
+        .progressViewStyle(.linear).tint(model.isPaused ? Color.secondary : Brand.gold)
+        .accessibilityLabel(model.stage)
+        .accessibilityValue("\(Int((fraction * 100).rounded(.down)))%")
     } else {
       ProgressView().progressViewStyle(.linear).tint(Brand.gold)
     }
-  }
-
-  private func pill(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Label(title, systemImage: symbol).font(.system(size: 12, weight: .medium))
-        .padding(.horizontal, 11).frame(height: 26)
-        .background(Color.white.opacity(0.14), in: Capsule())
-        .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
-  }
-
-  private func iconButton(_ title: String, symbol: String, action: @escaping () -> Void)
-    -> some View
-  {
-    Button(action: action) {
-      Image(systemName: symbol).font(.system(size: 12, weight: .semibold))
-        .frame(width: 26, height: 26).background(Color.white.opacity(0.14), in: Circle())
-    }
-    .buttonStyle(.plain).accessibilityLabel(title).help(title)
   }
 }
 

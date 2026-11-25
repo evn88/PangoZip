@@ -35,6 +35,13 @@ final class ArchiveBrowserModel: ObservableObject {
       case .open, .preview, .external, .nested, .back, .edit: nil
       }
     }
+
+    /// Долгие операции, ход которых виден вне окна, когда окно закрыто или свёрнуто.
+    /// Автосохранение идёт незаметно и не должно поднимать остров.
+    var showsOutsideWindow: Bool {
+      if case .autosave = self { return false }
+      return feedbackKind != nil
+    }
   }
 
   private enum IncomingRequest {
@@ -166,6 +173,30 @@ final class ArchiveBrowserModel: ObservableObject {
   private var promisePasswordReply: CheckedContinuation<String?, Never>?
   private var operationFeedbackID: UUID?
   private var exportFeedbackID: UUID?
+
+  /// Долгая операция, ход которой показывается вне окна: вид и имя файла для острова.
+  private var outsideOperation: (kind: OperationKind, title: String)?
+  /// Последний созданный архив или папка распаковки: на них ведёт кнопка «Показать в Finder».
+  private var lastResultURL: URL?
+  /// Окно спрятано вместо закрытия, пока идёт операция; закроется, когда работа кончится.
+  private weak var hiddenWindow: NSWindow?
+  /// Остров и значок в строке меню — тот же показ хода, что у операций из меню Finder.
+  private lazy var presenter = OperationPresenter(
+    cancel: { [weak self] in self?.cancelCurrentOperation() },
+    togglePause: { [weak self] in self?.toggleOperationPause() })
+  /// Пауза долгой операции: движок останавливается до возобновления.
+  @Published private(set) var isOperationPaused = false
+  /// Окно закрыто или свёрнуто: ход операции переезжает на остров и в строку меню.
+  var isWindowAway = false {
+    didSet {
+      guard isWindowAway != oldValue else { return }
+      if !isWindowAway { hiddenWindow = nil }
+      syncPresenter()
+    }
+  }
+
+  /// Паузу можно поставить только долгой операции: у неё движок умеет останавливаться.
+  var canPauseOperation: Bool { outsideOperation != nil }
 
   /// Принимает отдельный сервис, чтобы сеанс и временные файлы принадлежали этой модели.
   private let passwords: any ArchivePasswordStoring
@@ -886,6 +917,7 @@ final class ArchiveBrowserModel: ObservableObject {
   /// Обновляет наблюдаемое состояние только на главном акторе.
   private func receiveProgress(_ value: ArchiveProgress) {
     operationProgress = value
+    if presenter.isShown { syncPresenter() }
     let feedback = OperationFeedback.shared
     if operationFeedbackID == nil, exportFeedbackID == nil, isExporting {
       exportFeedbackID = feedback.begin(
@@ -924,9 +956,14 @@ final class ArchiveBrowserModel: ObservableObject {
     acceptsQueuedOperations = acceptingQueuedOperations
     isBusy = true
     operationProgress = nil
+    lastResultURL = nil
     if let feedback, let kind = feedback.feedbackKind {
       operationFeedbackID = OperationFeedback.shared.begin(
         kind: kind, subject: feedbackSubject(for: feedback))
+      if feedback.showsOutsideWindow {
+        outsideOperation = (kind, feedbackSubject(for: feedback))
+        syncPresenter()
+      }
     }
     actionTask = Task { [weak self] in
       await body()
@@ -934,6 +971,7 @@ final class ArchiveBrowserModel: ObservableObject {
         self.operationFeedbackID = nil
         OperationFeedback.shared.finish(id, outcome: self.feedbackOutcome)
       }
+      self?.finishOutsideOperation()
       self?.operationProgress = nil
       self?.isBusy = false
       self?.acceptsQueuedOperations = false
@@ -941,6 +979,92 @@ final class ArchiveBrowserModel: ObservableObject {
       if self?.errorMessage == nil { self?.selectionChanged() }
       self?.drainIncomingRequests()
     }
+  }
+
+  // MARK: - Ход вне окна
+
+  /// Закрытие окна посреди долгой операции не прерывает её: окно прячется, а ход показывают
+  /// остров и строка меню, как у операций из Finder. Окно закроется, когда работа кончится.
+  func continueInBackground(closing window: NSWindow) -> Bool {
+    guard outsideOperation != nil, !isClosing else { return false }
+    window.orderOut(nil)
+    isWindowAway = true
+    hiddenWindow = window
+    return true
+  }
+
+  /// Возвращает спрятанное на время операции окно, например по нажатию на значок в Dock.
+  func reopenHiddenWindow() -> Bool {
+    guard let window = hiddenWindow else { return false }
+    window.makeKeyAndOrderFront(nil)
+    return true
+  }
+
+  func toggleOperationPause() {
+    guard outsideOperation != nil else { return }
+    if service.pause.isPaused { service.pause.resume() } else { service.pause.pause() }
+    isOperationPaused = service.pause.isPaused
+    syncPresenter()
+  }
+
+  /// Пока окно не видно, показывает ход долгой операции на острове; иначе убирает остров.
+  private func syncPresenter() {
+    guard isWindowAway, let outsideOperation else {
+      if presenter.isShown, !isWindowAway { presenter.hide() }
+      return
+    }
+    let stage = OperationPresenter.stage(
+      kind: outsideOperation.kind, progress: operationProgress, isPaused: isOperationPaused)
+    presenter.update(
+      stage: stage.title, fraction: stage.fraction,
+      remaining: operationProgress?.remainingSeconds, isPaused: isOperationPaused)
+    presenter.show(title: outsideOperation.title)
+  }
+
+  /// Итог операции вне окна: успех недолго виден на острове, ошибка и пароль возвращают окно.
+  private func finishOutsideOperation() {
+    guard let finished = outsideOperation else { return }
+    outsideOperation = nil
+    // Пауза не должна достаться следующей операции из очереди.
+    if service.pause.isPaused { service.pause.resume() }
+    isOperationPaused = false
+    guard presenter.isShown else { return }
+    if errorMessage != nil || isPasswordPromptPresented {
+      presenter.hide()
+      bringBackWindow()
+      return
+    }
+    if Task.isCancelled {
+      presenter.hide()
+      // Закрываем после того, как run снимет isBusy.
+      Task { [weak self] in self?.closeHiddenWindowIfIdle() }
+      return
+    }
+    let url = lastResultURL
+    Task { [weak self] in
+      await self?.presenter.showResult(
+        title: url?.lastPathComponent ?? finished.title, url: url)
+      self?.closeHiddenWindowIfIdle()
+    }
+  }
+
+  /// Пользователь закрыл окно во время работы: закрываем его по-настоящему, когда очередь пуста.
+  private func closeHiddenWindowIfIdle() {
+    guard let window = hiddenWindow, !isBusy, queuedOperations.isEmpty, !window.isVisible else {
+      return
+    }
+    hiddenWindow = nil
+    window.performClose(nil)
+  }
+
+  /// Возвращает окно, где можно ввести пароль или прочитать ошибку.
+  private func bringBackWindow() {
+    let window =
+      hiddenWindow ?? NSApp.windows.first { $0.isMiniaturized && !($0 is NSPanel) }
+    hiddenWindow = nil
+    if window?.isMiniaturized == true { window?.deminiaturize(nil) }
+    window?.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
   }
 
   /// Извлекает один запрос за раз; запущенное действие само продолжит обработку очереди.
@@ -1015,6 +1139,7 @@ final class ArchiveBrowserModel: ObservableObject {
         // Черновик выполнил свою задачу: дальше файлы добавляются уже в готовый архив.
         discardDraft()
         guard let created = outcome.urls.first else { throw ArchiveError.invalidArchive }
+        lastResultURL = outcome.urls.last
         password = choice.password
         nameEncodingOverride = nil
         await perform(.open(created))
@@ -1047,6 +1172,7 @@ final class ArchiveBrowserModel: ObservableObject {
             url, password: password, smartExtraction: preferences.smartExtraction,
             trashesArchive: preferences.trashesArchive, progress: progressHandler)
           results.append(outcome.url)
+          lastResultURL = outcome.url
           trashFailure = trashFailure ?? outcome.trashFailure
           password = ""
         }
@@ -1061,6 +1187,7 @@ final class ArchiveBrowserModel: ObservableObject {
         operationMessage = L10n.tr("Извлечение…")
         let results = try await service.exportSelection(
           paths, from: session, to: directory, password: password, progress: progressHandler)
+        lastResultURL = results.count == 1 ? results[0] : directory
         if ExtractionPreferences.load().revealsResult {
           NSWorkspace.shared.activateFileViewerSelecting(results)
         }

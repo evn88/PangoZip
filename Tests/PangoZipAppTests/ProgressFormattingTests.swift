@@ -45,6 +45,25 @@ final class ProgressFormattingTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(card.menuBarTitle, "")
   }
 
+  /// Остров и строка меню подписывают ход одинаково для операций из Finder и из окна.
+  @MainActor
+  func testOutsideWindowStageShowsPercentOnlyWhenKnown() {
+    let preparing = OperationPresenter.stage(
+      kind: .create, progress: ArchiveProgress(phase: .preparing, fraction: 0.5),
+      isPaused: false)
+    XCTAssertEqual(preparing.title, L10n.tr("Сжимаем…"))
+    XCTAssertNil(preparing.fraction)
+    let running = OperationPresenter.stage(
+      kind: .extract, progress: ArchiveProgress(phase: .extracting, fraction: 0.426),
+      isPaused: false)
+    XCTAssertEqual(running.title, L10n.tr("Распаковываем…") + " · 42%")
+    XCTAssertEqual(running.fraction, 0.426)
+    let paused = OperationPresenter.stage(
+      kind: .modify, progress: ArchiveProgress(phase: .compressing, fraction: 0.1),
+      isPaused: true)
+    XCTAssertEqual(paused.title, L10n.tr("На паузе") + " · 10%")
+  }
+
   /// Явно отображает ноль, часы и большие конечные длительности.
   func testTimeIncludesHoursAndZero() {
     XCTAssertEqual(ProgressFormatting.time(0), "00:00:00")

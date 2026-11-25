@@ -33,9 +33,14 @@ struct PangoZipApp: App {
       } else {
         ArchiveBrowserView(model: model, integration: appDelegate.finderIntegration)
           .frame(minWidth: 1100, minHeight: 620)
-          .background(WindowLifecycleBridge(prepareClose: prepareForClosing))
+          .background(
+            WindowLifecycleBridge(
+              prepareClose: prepareForClosing,
+              continueInBackground: { model.continueInBackground(closing: $0) },
+              awayChanged: { model.isWindowAway = $0 }))
           .onAppear {
             appDelegate.prepareTermination = prepareForClosing
+            appDelegate.reopenHiddenWindow = { model.reopenHiddenWindow() }
             updater.start(
               isBusy: {
                 !model.canAct || !model.queuedOperations.isEmpty
@@ -88,8 +93,8 @@ struct PangoZipApp: App {
       }
     }
     // Значок в строке меню показывает, что PangoZip работает в фоне ради острова.
+    // Значок — силуэт панголина, как у кнопки PangoZip в панели Finder.
     MenuBarExtra(
-      "PangoZip", systemImage: "archivebox",
       isInserted: Binding(
         get: {
           (isIslandEnabled
@@ -98,12 +103,14 @@ struct PangoZipApp: App {
         }, set: { _ in })
     ) {
       Button(L10n.tr("Открыть PangoZip")) {
-        openWindow(id: "main")
+        if !model.reopenHiddenWindow() { openWindow(id: "main") }
         NSApp.activate(ignoringOtherApps: true)
       }
       SettingsLink { Text(L10n.tr("Настройки…")) }
       Divider()
       Button(L10n.tr("Завершить PangoZip")) { NSApp.terminate(nil) }
+    } label: {
+      Image(nsImage: PangolinGlyph.sized(18)).accessibilityLabel("PangoZip")
     }
   }
 
@@ -137,6 +144,8 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
   let finderIntegration = FinderIntegrationModel()
   private var finderSetupTask: Task<Void, Never>?
   var prepareTermination: (() async -> Bool)?
+  /// Возвращает окно, спрятанное на время фоновой операции; false — такого окна нет.
+  var reopenHiddenWindow: (() -> Bool)?
   private var terminationPending = false
 
   /// Регистрирует Services только у основного приложения, чтобы worker не перехватывал команды.
@@ -175,6 +184,14 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
     if !ApplicationMode.isFinderWorker { finderIntegration.refreshEnabledState() }
   }
 
+  /// Нажатие на значок в Dock возвращает окно, которое спрятали на время операции.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool)
+    -> Bool
+  {
+    guard !flag, reopenHiddenWindow?() == true else { return true }
+    return false
+  }
+
   /// Позволяет доставлять URL до готовности SwiftUI: сервис сохраняет их в очереди.
   func application(_ application: NSApplication, open urls: [URL]) {
     services.deliverOpenURLs(urls)
@@ -211,30 +228,43 @@ final class AppLifecycleDelegate: NSObject, NSApplicationDelegate {
 
 struct WindowLifecycleBridge: NSViewRepresentable {
   let prepareClose: @MainActor () async -> Bool
+  /// true — окно спрятано вместо закрытия, потому что операция продолжается в фоне.
+  var continueInBackground: (@MainActor (NSWindow) -> Bool)?
+  /// Окно свёрнуто или спрятано (true) либо снова перед пользователем (false).
+  var awayChanged: (@MainActor (Bool) -> Void)?
 
   /// Создаёт невидимый мост, который подключит перехват закрытия к настоящему окну.
   func makeNSView(context: Context) -> HostView {
     let view = HostView()
-    view.prepareClose = prepareClose
+    updateNSView(view, context: context)
     return view
   }
 
-  /// Передаёт актуальную функцию очистки уже установленному мосту окна.
-  func updateNSView(_ nsView: HostView, context: Context) { nsView.prepareClose = prepareClose }
+  /// Передаёт актуальные функции уже установленному мосту окна.
+  func updateNSView(_ nsView: HostView, context: Context) {
+    nsView.prepareClose = prepareClose
+    nsView.continueInBackground = continueInBackground
+    nsView.awayChanged = awayChanged
+  }
 
   @MainActor
   final class HostView: NSView {
     var prepareClose: (@MainActor () async -> Bool)?
+    var continueInBackground: (@MainActor (NSWindow) -> Bool)?
+    var awayChanged: (@MainActor (Bool) -> Void)?
     private var proxy: CloseDelegate?
+    private var observers: [NSObjectProtocol] = []
     /// Устанавливает делегата один раз и сохраняет прежний делегат для событий SwiftUI.
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       guard let window, proxy == nil else { return }
-      let proxy = CloseDelegate(previous: window.delegate) { [weak self] in
-        await self?.prepareClose?() ?? true
-      }
+      let proxy = CloseDelegate(
+        previous: window.delegate,
+        prepare: { [weak self] in await self?.prepareClose?() ?? true },
+        continueInBackground: { [weak self] in self?.continueInBackground?($0) ?? false })
       self.proxy = proxy
       window.delegate = proxy
+      observeVisibility(of: window)
       if !ApplicationMode.isFinderWorker {
         // Шапка окна всегда тёмно-синяя, поэтому стекло и значки панели рисуются для тёмного фона.
         window.standardWindowButton(.closeButton)?.superview?.superview?.appearance =
@@ -250,6 +280,23 @@ struct WindowLifecycleBridge: NSViewRepresentable {
         UserDefaults.standard.set(2, forKey: "archiveTableLayoutVersion")
       }
     }
+
+    /// Сообщает, когда окно уходит с экрана и возвращается: тогда ход операции
+    /// переезжает на остров и обратно.
+    private func observeVisibility(of window: NSWindow) {
+      guard awayChanged != nil else { return }
+      let center = NotificationCenter.default
+      let away: [(Notification.Name, Bool)] = [
+        (NSWindow.didMiniaturizeNotification, true),
+        (NSWindow.didDeminiaturizeNotification, false),
+        (NSWindow.didBecomeKeyNotification, false),
+      ]
+      observers = away.map { name, isAway in
+        center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+          MainActor.assumeIsolated { self?.awayChanged?(isAway) }
+        }
+      }
+    }
   }
 
   @MainActor
@@ -257,19 +304,26 @@ struct WindowLifecycleBridge: NSViewRepresentable {
     // Неизменяемая ссылка передаётся обратно Objective-C для штатного делегата SwiftUI.
     nonisolated(unsafe) private let previous: NSWindowDelegate?
     private let prepare: @MainActor () async -> Bool
+    private let continueInBackground: @MainActor (NSWindow) -> Bool
     private var pending = false
     private var allowed = false
 
     /// Удерживает прежний делегат и асинхронную проверку закрытия до уничтожения окна.
-    init(previous: NSWindowDelegate?, prepare: @escaping @MainActor () async -> Bool) {
+    init(
+      previous: NSWindowDelegate?, prepare: @escaping @MainActor () async -> Bool,
+      continueInBackground: @escaping @MainActor (NSWindow) -> Bool = { _ in false }
+    ) {
       self.previous = previous
       self.prepare = prepare
+      self.continueInBackground = continueInBackground
     }
 
     /// Отклоняет первое закрытие; повторяет его только после успешной асинхронной подготовки.
+    /// Во время долгой операции окно только прячется, а операция идёт дальше.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
       if allowed { return true }
       guard !pending else { return false }
+      if continueInBackground(sender) { return false }
       pending = true
       Task { @MainActor in
         allowed = await prepare()
