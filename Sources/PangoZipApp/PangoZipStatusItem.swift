@@ -291,14 +291,14 @@ final class MenuAction: NSObject {
 
   static func item(_ title: String, action: @escaping @MainActor () -> Void) -> NSMenuItem {
     let target = MenuAction(action)
-    let item = NSMenuItem(title: title, action: #selector(perform), keyEquivalent: "")
+    let item = NSMenuItem(title: title, action: #selector(runHandler), keyEquivalent: "")
     item.target = target
     // NSMenuItem держит target слабо: храним его в representedObject.
     item.representedObject = target
     return item
   }
 
-  @objc private func perform() { handler() }
+  @objc private func runHandler() { handler() }
 }
 
 #if DEBUG
